@@ -21,9 +21,11 @@ export type Business = {
   moderation_note?: string;
   created_at?: string;
   updated_at?: string;
-  distance?: number;
+  distance?: number | null;
   distance_meters?: number;
   verification_badge?: boolean;
+  /** Raw badge array from the search API (e.g. ["verified", "showcase"]). */
+  badges?: string[];
   navigation_url?: string;
   rating?: number | null;
 };
@@ -69,13 +71,18 @@ export type BusinessSearchParams = {
  * everything else in the frontend expects flat `latitude`/`longitude`.
  * Normalize here so consumers never deal with both shapes.
  */
-function normalizeBusiness<T extends Partial<Business>>(b: T): T & Pick<Business, "latitude" | "longitude"> {
+function normalizeBusiness<T extends Partial<Business>>(b: T): T & Pick<Business, "latitude" | "longitude" | "distance"> {
   const coords = (b as { coordinates?: { latitude?: number; longitude?: number } }).coordinates;
+  // PostGIS ST_Distance comes back as a string (numeric column) — coerce once here.
+  const rawDistance = (b as { distance?: number | string | null }).distance;
+  const distance =
+    rawDistance == null || rawDistance === "" ? null : Number(rawDistance);
   return {
     ...b,
     latitude: b.latitude ?? coords?.latitude,
     longitude: b.longitude ?? coords?.longitude,
-  } as T & Pick<Business, "latitude" | "longitude">;
+    distance: Number.isFinite(distance) ? (distance as number) : null,
+  } as T & Pick<Business, "latitude" | "longitude" | "distance">;
 }
 
 export const searchBusinesses = (

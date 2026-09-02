@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import axios from "axios";
 import { searchBusinesses, type Business } from "@/lib/businesses";
 import { extractApiError } from "@/lib/api";
 import AppTaskbar from "@/components/layout/AppTaskbar";
 import MapViewLazy, { type MapMarker } from "@/components/map/MapViewLazy";
 import { useLocationPick } from "@/hooks/useLocationPick";
+import MiniCard from "@/components/search/MiniCard";
 
 /** True for axios cancellation errors — these are expected, not user-facing failures. */
 function isCancellation(err: unknown): boolean {
@@ -137,30 +137,20 @@ export default function SearchPage() {
               </p>
             )}
             {items.map((b) => (
-              <article key={b.id} className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <div className="flex justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-secondary">{b.category ?? "کسب‌وکار محلی"}</p>
-                    <h2 className="mt-2 text-xl font-bold">{b.name}</h2>
-                    <p className="mt-2 text-sm text-surface-variant">
-                      {[b.city, b.neighborhood, b.address].filter(Boolean).join("، ")}
-                    </p>
-                  </div>
-                  {b.distance && (
-                    <span className="text-sm text-surface-variant">{Math.round(b.distance)} متر</span>
-                  )}
-                </div>
-                <div className="mt-4 flex gap-3">
-                  <Link href={`/b/${b.slug}`} className="btn btn-primary btn-sm">
-                    مشاهده
-                  </Link>
-                  {b.phone && (
-                    <a href={`tel:${b.phone}`} className="btn btn-secondary btn-sm">
-                      تماس
-                    </a>
-                  )}
-                </div>
-              </article>
+              <MiniCard
+                key={b.id}
+                business={{
+                  id: b.id,
+                  slug: b.slug,
+                  name: b.name,
+                  category: b.category,
+                  city: b.city,
+                  neighborhood: b.neighborhood,
+                  verification_badge: b.verification_badge,
+                  distance: b.distance ?? null,
+                  featured: Array.isArray(b.badges) && b.badges.includes("showcase"),
+                }}
+              />
             ))}
           </section>
           <MapViewLazy
