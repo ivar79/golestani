@@ -1,0 +1,7 @@
+.git
+.github
+node_modules
+web/node_modules
+api/vendor
+.env
+.devcontainer

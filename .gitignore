@@ -1,0 +1,14 @@
+# --- secrets (never commit) ---
+.env
+.env.*
+!.env.example
+
+# --- dependencies (reproducible via lockfiles) ---
+node_modules/
+vendor/
+
+# --- OS / editor / tooling junk ---
+_internal/
+Thumbs.db
+Desktop.ini
+*.result.cache
