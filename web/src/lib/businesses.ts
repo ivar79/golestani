@@ -78,9 +78,12 @@ function normalizeBusiness<T extends Partial<Business>>(b: T): T & Pick<Business
   } as T & Pick<Business, "latitude" | "longitude">;
 }
 
-export const searchBusinesses = (params: BusinessSearchParams) =>
+export const searchBusinesses = (
+  params: BusinessSearchParams,
+  config?: { signal?: AbortSignal },
+) =>
   api
-    .get<BusinessSearchResponse>("/search/businesses", { params })
+    .get<BusinessSearchResponse>("/search/businesses", { params, ...config })
     .then((r) => {
       const payload = r.data.data ?? (r.data as unknown as Business[]);
       const normalized = (Array.isArray(payload) ? payload : []).map(normalizeBusiness);
