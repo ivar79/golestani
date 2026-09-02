@@ -29,8 +29,6 @@ const MAX_LAT = 90;
 const MIN_LNG = -180;
 const MAX_LNG = 180;
 const STORAGE_KEY = "golestani_location";
-/** Manual picks survive this long against browser/saved sources. */
-const MANUAL_TTL_MS = 30 * 60 * 1000;
 
 function isValid(lat: unknown, lng: unknown): boolean {
   return (
@@ -57,7 +55,7 @@ function readStored(): { point: GeoPoint; source: LocationSource; at: number } |
  * useLocationPick — engineering foundation for Phase 3 location UX (no UI).
  *
  * Layers, in precedence order:
- *   1. manual pick (map click) — never silently overwritten; protected by TTL
+ *   1. manual pick (map click) — wins until the user changes or clears it
  *   2. browser geolocation
  *   3. saved location (localStorage = anonymous device layer; server = logged-in layer)
  *
@@ -70,19 +68,22 @@ export function useLocationPick(): LocationState {
   // client-only hook ("use client" + consumers render after hydration).
   const [initial] = useState(() => {
     const stored = readStored();
-    if (!stored) return { point: null, source: null as LocationSource, manualUntil: 0 };
-    const manualActive = stored.source === "manual" && Date.now() - stored.at < MANUAL_TTL_MS;
+    // A manual pick is restored with full protection — it never expires.
+    // Only the user changing or clearing it removes it (contract:
+    // "حفظ موقعیت انتخاب‌شده تا تغییر دستی توسط کاربر").
+    const manualProtected = stored?.source === "manual";
     return {
-      point: stored.point,
-      source: stored.source,
-      manualUntil: manualActive ? stored.at + MANUAL_TTL_MS : 0,
+      point: stored?.point ?? null,
+      source: stored?.source ?? null,
+      manualProtected,
     };
   });
   const [location, setLocation] = useState<GeoPoint | null>(initial.point);
   const [source, setSource] = useState<LocationSource>(initial.source);
   const [status, setStatus] = useState<LocationState["status"]>("idle");
   const [error, setError] = useState<string | null>(null);
-  const manualUntil = useRef<number>(initial.manualUntil);
+  /** True while a manual pick is authoritative; browser geolocation must defer. */
+  const manualActive = useRef<boolean>(initial.manualProtected);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -130,7 +131,7 @@ export function useLocationPick(): LocationState {
       setStatus("error");
       return;
     }
-    if (Date.now() < manualUntil.current) return; // don't override a fresh manual pick
+    if (manualActive.current) return; // manual pick wins until the user changes/clears it
     setStatus("locating");
     setError(null);
     navigator.geolocation.getCurrentPosition(
@@ -166,14 +167,14 @@ export function useLocationPick(): LocationState {
       setStatus("error");
       return;
     }
-    manualUntil.current = Date.now() + MANUAL_TTL_MS;
+    manualActive.current = true;
     setError(null);
     setStatus("idle");
     commit({ latitude: lat, longitude: lng, label: label ?? null }, "manual");
   }, [commit]);
 
   const clearLocation = useCallback(() => {
-    manualUntil.current = 0;
+    manualActive.current = false;
     setError(null);
     setStatus("idle");
     commit(null, null);
