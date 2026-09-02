@@ -97,6 +97,16 @@ export const searchBusinesses = (
       return { ...r.data, data: normalized } as BusinessSearchResponse;
     });
 
+export type SearchFacets = {
+  cities: string[];
+  categories: string[];
+  neighborhoods: string[];
+};
+
+/** Distinct filter values from approved businesses (cached server-side 5 min). */
+export const getSearchFacets = () =>
+  api.get<SearchFacets>("/search/facets").then((r) => r.data);
+
 /** Public QR code (SVG) pointing at the canonical /b/{slug} page. */
 export const getQrUrl = (slug: string) =>
   `${api.getUri()}/public/businesses/${slug}/qr`;
