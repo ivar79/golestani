@@ -64,8 +64,28 @@ export type BusinessSearchParams = {
   showcase?: boolean;
 };
 
+/**
+ * The search API nests coordinates as `coordinates: {latitude, longitude}`;
+ * everything else in the frontend expects flat `latitude`/`longitude`.
+ * Normalize here so consumers never deal with both shapes.
+ */
+function normalizeBusiness<T extends Partial<Business>>(b: T): T & Pick<Business, "latitude" | "longitude"> {
+  const coords = (b as { coordinates?: { latitude?: number; longitude?: number } }).coordinates;
+  return {
+    ...b,
+    latitude: b.latitude ?? coords?.latitude,
+    longitude: b.longitude ?? coords?.longitude,
+  } as T & Pick<Business, "latitude" | "longitude">;
+}
+
 export const searchBusinesses = (params: BusinessSearchParams) =>
-  api.get<BusinessSearchResponse>("/search/businesses", { params }).then((r) => r.data);
+  api
+    .get<BusinessSearchResponse>("/search/businesses", { params })
+    .then((r) => {
+      const payload = r.data.data ?? (r.data as unknown as Business[]);
+      const normalized = (Array.isArray(payload) ? payload : []).map(normalizeBusiness);
+      return { ...r.data, data: normalized } as BusinessSearchResponse;
+    });
 
 /** Public QR code (SVG) pointing at the canonical /b/{slug} page. */
 export const getQrUrl = (slug: string) =>
