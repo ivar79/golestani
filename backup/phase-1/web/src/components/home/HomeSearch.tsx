@@ -1,0 +1,4 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+export default function HomeSearch(){const router=useRouter();const[q,setQ]=useState("");const[city,setCity]=useState("");return <form onSubmit={e=>{e.preventDefault();const p=new URLSearchParams();if(q)p.set("q",q);if(city)p.set("city",city);router.push(`/search?${p}`)}} className="homepage-glass flex flex-col gap-3 rounded-2xl p-3 md:flex-row"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="نام، خدمت یا دسته‌بندی" className="min-h-14 flex-1 rounded-xl bg-white/5 px-4 text-white outline-none"/><input value={city} onChange={e=>setCity(e.target.value)} placeholder="شهر" className="min-h-14 rounded-xl bg-white/5 px-4 text-white outline-none md:w-48"/><button className="min-h-14 rounded-xl bg-secondary px-7 font-bold text-white">جست‌وجو</button></form>}

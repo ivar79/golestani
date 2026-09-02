@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf9f6;
+  --foreground: #1c2430;
+}
+
+/* Golestani design system — navy primary, emerald accent */
+@theme {
+  --color-navy-50: #eef3f8;
+  --color-navy-100: #dbe6f0;
+  --color-navy-200: #b7cadd;
+  --color-navy-300: #8aa8c6;
+  --color-navy-400: #5c84ac;
+  --color-navy-500: #406892;
+  --color-navy-600: #32567a;
+  --color-navy-700: #294766;
+  --color-navy-800: #1e3a5f;
+  --color-navy-900: #172c47;
+  --color-navy-950: #0e1b2e;
+  --color-surface: #faf9f6;
+  --color-ink: #1c2430;
+  --color-surface-design: #f8f9ff;
+  --color-surface-dim: #ccdbf4;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e6eeff;
+  --color-surface-container-high: #dde9ff;
+  --color-surface-container-highest: #d5e3fd;
+  --color-on-surface: #0d1c2f;
+  --color-on-surface-variant: #43474e;
+  --color-outline: #74777f;
+  --color-outline-variant: #c4c6cf;
+  --color-primary: #022448;
+  --color-secondary: #006c4a;
+  --color-night: #020617;
+  --color-panel: #0a1128;
+  --color-panel-deep: #111a32;
+  --color-cta-deep: #050b1a;
+  --color-surface-variant: #d5e3fd;
+  --color-primary-fixed: #d5e3ff;
+  --color-secondary-container: #82f5c1;
+  --color-on-secondary-container: #00714e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Vazirmatn", "IRANSansX", "IRANSans", "Segoe UI", Tahoma, Arial,
+    sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: rgba(5, 150, 105, 0.18);
+}
+
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-0.5rem); }
+}
+
+.animate-float-soft {
+  animation: float-soft 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-soft {
+    animation: none;
+  }
+}
+
+.homepage-glass {
+  background: rgb(255 255 255 / 80%);
+  border: 1px solid rgb(196 198 207 / 55%);
+  box-shadow: 0 12px 32px rgb(13 28 47 / 8%);
+  backdrop-filter: blur(16px);
+}
+
+.homepage-card {
+  border: 1px solid rgb(196 198 207 / 55%);
+  box-shadow: 0 4px 12px rgb(13 28 47 / 3%);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.homepage-card:hover {
+  transform: translateY(-3px);
+  border-color: rgb(5 150 105 / 35%);
+  box-shadow: 0 14px 30px rgb(13 28 47 / 9%), inset 0 0 0 1px rgb(5 150 105 / 8%);
+}
+
+.mask-edge-fade {
+  -webkit-mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
+  mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
+}
+
+@keyframes dash {
+  to { stroke-dashoffset: -100; }
+}
+
+.animate-dash {
+  animation: dash 20s linear infinite;
+}
