@@ -107,10 +107,19 @@ export default function SearchPage() {
   }, [location]);
 
   // Facets for the filter chips (cached server-side).
+  // Each mount owns an AbortController: dev StrictMode double-mounts effects
+  // (two requests otherwise race), and a superseded request must never clobber
+  // a good response with null. Cancellation is ignored; only a genuine failure
+  // hides the chips.
   useEffect(() => {
-    getSearchFacets()
+    const ac = new AbortController();
+    getSearchFacets({ signal: ac.signal })
       .then(setFacets)
-      .catch(() => setFacets(null)); // chips simply hidden when unavailable
+      .catch((err) => {
+        if (isCancellation(err)) return; // superseded/aborted — keep existing data
+        setFacets(null); // chips simply hidden when unavailable
+      });
+    return () => ac.abort();
   }, []);
 
   async function submit(e: React.FormEvent) {

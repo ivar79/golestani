@@ -63,27 +63,17 @@ function readStored(): { point: GeoPoint; source: LocationSource; at: number } |
  * usage is unaffected (localStorage only, no API calls).
  */
 export function useLocationPick(): LocationState {
-  // Lazy initializers restore the saved location synchronously — no
-  // setState-in-effect cascade. localStorage access here is safe for this
-  // client-only hook ("use client" + consumers render after hydration).
-  const [initial] = useState(() => {
-    const stored = readStored();
-    // A manual pick is restored with full protection — it never expires.
-    // Only the user changing or clearing it removes it (contract:
-    // "حفظ موقعیت انتخاب‌شده تا تغییر دستی توسط کاربر").
-    const manualProtected = stored?.source === "manual";
-    return {
-      point: stored?.point ?? null,
-      source: stored?.source ?? null,
-      manualProtected,
-    };
-  });
-  const [location, setLocation] = useState<GeoPoint | null>(initial.point);
-  const [source, setSource] = useState<LocationSource>(initial.source);
+  // Hydration-safe restore: the first (server + client) render uses the same
+  // empty state so SSR markup matches; the saved location is restored in an
+  // effect AFTER hydration. Reading localStorage during render (lazy
+  // initializer) made the client's first render differ from the server HTML
+  // and broke hydration whenever a location was persisted.
+  const [location, setLocation] = useState<GeoPoint | null>(null);
+  const [source, setSource] = useState<LocationSource>(null);
   const [status, setStatus] = useState<LocationState["status"]>("idle");
   const [error, setError] = useState<string | null>(null);
   /** True while a manual pick is authoritative; browser geolocation must defer. */
-  const manualActive = useRef<boolean>(initial.manualProtected);
+  const manualActive = useRef<boolean>(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -91,6 +81,23 @@ export function useLocationPick(): LocationState {
     return () => {
       mounted.current = false;
     };
+  }, []);
+
+  // Restore the persisted location once, after hydration (hydration-safe):
+  // the first (server + client) render is identical (no location), and the
+  // saved value is applied only after the hydration commit — deferred out of
+  // the effect body so the update cannot race or cascade during hydration.
+  // A manual pick is restored with full protection — it never expires. Only
+  // the user changing or clearing it removes it (contract:
+  // "حفظ موقعیت انتخاب‌شده تا تغییر دستی توسط کاربر").
+  useEffect(() => {
+    const stored = readStored();
+    if (!stored) return;
+    queueMicrotask(() => {
+      setLocation(stored.point);
+      setSource(stored.source);
+    });
+    manualActive.current = stored.source === "manual";
   }, []);
 
   const persist = useCallback((point: GeoPoint | null, src: LocationSource) => {

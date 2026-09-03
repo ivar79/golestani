@@ -88,14 +88,23 @@ function normalizeBusiness<T extends Partial<Business>>(b: T): T & Pick<Business
 export const searchBusinesses = (
   params: BusinessSearchParams,
   config?: { signal?: AbortSignal },
-) =>
-  api
-    .get<BusinessSearchResponse>("/search/businesses", { params, ...config })
+) => {
+  // Laravel's "boolean" validation rule accepts only 0/1/"0"/"1"/true/false —
+  // the string "true"/"false" (what axios serializes for JS booleans in a
+  // query string) is rejected with 422. Frontend converts to "1" per contract.
+  const wire = {
+    ...params,
+    verified: params.verified ? 1 : undefined,
+    showcase: params.showcase ? 1 : undefined,
+  };
+  return api
+    .get<BusinessSearchResponse>("/search/businesses", { params: wire, ...config })
     .then((r) => {
       const payload = r.data.data ?? (r.data as unknown as Business[]);
       const normalized = (Array.isArray(payload) ? payload : []).map(normalizeBusiness);
       return { ...r.data, data: normalized } as BusinessSearchResponse;
     });
+};
 
 export type SearchFacets = {
   cities: string[];
@@ -104,8 +113,8 @@ export type SearchFacets = {
 };
 
 /** Distinct filter values from approved businesses (cached server-side 5 min). */
-export const getSearchFacets = () =>
-  api.get<SearchFacets>("/search/facets").then((r) => r.data);
+export const getSearchFacets = (config?: { signal?: AbortSignal }) =>
+  api.get<SearchFacets>("/search/facets", config).then((r) => r.data);
 
 /** Public QR code (SVG) pointing at the canonical /b/{slug} page. */
 export const getQrUrl = (slug: string) =>
