@@ -36,6 +36,4 @@ class User extends Authenticatable
             'is_active' => 'boolean',
         ];
     }
-    public function designer(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(Designer::class); }
-    public function businesses(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(Business::class); }
 }

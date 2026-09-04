@@ -1,14 +1,7 @@
-"use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getHomepageContent } from "@/lib/businesses";
 import HomeIcon from "./HomeIcon";
 
 export default function HomeHero() {
-  const [content, setContent] = useState<Record<string,string>>({});
-  useEffect(() => { getHomepageContent().then(setContent).catch(() => undefined); }, []);
-  const title = content["homepage.hero.title"] || "کارت ویزیت دیجیتال خود را در چند ثانیه بسازید";
-  const subtitle = content["homepage.hero.subtitle"] || "با اینکارت، کسب‌وکار خود را به دنیای دیجیتال متصل کنید.";
   return (
     <section className="relative z-10 mx-auto flex w-full max-w-7xl flex-col-reverse items-center gap-12 px-4 pb-24 pt-24 md:px-8 lg:flex-row lg:gap-8 lg:pb-40 lg:pt-32">
       {/* Background effects */}
@@ -21,13 +14,13 @@ export default function HomeHero() {
       <div className="z-10 flex flex-1 flex-col items-start gap-6">
         <div className="inline-flex items-center gap-2 rounded-full border border-secondary/20 bg-secondary/10 px-4 py-2 text-sm font-medium text-secondary">
           <HomeIcon name="verified" className="h-[18px] w-[18px]" />
-          {content["homepage.hero.badges"] || "هوشمندترین راه برای معرفی شما"}
+          هوشمندترین راه برای معرفی شما
         </div>
         <h1 className="text-[32px] font-extrabold leading-tight tracking-tight text-white md:text-5xl">
-          {title}
+          کارت ویزیت <span className="text-secondary">دیجیتال</span> خود را در چند ثانیه بسازید
         </h1>
         <p className="max-w-xl text-lg leading-7 text-surface-variant">
-          {subtitle}
+          با اینکارت، کسب‌وکار خود را به دنیای دیجیتال متصل کنید. لینک اختصاصی، کد QR و مدیریت هوشمند مخاطبان، همه در یک پلتفرم حرفه‌ای.
         </p>
         <div className="mt-4 flex flex-wrap gap-4">
           <Link

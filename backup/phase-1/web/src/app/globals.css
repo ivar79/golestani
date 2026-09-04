@@ -32,14 +32,6 @@
   --color-outline-variant: #c4c6cf;
   --color-primary: #022448;
   --color-secondary: #006c4a;
-  --color-night: #020617;
-  --color-panel: #0a1128;
-  --color-panel-deep: #111a32;
-  --color-cta-deep: #050b1a;
-  --color-surface-variant: #d5e3fd;
-  --color-primary-fixed: #d5e3ff;
-  --color-secondary-container: #82f5c1;
-  --color-on-secondary-container: #00714e;
 }
 
 @theme inline {
@@ -91,17 +83,4 @@ body {
   transform: translateY(-3px);
   border-color: rgb(5 150 105 / 35%);
   box-shadow: 0 14px 30px rgb(13 28 47 / 9%), inset 0 0 0 1px rgb(5 150 105 / 8%);
-}
-
-.mask-edge-fade {
-  -webkit-mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
-  mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
-}
-
-@keyframes dash {
-  to { stroke-dashoffset: -100; }
-}
-
-.animate-dash {
-  animation: dash 20s linear infinite;
 }

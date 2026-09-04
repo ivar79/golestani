@@ -44,8 +44,10 @@ class SendOtpTest extends TestCase
 
         $this->assertTrue($driver->send('09123456789', 'کد تأیید شما: 12345'));
 
+        // In local/testing the driver also logs the OTP itself, so 'info' is
+        // called twice: once for the metadata line, once for the dev-only code.
         Log::shouldHaveReceived('info')
-            ->once()
+            ->atLeast()->once()
             ->withArgs(fn (string $message, array $context): bool => $message === 'OTP request sent.'
                 && ($context['phone'] ?? null) === '****6789');
     }
@@ -73,4 +75,18 @@ class SendOtpTest extends TestCase
 
         $this->postJson('/api/auth/send-otp', ['phone' => '09123456789'])->assertStatus(429);
     }
+
+    public function test_local_environment_logs_otp_code(): void
+    {
+        Log::spy();
+
+        $driver = new LogSmsDriver();
+        $this->assertTrue($driver->send('09123456789', 'کد تأیید شما: 12345'));
+
+        Log::shouldHaveReceived('info')
+            ->atLeast()->once()
+            ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'OTP code (development only)')
+                && str_contains($message, '12345'));
+    }
+
 }

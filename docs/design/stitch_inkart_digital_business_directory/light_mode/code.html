@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+
+<html dir="rtl" lang="fa"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100vw;margin:0;padding:0;background-color:#111418;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head><body class="bg-surface pt-safe pb-safe min-h-screen" style="background-color: #FFFFFF;"><main class="flex flex-col relative w-full"><div class="flex flex-col w-full h-full text-on-surface bg-surface font-body-md rtl" style="background-color: #FFFFFF; color: #0F172A;">
+<!-- Top Padding for safe area & search -->
+<div class="px-margin-mobile pt-6 pb-4">
+<h1 class="text-title-md text-on-surface mb-6 text-[#0F172A]">انتخاب موقعیت</h1>
+<!-- Search Bar -->
+<div class="relative w-full mb-6">
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[#0F172A]">search</span>
+<input class="w-full bg-surface-container-low text-on-surface placeholder:text-on-surface-variant rounded-xl py-4 pr-12 pl-4 focus:outline-none focus:ring-1 focus:ring-glow-emerald transition-all duration-300" placeholder="جستجوی شهر یا محله..." style="background-color: #F1F5F9; border: 1px solid #E2E8F0; color: #0F172A;" type="text"/>
+<button class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-surface-variant transition-colors group">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-tertiary-fixed transition-colors text-[#0F172A]">mic</span>
+</button>
+</div>
+<!-- Quick Actions -->
+<div class="flex flex-col gap-3">
+<button class="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors active:scale-[0.98] duration-200" style="background-color: #F8FAFC; color: #0F172A;">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-secondary-container/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary-fixed">my_location</span>
+</div>
+<span class="text-body-lg font-medium text-on-surface">استفاده از موقعیت کنونی</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm">chevron_left</span>
+</button>
+<button class="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors active:scale-[0.98] duration-200" style="background-color: #F8FAFC; color: #0F172A;">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-container/40 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-fixed">map</span>
+</div>
+<span class="text-body-lg font-medium text-on-surface">انتخاب روی نقشه</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm">chevron_left</span>
+</button>
+</div>
+</div>
+<!-- Divider -->
+<div class="w-full h-px bg-border-white-low my-2" style="background-color: #F1F5F9;"></div>
+<!-- Recent / Popular Cities -->
+<div class="px-margin-mobile py-4 flex-1 overflow-y-auto">
+<h2 class="text-label-sm text-on-surface-variant mb-4 px-2">شهرهای پرکاربرد</h2>
+<div class="flex flex-col gap-2">
+<!-- City Item 1 -->
+<button class="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-surface-container-low transition-colors text-right group">
+<div class="w-10 h-10 rounded-xl bg-surface-variant flex items-center justify-center overflow-hidden relative" style="background-color: #F1F5F9;">
+<span class="material-symbols-outlined text-on-surface-variant z-10 group-hover:text-on-surface transition-colors">location_city</span>
+<div class="absolute inset-0 bg-gradient-to-br from-glow-emerald to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="flex-1 border-b border-border-white-low pb-3 group-last:border-b-0 group-hover:border-transparent transition-colors" style="border-color: #F1F5F9;">
+<span class="text-body-md text-on-surface block text-[#0F172A]">تهران</span>
+<span class="text-caption-xs text-on-surface-variant block mt-1 text-[#0F172A]">استان تهران</span>
+</div>
+</button>
+<!-- City Item 2 -->
+<button class="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-surface-container-low transition-colors text-right group">
+<div class="w-10 h-10 rounded-xl bg-surface-variant flex items-center justify-center overflow-hidden relative" style="background-color: #F1F5F9;">
+<span class="material-symbols-outlined text-on-surface-variant z-10 group-hover:text-on-surface transition-colors">location_city</span>
+<div class="absolute inset-0 bg-gradient-to-br from-glow-emerald to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="flex-1 border-b border-border-white-low pb-3 group-last:border-b-0 group-hover:border-transparent transition-colors" style="border-color: #F1F5F9;">
+<span class="text-body-md text-on-surface block text-[#0F172A]">اصفهان</span>
+<span class="text-caption-xs text-on-surface-variant block mt-1 text-[#0F172A]">استان اصفهان</span>
+</div>
+</button>
+<!-- City Item 3 -->
+<button class="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-surface-container-low transition-colors text-right group">
+<div class="w-10 h-10 rounded-xl bg-surface-variant flex items-center justify-center overflow-hidden relative" style="background-color: #F1F5F9;">
+<span class="material-symbols-outlined text-on-surface-variant z-10 group-hover:text-on-surface transition-colors">location_city</span>
+<div class="absolute inset-0 bg-gradient-to-br from-glow-emerald to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="flex-1 border-b border-border-white-low pb-3 group-last:border-b-0 group-hover:border-transparent transition-colors" style="border-color: #F1F5F9;">
+<span class="text-body-md text-on-surface block text-[#0F172A]">شیراز</span>
+<span class="text-caption-xs text-on-surface-variant block mt-1 text-[#0F172A]">استان فارس</span>
+</div>
+</button>
+<!-- City Item 4 -->
+<button class="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-surface-container-low transition-colors text-right group">
+<div class="w-10 h-10 rounded-xl bg-surface-variant flex items-center justify-center overflow-hidden relative" style="background-color: #F1F5F9;">
+<span class="material-symbols-outlined text-on-surface-variant z-10 group-hover:text-on-surface transition-colors">location_city</span>
+<div class="absolute inset-0 bg-gradient-to-br from-glow-emerald to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="flex-1 pb-3 group-last:border-b-0 group-hover:border-transparent transition-colors">
+<span class="text-body-md text-on-surface block text-[#0F172A]">مشهد</span>
+<span class="text-caption-xs text-on-surface-variant block mt-1 text-[#0F172A]">استان خراسان رضوی</span>
+</div>
+</button>
+</div>
+</div>
+<!-- Mini Map Preview (Ornamental) -->
+<div class="px-margin-mobile pb-6 pt-2 mt-auto">
+<div class="w-full h-32 rounded-2xl relative overflow-hidden flex items-center justify-center group cursor-pointer">
+<div class="absolute inset-0 w-full h-full bg-cover bg-center opacity-40 group-hover:opacity-60 transition-opacity duration-500 blur-[2px] group-hover:blur-none" data-location="Tehran, Iran" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCVxCThVls4HKPt52JAm4XpLYq80pvBh4dgvLq7xgZhsD39q7RG6DbuXc18j2GOTDk5k9xO3ju8qDZn0czK3wKVzC_Hd9zYB7CX7wbQ0pNhynhYYnOtMGYbm4z98lfrYPR-jIKzhxn3vM0YNBW8vHMMoQbssY-syVz5iuHRPyc-qkgqa26au8dB6iFt1X02WHi35Gg9xpLtfn9unXe5A-smTHyM-dgBjHU7yLIUK5t8xe7bZgVFE4BfzQ')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent"></div>
+<div class="z-10 flex flex-col items-center justify-center p-4 bg-surface-container-low/80 backdrop-blur-md rounded-xl shadow-lg border border-border-white-low translate-y-2 group-hover:translate-y-0 transition-transform duration-300" style="background-color: rgba(255, 255, 255, 0.9); border-color: #E2E8F0;">
+<span class="material-symbols-outlined text-secondary-fixed mb-1">map</span>
+<span class="text-label-sm text-on-surface text-[#0F172A]">مشاهده نقشه کامل</span>
+</div>
+</div>
+</div>
+</div>
+<script>
+    // Micro-interaction for search input focus adding a subtle glow to the container
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.querySelector('input[type="text"]');
+        const searchContainer = searchInput.parentElement;
+        
+        searchInput.addEventListener('focus', () => {
+            searchContainer.classList.add('shadow-[0_0_20px_rgba(0,108,74,0.15)]');
+        });
+        
+        searchInput.addEventListener('blur', () => {
+            searchContainer.classList.remove('shadow-[0_0_20px_rgba(0,108,74,0.15)]');
+        });
+    });
+</script></main></body></html>

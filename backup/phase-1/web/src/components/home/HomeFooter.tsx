@@ -30,9 +30,9 @@ export default function HomeFooter() {
           <div>
             <h4 className="mb-6 text-lg font-semibold text-white">Media Sosial</h4>
             <div className="flex gap-4">
-              <Link href="/contact" aria-label="Share" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-all hover:bg-secondary/20">
+              <a href="/contact" aria-label="Share" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-all hover:bg-secondary/20">
                 <HomeIcon name="share" className="h-5 w-5 text-white" />
-              </Link>
+              </a>
               <a href="mailto:hello@inkart.ir" aria-label="Email" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-all hover:bg-secondary/20">
                 <HomeIcon name="at" className="h-5 w-5 text-white" />
               </a>

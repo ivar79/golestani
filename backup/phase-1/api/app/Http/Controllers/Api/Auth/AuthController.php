@@ -85,7 +85,6 @@ class AuthController extends Controller
 
         $this->otp->clearAttempts($phone);
 
-        $user->tokens()->delete();
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return response()->json([
@@ -104,10 +103,7 @@ class AuthController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        $token = $request->user()->currentAccessToken();
-        if ($token) {
-            $token->delete();
-        }
+        $request->user()->currentAccessToken()->delete();
 
         return response()->json([
             'message' => 'خروج موفق',

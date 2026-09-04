@@ -16,6 +16,15 @@ class LogSmsDriver implements SmsServiceInterface
             'phone' => $this->maskPhone($phone),
         ]);
 
+        // Local/development convenience ONLY: make the OTP discoverable so a
+        // reviewing client can complete login without a real SMS gateway.
+        // Never active in production — the code is not written to any log.
+        if (app()->environment('local', 'testing', 'development')) {
+            Log::info('OTP code (development only): '.$message, [
+                'phone' => $this->maskPhone($phone),
+            ]);
+        }
+
         return true;
     }
 
