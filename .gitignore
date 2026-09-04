@@ -13,3 +13,7 @@ Thumbs.db
 Desktop.ini
 *.result.cache
 .freebuff/
+
+# --- local backup snapshots (never commit/push) ---
+backup/
+*.zip

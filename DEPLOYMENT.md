@@ -19,8 +19,8 @@ Monorepo با دو بخش مستقل:
 2. در **Build & Output Settings → Root Directory** مقدار **`web`** را بگذارید.
 3. Vercel به‌طور خودکار Next.js را از `web/package.json` تشخیص می‌دهد (Build Command و Install Command را پیش‌فرض بگذارید).
 
-**گزینه B — `vercel.json` (ایجاد شده):**
-فایل `vercel.json` در ریشه‌ی ریپو مقدار `"cwd": "web"` دارد؛ با آن Vercel پوشه‌ی `web` را ریشه می‌شناسد (گزینه A در صورت وجود هر دو، اولویت دارد).
+**گزینه B — `vercel.json`:**
+فایل `vercel.json` در ریشه‌ی ریپو فقط framework را `nextjs` تنظیم می‌کند. تعیین ریشه فقط از طریق گزینه‌ی A (فیلد Root Directory در داشبورد) انجام می‌شود — property ی به نام `cwd` در کانفیگ Vercel **معتبر نیست** و خطای `should NOT have additional property 'cwd'` می‌دهد.
 
 ### متغیرهای محیطی (در Vercel → Settings → Environment Variables)
 
