@@ -31,8 +31,9 @@
   --color-outline: #74777f;
   --color-outline-variant: #c4c6cf;
   --color-primary: #022448;
-  --color-secondary: #006c4a;
+  --color-secondary: #10b981;
   --color-night: #020617;
+  --color-accent-cyan: #22d3ee;
   --color-panel: #0a1128;
   --color-panel-deep: #111a32;
   --color-surface-tint: #c0c6de;
@@ -57,7 +58,7 @@ body {
 }
 
 ::selection {
-  background: rgba(5, 150, 105, 0.18);
+  background: rgba(16, 185, 129, 0.22);
 }
 
 @keyframes float-soft {
@@ -171,7 +172,7 @@ html { scroll-behavior: smooth; }
 
 .btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 108, 74, 0.35);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35);
 }
 
 .btn:disabled,
@@ -189,18 +190,20 @@ html { scroll-behavior: smooth; }
 /* Primary — emerald gradient, layered shadow (works on dark & light) */
 .btn-primary {
   color: #fff;
-  background-image: linear-gradient(180deg, #007a56 0%, #005238 100%);
+  background-image: linear-gradient(120deg, #10b981 0%, #0891b2 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 1px 2px rgba(2, 6, 23, 0.4),
-    0 10px 28px -12px rgba(0, 108, 74, 0.5);
+    0 10px 28px -12px rgba(16, 185, 129, 0.55),
+    0 0 24px -8px rgba(34, 211, 238, 0.35);
 }
 .btn-primary:hover {
-  background-image: linear-gradient(180deg, #008553 0%, #005c3c 100%);
+  background-image: linear-gradient(120deg, #34d399 0%, #06b6d4 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
     0 2px 4px rgba(2, 6, 23, 0.35),
-    0 18px 40px -14px rgba(0, 108, 74, 0.6);
+    0 18px 40px -14px rgba(16, 185, 129, 0.65),
+    0 0 36px -8px rgba(34, 211, 238, 0.5);
   transform: translateY(-1px);
 }
 .btn-primary:hover .btn-arrow {
@@ -211,7 +214,7 @@ html { scroll-behavior: smooth; }
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 1px 2px rgba(2, 6, 23, 0.4),
-    0 6px 18px -10px rgba(0, 108, 74, 0.5);
+    0 6px 18px -10px rgba(16, 185, 129, 0.5);
 }
 
 /* Secondary — glassy, for dark backgrounds (homepage) */

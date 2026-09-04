@@ -75,7 +75,7 @@ export default function AdminLoginPage() {
         <button
           type="submit"
           disabled={loading || !identifier || !password}
-          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(0,108,74,0.6)]"
+          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(16,185,129,0.6)]"
         >
           {loading ? "در حال ورود..." : "ورود"}
         </button>

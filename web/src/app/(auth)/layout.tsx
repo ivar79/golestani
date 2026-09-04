@@ -8,7 +8,7 @@ export default function AuthLayout({
       {/* Ambient background glows */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[500px] bg-[radial-gradient(ellipse_at_top,#0f172a_0%,transparent_70%)] opacity-80" />
       <div className="pointer-events-none absolute left-0 top-1/4 h-[600px] w-[600px] -translate-x-1/2 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.03)_0%,transparent_60%)]" />
-      <div className="pointer-events-none absolute right-0 top-1/3 h-[600px] w-[600px] translate-x-1/3 bg-[radial-gradient(circle_at_center,rgba(5,150,105,0.04)_0%,transparent_60%)]" />
+      <div className="pointer-events-none absolute right-0 top-1/3 h-[600px] w-[600px] translate-x-1/3 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0%,transparent_60%)]" />
 
       {/* Main Panel */}
       <div className="relative w-full max-w-[420px] rounded-[28px] border border-white/[0.08] bg-[#0f172a]/90 p-10 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.8)] backdrop-blur-2xl">

@@ -1,0 +1,62 @@
+# Render Blueprint — Golestani backend (Laravel 12, PHP 8.3)
+# Docs: https://render.com/docs/blueprint-spec
+# The Next.js frontend deploys separately on Vercel with Root Directory = web
+# (see DEPLOYMENT.md and vercel.json at the repo root).
+
+services:
+  - type: web
+    name: golestani-api
+    runtime: image             # native Docker image env — build from api/Dockerfile
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: free
+    region: frankfurt          # closest Render region to Iran/EU audience
+    rootDir: api
+    # Pre-deploy DB work: migrations + geo validation run inside the container
+    # BEFORE it starts serving traffic (see docker/start.sh + ValidatePostgis).
+    preDeployCommand:
+      - php artisan migrate --force
+      - php artisan db:validate-postgis
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        generateValue: true        # generated once at first deploy; keep stable afterwards
+      - key: APP_URL
+        sync: false                # set to https://golestani-api.onrender.com in dashboard
+      # Laravel 12 accepts DATABASE_URL (postgres://...) directly
+      - key: DATABASE_URL
+        sync: false                # point at a PostGIS-capable DB (Neon) — see note below
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_SSLMODE
+        value: require
+      # Redis-free phase 1: cache/session/queue backed by DB migrations
+      - key: CACHE_STORE
+        value: database
+      - key: SESSION_DRIVER
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: LOG_CHANNEL
+        value: stderr
+      # OTP must never be exposed in production
+      - key: OTP_DEMO_MODE
+        value: "false"
+      # SMS gateway — wire real credentials later
+      - key: SMS_DRIVER
+        value: log
+      # Lock CORS to the deployed Vercel origin (config/cors.php reads this)
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false                # set to https://<your-app>.vercel.app in dashboard
+
+# NOTE ON THE DATABASE:
+# Migrations enable the PostGIS extension and add a `geom` geography column,
+# so the DB must be PostGIS-capable. Render's managed PostgreSQL does NOT
+# include PostGIS — use a Neon PostGIS database (or Render PostGIS plan) and
+# paste its connection URL into DATABASE_URL in the Render dashboard.
+# A plain Render Postgres instance is intentionally NOT defined here so the
+# blueprint doesn't silently create an incompatible database.

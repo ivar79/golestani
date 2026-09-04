@@ -89,7 +89,7 @@ export default function HomeHero() {
 
         {/* Hero visual (left in RTL): phone mockup (2.jpg) */}
         <div className="relative z-10 flex h-[500px] w-full flex-1 items-center justify-center lg:h-[600px]">
-          <div className="group relative aspect-square w-full max-w-[520px] overflow-hidden rounded-3xl border border-white/10 shadow-[0_0_30px_rgba(0,108,74,0.2)]">
+          <div className="group relative aspect-square w-full max-w-[520px] overflow-hidden rounded-3xl border border-white/10 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
             <Image
               src={heroImage}
               alt={title || "کارت ویزیت دیجیتال اینکارت"}

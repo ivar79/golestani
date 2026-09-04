@@ -34,7 +34,7 @@ export default function HowItWorks() {
       <div className="relative z-10 flex items-start justify-between">
         {steps.map((step, index) => (
           <div key={step.num} className={`flex flex-1 flex-col items-center text-center ${index === 1 ? "pt-8" : ""}`}>
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border-2 border-secondary/50 bg-night shadow-[0_0_20px_rgba(0,108,74,0.3)]">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border-2 border-secondary/50 bg-night shadow-[0_0_20px_rgba(16,185,129,0.3)]">
               <HomeIcon name={step.icon} className="h-7 w-7 text-secondary" />
             </div>
             <div className="mb-1 font-bold text-secondary">{step.num}</div>

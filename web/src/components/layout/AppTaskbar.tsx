@@ -283,14 +283,15 @@ export default function AppTaskbar() {
     <>
       {/* Slim scroll-progress line */}
       <div aria-hidden className="fixed left-0 top-0 z-[60] h-[3px] w-full" style={{ opacity: barOpacity }}>
-        <div className="h-full bg-gradient-to-l from-secondary to-secondary-container shadow-[0_0_12px_rgba(5,150,105,0.6)]" style={{ width: `${(sp * 100).toFixed(2)}%` }} />
+        <div className="h-full bg-gradient-to-l from-secondary to-secondary-container shadow-[0_0_12px_rgba(16,185,129,0.6)]" style={{ width: `${(sp * 100).toFixed(2)}%` }} />
       </div>
 
-      {/* Pill header */}
+      {/* Pill header — glassmorphism با قاب گرادیانی نورانی (هماهنگ با مودال جستجو) */}
       <header
-        className="fixed left-1/2 top-4 z-50 flex h-[64px] w-[92%] max-w-[1280px] -translate-x-1/2 items-center justify-between rounded-2xl border border-white/10 bg-night/75 px-4 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:top-6 sm:h-[72px] sm:w-[calc(100%-48px)] sm:px-6 lg:top-8 lg:w-[calc(100%-80px)] xl:max-w-[1280px]"
+        className="fixed left-1/2 top-4 z-50 w-[92%] max-w-[1280px] -translate-x-1/2 rounded-2xl p-px bg-gradient-to-l from-cyan-400/30 via-purple-500/20 to-cyan-400/30 shadow-[0_10px_30px_rgba(0,0,0,0.35),0_0_40px_-10px_rgba(34,211,238,0.25)] sm:top-6 sm:w-[calc(100%-48px)] lg:top-8 lg:w-[calc(100%-80px)] xl:max-w-[1280px]"
         style={pillStyle}
       >
+        <div className="flex h-[62px] items-center justify-between rounded-[15px] bg-night/70 px-4 backdrop-blur-2xl sm:h-[70px] sm:px-6">
         {logoBlock}
 
         <nav className="hidden items-center gap-8 xl:flex">{navList("text-sm text-surface-variant transition-colors hover:text-white")}</nav>
@@ -324,6 +325,7 @@ export default function AppTaskbar() {
           >
             {drawerOpen ? <XIcon /> : <Burger />}
           </button>
+        </div>
         </div>
       </header>
 

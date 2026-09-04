@@ -25,7 +25,7 @@ export default function HomeFeatures() {
                 <div className="absolute inset-y-8 right-0 hidden w-px bg-gradient-to-b from-transparent via-white/10 to-transparent md:block" />
               </>
             )}
-            <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-2xl border border-secondary/20 bg-secondary/10 shadow-[0_0_15px_rgba(0,108,74,0.2)] transition-transform group-hover:scale-110">
+            <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-2xl border border-secondary/20 bg-secondary/10 shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-transform group-hover:scale-110">
               <HomeIcon name={feature.icon} className="h-8 w-8 text-secondary" />
             </div>
             <h3 className="text-lg font-semibold text-white">{feature.title}</h3>

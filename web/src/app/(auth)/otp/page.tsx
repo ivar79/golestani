@@ -112,7 +112,7 @@ export default function OtpPage() {
         <button
           type="submit"
           disabled={loading || code.length !== 5}
-          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(0,108,74,0.6)]"
+          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(16,185,129,0.6)]"
         >
           {loading ? "در حال بررسی..." : "تأیید و ورود"}
         </button>
