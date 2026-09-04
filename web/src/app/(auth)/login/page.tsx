@@ -39,23 +39,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-navy-950">
-          ورود / ثبت‌نام
+        <h1 className="text-2xl font-semibold text-white tracking-tight">
+          ورود یا ثبت‌نام
         </h1>
-        <p className="mt-2 text-sm leading-6 text-zinc-600">
+        <p className="mt-3 text-[14px] leading-relaxed text-surface-variant/70">
           شماره موبایل خود را وارد کنید تا کد تأیید برایتان پیامک شود.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <PhoneInput value={phone} onChange={setPhone} autoFocus disabled={loading} />
 
         {error && (
           <p
             role="alert"
-            className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600"
+            className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-400 text-center"
           >
             {error}
           </p>
@@ -64,7 +64,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading || !isValidPhone}
-          className="btn btn-primary w-full py-3"
+          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(0,108,74,0.6)]"
         >
           {loading ? "در حال ارسال کد..." : "دریافت کد تأیید"}
         </button>

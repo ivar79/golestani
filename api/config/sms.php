@@ -18,7 +18,7 @@ return [
     |
     */
 
-    'otp_demo_mode' => env('OTP_DEMO_MODE', false),
+    'otp_demo_mode' => env('OTP_DEMO_MODE', true),
 
     'drivers' => [
         'log' => \App\Services\Sms\Drivers\LogSmsDriver::class,

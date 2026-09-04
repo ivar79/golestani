@@ -7,6 +7,12 @@ export function proxy(request: NextRequest) {
   const token = request.cookies.get(TOKEN_COOKIE)?.value;
   const { pathname } = request.nextUrl;
 
+  // Admin login uses its own password flow, not the public /login page —
+  // exempt it from the guard or admins get bounced in a redirect loop.
+  if (pathname === "/admin/login") {
+    return NextResponse.next();
+  }
+
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix),
   );

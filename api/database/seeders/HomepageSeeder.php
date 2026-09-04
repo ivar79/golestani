@@ -24,8 +24,8 @@ class HomepageSeeder extends Seeder
             'homepage.nav.contact' => 'تماس با ما',
 
             'homepage.hero.badges' => 'هوشمندترین راه برای معرفی شما',
-            'homepage.hero.title' => 'کارت ویزیت دیجیتال خود را در چند ثانیه بسازید',
-            'homepage.hero.title_accent' => 'دیجیتال',
+            'homepage.hero.title' => 'بانک مشاغل و کارت ویزیت‌های دیجیتال ایران',
+            'homepage.hero.title_accent' => 'مشاغل',
             'homepage.hero.subtitle' => 'با اینکارت، کسب‌وکار خود را به دنیای دیجیتال متصل کنید. لینک اختصاصی، کد QR و مدیریت هوشمند مخاطبان، همه در یک پلتفرم حرفه‌ای.',
             'homepage.hero.button_primary' => 'شروع رایگان',
             'homepage.hero.button_primary_link' => '/login',

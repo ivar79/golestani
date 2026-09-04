@@ -105,7 +105,7 @@ export default function OtpInput({
           onKeyDown={(event) => handleKeyDown(index, event)}
           onPaste={handlePaste}
           onFocus={(event) => event.target.select()}
-          className="h-14 w-12 rounded-lg border border-navy-200 bg-white text-center text-2xl font-semibold text-navy-950 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:bg-zinc-100 sm:h-16 sm:w-14 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          className="h-16 w-14 sm:h-18 sm:w-16 rounded-2xl border border-white/[0.08] bg-white/[0.03] text-center text-3xl font-semibold text-white outline-none transition focus:border-cyan-500/50 focus:ring-4 focus:ring-cyan-500/10 disabled:opacity-50"
         />
       ))}
     </div>

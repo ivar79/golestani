@@ -16,6 +16,7 @@ import {
   sendOtp as sendOtpApi,
   verifyOtp as verifyOtpApi,
 } from "@/lib/auth";
+import { loginAdmin as loginAdminApi } from "@/lib/auth";
 import type { UserInfo } from "@/types/auth";
 
 interface AuthContextValue {
@@ -24,6 +25,7 @@ interface AuthContextValue {
   loading: boolean;
   sendOtp: (phone: string) => Promise<void>;
   verifyOtp: (phone: string, code: string) => Promise<UserInfo>;
+  loginAdmin: (identifier: string, password: string) => Promise<UserInfo>;
   logout: () => Promise<void>;
 }
 
@@ -69,6 +71,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await sendOtpApi(phone);
   }, []);
 
+  const loginAdmin = useCallback(async (identifier: string, password: string) => {
+    const result = await loginAdminApi(identifier, password);
+    window.localStorage.setItem(TOKEN_KEY, result.token);
+    setTokenCookie(result.token);
+    setToken(result.token);
+    setUser(result.user);
+    return result.user;
+  }, []);
+
   const verifyOtp = useCallback(async (phone: string, code: string) => {
     const result = await verifyOtpApi(phone, code);
     window.localStorage.setItem(TOKEN_KEY, result.token);
@@ -93,8 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ token, user, loading, sendOtp, verifyOtp, logout }),
-    [token, user, loading, sendOtp, verifyOtp, logout],
+    () => ({ token, user, loading, sendOtp, verifyOtp, loginAdmin, logout }),
+    [token, user, loading, sendOtp, verifyOtp, loginAdmin, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

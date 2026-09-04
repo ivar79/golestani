@@ -38,6 +38,9 @@ class SendOtpTest extends TestCase
 
     public function test_log_sms_driver_returns_true_and_logs(): void
     {
+        // Hermetic: pin demo mode off so the host env (OTP_DEMO_MODE=true)
+        // can't add a second info line and break the exact-once assertion.
+        config(['sms.otp_demo_mode' => false]);
         Log::spy();
 
         $driver = new LogSmsDriver();

@@ -12,3 +12,4 @@ _internal/
 Thumbs.db
 Desktop.ini
 *.result.cache
+.freebuff/

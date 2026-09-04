@@ -77,33 +77,34 @@ export default function OtpPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-navy-950">
+        <h1 className="text-2xl font-semibold text-white tracking-tight">
           کد تأیید
         </h1>
-        <p className="mt-2 text-sm leading-6 text-zinc-600">
+        <p className="mt-3 text-[14px] leading-relaxed text-surface-variant/70">
           کد ۵ رقمی ارسال‌شده به شماره{" "}
-          <span dir="ltr" className="font-medium">
+          <span dir="ltr" className="font-medium text-cyan-400">
             {phone ? maskPhone(phone) : "..."}
           </span>{" "}
           را وارد کنید.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
         <OtpInput value={code} onChange={setCode} disabled={loading} autoFocus />
 
         {error && (
           <p
             role="alert"
-            className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600"
+            className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-400 text-center"
           >
             {error}
           </p>
         )}
+
         {notice && (
-          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-400 text-center">
             {notice}
           </p>
         )}
@@ -111,17 +112,17 @@ export default function OtpPage() {
         <button
           type="submit"
           disabled={loading || code.length !== 5}
-          className="btn btn-primary w-full py-3"
+          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(0,108,74,0.6)]"
         >
           {loading ? "در حال بررسی..." : "تأیید و ورود"}
         </button>
       </form>
 
-      <div className="text-center text-sm text-zinc-600">
+      <div className="text-center text-[13px] text-surface-variant/60">
         {resendIn > 0 ? (
           <span>
             ارسال مجدد کد تا{" "}
-            <span className="font-medium text-navy-900">
+            <span className="font-medium text-cyan-400">
               {resendIn}
             </span>{" "}
             ثانیه دیگر
@@ -130,7 +131,7 @@ export default function OtpPage() {
           <button
             type="button"
             onClick={handleResend}
-            className="font-medium text-emerald-600 hover:underline"
+            className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
           >
             ارسال مجدد کد
           </button>

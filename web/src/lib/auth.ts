@@ -25,3 +25,9 @@ export async function getMe(): Promise<MeResponse> {
   const { data } = await api.get<MeResponse>("/auth/me");
   return data;
 }
+
+export async function loginAdmin(identifier: string, password: string): Promise<VerifyOtpResponse> {
+  const { data } = await api.post<VerifyOtpResponse>("/auth/admin/login", { identifier, password });
+  return data;
+}
+

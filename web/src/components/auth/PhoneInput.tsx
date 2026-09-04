@@ -41,7 +41,7 @@ export default function PhoneInput({
           .slice(0, 11);
         onChange(cleaned);
       }}
-      className="w-full rounded-lg border border-navy-200 bg-white px-4 py-3 text-center text-lg tracking-widest text-navy-950 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:bg-zinc-100"
+      className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 text-center text-[22px] tracking-[0.3em] text-white outline-none transition focus:border-cyan-500/50 focus:ring-4 focus:ring-cyan-500/10 disabled:opacity-50 placeholder:text-surface-variant/20"
     />
   );
 }

@@ -68,6 +68,12 @@ class AuthController extends Controller
 
         $user = User::where('phone', $phone)->first();
 
+        if ($user && $user->hasRole('admin')) {
+            return response()->json([
+                'message' => 'حساب‌های مدیریت باید از طریق صفحه ورود اختصاصی مدیران وارد شوند.',
+            ], 403);
+        }
+
         if (! $user instanceof User) {
             $user = User::create([
                 'phone' => $phone,
@@ -89,6 +95,54 @@ class AuthController extends Controller
         $user->tokens()->delete();
         // P0: per-token expiry so leaked tokens self-expire (Sanctum expires_at).
         $token = $user->createToken('auth-token', ['*'], now()->addDays(7))->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'phone' => $user->phone,
+                'roles' => $user->roles->pluck('name'),
+                'permissions' => $user->permissionList(),
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/auth/admin/login
+     * Dedicated admin login via password.
+     */
+    public function loginAdmin(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'identifier' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $user = User::where('phone', $data['identifier'])
+                    ->orWhere('email', $data['identifier'])
+                    ->first();
+
+        if (! $user || ! Hash::check($data['password'], (string) $user->password)) {
+            return response()->json([
+                'message' => 'اطلاعات ورود نادرست است.',
+            ], 422);
+        }
+
+        if (! $user->is_active) {
+            return response()->json([
+                'message' => 'حساب کاربری شما غیرفعال است.',
+            ], 403);
+        }
+
+        if (! $user->hasRole('admin')) {
+            return response()->json([
+                'message' => 'دسترسی غیرمجاز. این بخش تنها برای مدیران سیستم است.',
+            ], 403);
+        }
+
+        $user->tokens()->delete();
+        $token = $user->createToken('admin-token', ['*'], now()->addDays(7))->plainTextToken;
 
         return response()->json([
             'token' => $token,

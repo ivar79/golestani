@@ -33,6 +33,8 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/verify-recovery', [AuthController::class, 'verifyRecovery'])
         ->middleware('throttle:5,15');
 
+    Route::post('/admin/login', [AuthController::class, 'loginAdmin'])->middleware('throttle:5,1');
+
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
@@ -80,7 +82,7 @@ Route::get('/public/businesses/{slug}/qr', [PublicBusinessController::class, 'qr
 // P1: 'user' may pass the gate to create their first business; the
 // business_owner role is assigned server-side in store(). All resource
 // access stays ownership-scoped via authorizeOwner()/own-relation queries.
-Route::middleware(['auth:sanctum', 'role:business_owner,user,admin'])->prefix('businesses')->group(function (): void {
+Route::middleware(['auth:sanctum', 'role:business_owner,user,admin', 'throttle:30,1'])->prefix('businesses')->group(function (): void {
     Route::get('/', [BusinessController::class, 'index']); Route::post('/', [BusinessController::class, 'store']);
     Route::get('/{business}', [BusinessController::class, 'show']); Route::put('/{business}', [BusinessController::class, 'update']); Route::delete('/{business}', [BusinessController::class, 'destroy']);
 });

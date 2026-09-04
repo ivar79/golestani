@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cms, useHomepageContent } from "@/lib/homepage";
 import { getPublicAds, type Advertisement } from "@/lib/ads";
 import { panelPath } from "@/lib/panelPath";
+import SearchModal from "@/components/search/SearchModal";
 
 // Site-wide smart taskbar (LeadFresh pattern tuned to the emerald/navy RTL
 // theme). A floating pill header crossfades with a slim emerald scroll-progress
@@ -228,103 +229,7 @@ export default function AppTaskbar() {
       </Link>
     ));
 
-  const searchForm = (
-    <form onSubmit={submitSearch} className="flex flex-col gap-2.5">
-      {/* Query input — the primary element: tallest, brightest, first focus */}
-      <div className="relative">
-        <span className="pointer-events-none absolute inset-y-0 start-4 flex items-center text-cyan-300/90">
-          <SearchIcon />
-        </span>
-        <input
-          ref={qInputRef}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          aria-label="جستجوی کسب‌وکار، خدمت یا دسته‌بندی"
-          placeholder="جست‌وجو در اینکارت…"
-          className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.06] pe-11 ps-11 text-[15px] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] outline-none transition placeholder:font-normal placeholder:text-surface-variant/60 hover:border-white/20 focus:border-cyan-300/50 focus:bg-white/[0.09] focus:ring-4 focus:ring-cyan-400/10"
-        />
-        {q && (
-          <button
-            type="button"
-            aria-label="پاک کردن جستجو"
-            onClick={() => setQ("")}
-            className="absolute inset-y-0 end-3 my-auto flex h-6 w-6 items-center justify-center rounded-full text-surface-variant/80 transition hover:bg-white/10 hover:text-white"
-          >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        )}
-      </div>
-
-      {/* Location — secondary: shorter, quieter, muted icon */}
-      <div className="relative">
-        <span className="pointer-events-none absolute inset-y-0 start-4 flex items-center text-surface-variant/70">
-          <MapPinIcon />
-        </span>
-        <input
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          aria-label="شهر یا موقعیت"
-          placeholder="شهر یا منطقه"
-          className="h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.04] pe-4 ps-10 text-[13px] text-white outline-none transition placeholder:text-surface-variant/50 hover:border-white/15 focus:border-teal-300/40 focus:bg-white/[0.07] focus:ring-4 focus:ring-teal-400/10"
-        />
-      </div>
-
-      {/* Action row: compact emerald CTA (inline on sm+, full-width on touch) + subtle keycap hints */}
-      <div className="mt-1.5 flex items-center justify-between gap-3">
-        <div className="hidden items-center gap-3 text-[10px] text-surface-variant/60 sm:flex">
-          <span className="flex items-center gap-1">
-            <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-sans text-[10px] leading-4 text-surface-variant/80">Enter</kbd>
-            جستجو
-          </span>
-          <span className="flex items-center gap-1">
-            <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-sans text-[10px] leading-4 text-surface-variant/80">Esc</kbd>
-            بستن
-          </span>
-        </div>
-        <button type="submit" className="btn btn-primary h-11 w-full gap-2 rounded-xl px-7 text-sm font-bold sm:w-auto">
-          جست‌وجو
-          <svg className="btn-arrow h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 12H4m6-6-6 6 6 6" /></svg>
-        </button>
-      </div>
-    </form>
-  );
-
-  const searchMenu = searchOpen && (
-    <>
-      {/* Mobile/tablet only: light scrim so the sheet reads intentionally (desktop stays a dropdown — no backdrop) */}
-      <div aria-hidden className="drawer-backdrop fixed inset-0 z-[65] bg-night/40 backdrop-blur-[2px] lg:hidden" />
-      <div
-        data-search-menu
-        className={
-          // Mobile/tablet (<lg): centred fixed sheet just under the floating header.
-          // Desktop (lg+): compact floating panel anchored to the trigger icon
-          // (this element sits inside the `relative` wrapper around that button).
-          // NOTE: never combine a bare w-[calc(100vw-...)] base with desktop widths —
-          // that conflict is what stretched the old panel across the whole header.
-          "drawer-panel overflow-hidden rounded-2xl border border-white/[0.08] bg-panel/85 p-4 shadow-[0_24px_70px_-12px_rgba(2,6,23,0.65),0_4px_16px_rgba(2,6,23,0.35),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl " +
-          "max-lg:fixed max-lg:inset-x-0 max-lg:top-[90px] max-lg:z-[70] max-lg:mx-auto max-lg:w-[calc(100vw-2rem)] max-lg:max-w-[440px] " +
-          "sm:max-lg:top-[106px] " +
-          "lg:absolute lg:left-0 lg:top-[calc(100%+10px)] lg:z-[70] lg:w-[480px] lg:p-[18px]"
-        }
-      >
-        {/* Aurora — ambient depth only: three clipped, low-opacity washes (cyan/teal/emerald) */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
-          <div className="absolute -top-16 start-[-10%] h-40 w-56 rounded-full bg-[radial-gradient(closest-side,rgba(34,211,238,0.10),transparent)] blur-2xl" />
-          <div className="absolute -bottom-14 end-[-8%] h-36 w-52 rounded-full bg-[radial-gradient(closest-side,rgba(16,185,129,0.08),transparent)] blur-2xl" />
-          <div className="absolute bottom-4 start-6 h-20 w-40 rounded-full bg-[radial-gradient(closest-side,rgba(20,184,166,0.06),transparent)] blur-xl" />
-        </div>
-        <div className="relative">{searchForm}</div>
-        <button
-          type="button"
-          aria-label="بستن جست‌وجو"
-          onClick={() => setSearchOpen(false)}
-          className="absolute end-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-surface-variant/60 transition hover:bg-white/5 hover:text-white"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-        </button>
-      </div>
-    </>
-  );
+  // Search components have been moved to SearchModal
 
   // Auth-aware header action: guest sees ورود / ثبت‌نام, logged-in user
   // gets a compact phone chip opening a menu with panel + logout.
@@ -398,16 +303,14 @@ export default function AppTaskbar() {
             <button
               type="button"
               aria-label="جست‌وجو"
-              aria-expanded={searchOpen}
               onClick={() => {
-                setSearchOpen((v) => !v);
+                setSearchOpen(true);
                 setDrawerOpen(false);
               }}
-              className={`flex h-10 w-10 items-center justify-center rounded-full border text-white transition hover:bg-white/5 ` + (searchOpen ? "border-secondary/50 bg-secondary/15 text-secondary shadow-[0_0_0_1px_rgba(16,185,129,0.25)]" : "border-white/10")}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-white transition hover:bg-white/5"
             >
               <SearchIcon />
             </button>
-            {searchMenu}
           </div>
 
           {/* Mobile/tablet hamburger — floats in from the LEFT when scrolled */}
@@ -509,8 +412,20 @@ export default function AppTaskbar() {
               {navList("rounded-xl px-4 py-3 text-sm text-surface-variant transition hover:bg-white/5 hover:text-white", closeAll)}
             </nav>
             <div className="my-3 border-t border-white/10" />
-            <span className="mb-2 px-2 text-xs font-bold text-surface-variant">جست‌وجو</span>
-            <div className="px-1">{searchForm}</div>
+            
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen(false);
+                setSearchOpen(true);
+              }}
+              className="mb-4 flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-surface-variant transition hover:bg-white/10 hover:text-white"
+            >
+              <span className="flex items-center gap-2">
+                <SearchIcon />
+                جست‌وجو در اینکارت...
+              </span>
+            </button>
             {user ? (
               <>
                 {panel && (
@@ -534,6 +449,8 @@ export default function AppTaskbar() {
           </div>
         </div>
       )}
+      {/* مدال فول‌اسکرین جستجو */}
+      <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 }
