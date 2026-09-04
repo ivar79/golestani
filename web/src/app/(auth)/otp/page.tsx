@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
+import { panelPath } from "@/lib/panelPath";
 import OtpInput from "@/components/auth/OtpInput";
 
 const PHONE_KEY = "golestani_login_phone";
@@ -39,8 +40,10 @@ export default function OtpPage() {
     setError(null);
     setLoading(true);
     try {
-      await verifyOtp(phone, submitted);
-      router.push("/");
+      const verifiedUser = await verifyOtp(phone, submitted);
+      // Route by role using the user returned from verify (context state lags one
+      // tick behind): admin → /admin, designer → /designer, others → /dashboard.
+      router.push(panelPath(verifiedUser?.roles) ?? "/");
     } catch (err) {
       setError(extractApiError(err));
       setCode("");

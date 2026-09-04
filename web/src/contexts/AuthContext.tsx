@@ -23,7 +23,7 @@ interface AuthContextValue {
   user: UserInfo | null;
   loading: boolean;
   sendOtp: (phone: string) => Promise<void>;
-  verifyOtp: (phone: string, code: string) => Promise<void>;
+  verifyOtp: (phone: string, code: string) => Promise<UserInfo>;
   logout: () => Promise<void>;
 }
 
@@ -75,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokenCookie(result.token);
     setToken(result.token);
     setUser(result.user);
+    // Return the fresh user so callers (e.g. OTP redirect) can route by role
+    // immediately, without waiting for the state update to propagate.
+    return result.user;
   }, []);
 
   const logout = useCallback(async () => {

@@ -73,4 +73,53 @@ class SendOtpTest extends TestCase
 
         $this->postJson('/api/auth/send-otp', ['phone' => '09123456789'])->assertStatus(429);
     }
+
+    // ─── OTP demo mode (Preview) ───────────────────────────────────────
+
+    public function test_demo_mode_on_exposes_code_in_non_production(): void
+    {
+        config(['sms.otp_demo_mode' => true]);
+        config(['app.env' => 'preview']);
+        Log::spy();
+
+        $driver = new LogSmsDriver();
+        $this->assertTrue($driver->send('09123456789', 'کد تأیید شما: 12345'));
+
+        Log::shouldHaveReceived('info')
+            ->atLeast()->once()
+            ->withArgs(fn (string $message): bool => str_contains($message, 'OTP code (demo/preview only)')
+                && str_contains($message, '12345'));
+    }
+
+    public function test_demo_mode_off_never_exposes_code(): void
+    {
+        config(['sms.otp_demo_mode' => false]);
+        config(['app.env' => 'preview']);
+        Log::spy();
+
+        $driver = new LogSmsDriver();
+        $this->assertTrue($driver->send('09123456789', 'کد تأیید شما: 12345'));
+
+        // When demo is off only the metadata line is logged — exactly one
+        // 'info' call whose message is the metadata, never the code.
+        Log::shouldHaveReceived('info')
+            ->once()
+            ->withArgs(fn (string $message): bool => $message === 'OTP request sent.');
+    }
+
+    public function test_demo_mode_is_ignored_in_production_even_if_flag_set(): void
+    {
+        config(['sms.otp_demo_mode' => true]);
+        config(['app.env' => 'production']);
+        Log::spy();
+
+        $driver = new LogSmsDriver();
+        $this->assertTrue($driver->send('09123456789', 'کد تأیید شما: 12345'));
+
+        // In production only the metadata line is logged — exactly one
+        // 'info' call, never the code.
+        Log::shouldHaveReceived('info')
+            ->once()
+            ->withArgs(fn (string $message): bool => $message === 'OTP request sent.');
+    }
 }

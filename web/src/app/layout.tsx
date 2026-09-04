@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl" className={`${vazirmatn.variable} h-full antialiased`}>
+    <html lang="fa" dir="rtl" data-scroll-behavior="smooth" className={`${vazirmatn.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         <AuthProvider>{children}</AuthProvider>
       </body>

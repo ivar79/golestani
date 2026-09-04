@@ -42,6 +42,7 @@ export default function HomeHero() {
           aria-hidden="true"
           fill
           sizes="100vw"
+          priority
           className="object-cover opacity-40 mix-blend-lighten"
         />
         <div className="absolute -left-[10%] bottom-0 h-[640px] w-[640px] rounded-full bg-primary/25 blur-[120px]" />

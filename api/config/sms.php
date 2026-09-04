@@ -3,6 +3,23 @@
 return [
     'driver' => env('SMS_DRIVER', 'log'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | OTP Demo Mode (Preview only)
+    |--------------------------------------------------------------------------
+    |
+    | When true, the LogSmsDriver makes the generated OTP observable so a client
+    | can complete login without a real SMS gateway. It is ONLY honoured for
+    | non-production environments — production never exposes the code, even if
+    | this flag is accidentally set to true.
+    |
+    | Preview:  OTP_DEMO_MODE=true
+    | Production: OTP_DEMO_MODE=false (default)
+    |
+    */
+
+    'otp_demo_mode' => env('OTP_DEMO_MODE', false),
+
     'drivers' => [
         'log' => \App\Services\Sms\Drivers\LogSmsDriver::class,
         'http' => \App\Services\Sms\Drivers\HttpSmsDriver::class,
