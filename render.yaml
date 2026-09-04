@@ -6,9 +6,9 @@
 services:
   - type: web
     name: golestani-api
-    runtime: image             # native Docker image env — build from api/Dockerfile
-    dockerfilePath: ./api/Dockerfile
-    dockerContext: ./api
+    runtime: docker            # Docker runtime — builds api/Dockerfile
+    dockerfilePath: ./Dockerfile   # relative to rootDir (api/)
+    dockerContext: .              # relative to rootDir (api/)
     plan: free
     region: frankfurt          # closest Render region to Iran/EU audience
     rootDir: api
