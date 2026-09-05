@@ -31,7 +31,7 @@ export function useHomepageContent(): HomepageContent {
   const [content, setContent] = useState<HomepageContent>(provided ?? {});
 
   useEffect(() => {
-    if (provided) return;
+    if (provided && Object.keys(provided).length > 0) return;
     let cancelled = false;
     void fetchHomepageContentClient().then((data) => {
       if (!cancelled) setContent(data);
