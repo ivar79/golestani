@@ -2,12 +2,10 @@ import axios from "axios";
 
 export const TOKEN_KEY = "golestani_token";
 
-// Only used on the client/browser. If NEXT_PUBLIC_API_URL is not configured,
-// fall back to the same host (serverless-friendly) instead of localhost:8000,
-// which would fail during the Vercel build.
+// Fallback directly to Railway API URL if NEXT_PUBLIC_API_URL is missing during build/runtime
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" ? `${window.location.origin}/api` : "");
+  "https://golestani-api-production.up.railway.app/api";
 
 const api = axios.create({
   baseURL: API_URL,
@@ -28,7 +26,7 @@ api.interceptors.request.use((config) => {
 export function extractApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as any;
-    
+
     // Handle Laravel Validation Errors (422)
     if (data?.errors && typeof data.errors === "object") {
       const firstKey = Object.keys(data.errors)[0];
@@ -36,9 +34,9 @@ export function extractApiError(error: unknown): string {
         return data.errors[firstKey][0];
       }
     }
-    
+
     if (data?.message) return data.message;
-    
+
     if (error.code === "ECONNABORTED") {
       return "زمان پاسخ سرور به پایان رسید.";
     }
