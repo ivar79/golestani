@@ -26,7 +26,7 @@ Monorepo با دو بخش مستقل:
 
 | متغیر | نمونه | توضیح |
 |-------|-------|-------|
-| `NEXT_PUBLIC_API_URL` | `https://golestani-api.onrender.com/api` | آدرس API لاراول (در `web/src/lib/api.ts` خوانده می‌شود). **الزامی** — وگرنه سایت به آدرس `localhost:8000` برمی‌گردد. |
+| `NEXT_PUBLIC_API_URL` | `https://one-ns2s.onrender.com/api` | آدرس API لاراول (در `web/src/lib/api.ts` و `homepageContent.ts` خوانده می‌شود). **الزامی.** اگر ست نشود، صفحه‌ی اصلی در بیلد Vercel به `localhost:8000` می‌رود و ارور `ECONNREFUSED` می‌دهد. (کد حالا ایمن شده: در نبود این متغیر، fetch سرور skip می‌شود و بیلد fail نمی‌کند — ولی برای نمایش محتوای CMS واقعی باید ست باشد.) |
 
 ### نکته‌ی بیلد
 `lucide-react` به `package.json` اضافه شد (قبلاً در `node_modules` بود ولی در `package.json` ثبت نشده بود → خطای *Module not found* در بیلد Vercel).

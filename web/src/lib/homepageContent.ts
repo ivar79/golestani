@@ -34,7 +34,16 @@ export async function fetchHomepageContentClient(): Promise<HomepageContent> {
  * (full text in SSR output — no client-side flash, SEO-visible content).
  */
 export async function fetchHomepageContentServer(): Promise<HomepageContent> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+  const base = process.env.NEXT_PUBLIC_API_URL;
+
+  // Build-time guard: if the API URL is not configured, do NOT attempt to
+  // reach localhost:8000 (which would fail the Vercel build with ECONNREFUSED).
+  // Return empty content so the page renders with its fallback text.
+  if (!base) {
+    console.warn("[homepage] NEXT_PUBLIC_API_URL is not set — skipping server CMS fetch.");
+    return {};
+  }
+
   try {
     const res = await fetch(`${base}/public/homepage`, {
       next: { revalidate: 60 },

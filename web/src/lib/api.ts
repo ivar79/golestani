@@ -2,8 +2,15 @@ import axios from "axios";
 
 export const TOKEN_KEY = "golestani_token";
 
+// Only used on the client/browser. If NEXT_PUBLIC_API_URL is not configured,
+// fall back to the same host (serverless-friendly) instead of localhost:8000,
+// which would fail during the Vercel build.
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? `${window.location.origin}/api` : "");
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api",
+  baseURL: API_URL,
   headers: { Accept: "application/json" },
   timeout: 15000,
 });
