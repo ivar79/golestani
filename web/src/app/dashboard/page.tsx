@@ -1,4 +1,6 @@
+
 "use client";
+
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,37 +14,7 @@ import {
   type BusinessStatus,
 } from "@/lib/businesses";
 
-const STATUS_STYLE: Record<BusinessStatus, { label: string; cls: string }> = {
-  draft: { label: "پیش‌نویس", cls: "bg-zinc-100 text-zinc-600 border-zinc-200" },
-  pending: { label: "در انتظار بررسی", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  approved: { label: "تأییدشده", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  rejected: { label: "ردشده", cls: "bg-red-50 text-red-700 border-red-200" },
-  suspended: { label: "معلق", cls: "bg-red-50 text-red-700 border-red-200" },
-};
-
-function StatusBadge({ status }: { status: BusinessStatus }) {
-  const s = STATUS_STYLE[status] ?? STATUS_STYLE.draft;
-  return (
-    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${s.cls}`}>
-      {s.label}
-    </span>
-  );
-}
-
 type Feedback = { kind: "success" | "error"; text: string } | null;
-
-function FeedbackBanner({ feedback }: { feedback: Feedback }) {
-  if (!feedback) return null;
-  const cls =
-    feedback.kind === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : "border-red-200 bg-red-50 text-red-600";
-  return (
-    <p role="status" className={`rounded-xl border px-4 py-3 text-sm ${cls}`}>
-      {feedback.text}
-    </p>
-  );
-}
 
 const EMPTY_FORM = {
   name: "",
@@ -52,12 +24,14 @@ const EMPTY_FORM = {
   address: "",
   city: "",
   services: "",
+  instagram: "",
+  telegram: "",
 };
 
 export default function Dashboard() {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
-
+  
   const [items, setItems] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,23 +45,54 @@ export default function Dashboard() {
     }
   }, [authLoading, user, router]);
 
+  const set = (key: keyof typeof EMPTY_FORM) => (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => setForm((f) => ({ ...f, [key]: event.target.value }));
+
+  function startEdit(b: Business) {
+    setEditing(b);
+    let ig = "", tg = "";
+    if (b.social_links && !Array.isArray(b.social_links)) {
+      ig = b.social_links.instagram || "";
+      tg = b.social_links.telegram || "";
+    }
+    setForm({
+      name: b.name || "",
+      description: b.description || "",
+      category: b.category || "",
+      phone: b.phone || "",
+      address: b.address || "",
+      city: b.city || "",
+      services: b.services?.join(", ") || "",
+      instagram: ig,
+      telegram: tg,
+    });
+    setFeedback(null);
+  }
+
   useEffect(() => {
     if (!user) return;
     listBusinesses()
-      .then(setItems)
+      .then((res) => {
+        setItems(res);
+        if (res.length > 0) {
+           startEdit(res[0]); // Auto-load first business
+        }
+      })
       .catch((err) => setFeedback({ kind: "error", text: extractApiError(err) }))
       .finally(() => setLoading(false));
   }, [user]);
 
-  const set = (key: keyof typeof EMPTY_FORM) => (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => setForm((f) => ({ ...f, [key]: event.target.value }));
+  function cancelEdit() {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setFeedback(null);
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
     setFeedback(null);
-
     const payload = {
       name: form.name,
       description: form.description || undefined,
@@ -98,324 +103,268 @@ export default function Dashboard() {
       services: form.services
         ? form.services.split(",").map((s) => s.trim()).filter(Boolean)
         : undefined,
+      social_links: {
+        ...(form.instagram ? { instagram: form.instagram } : {}),
+        ...(form.telegram ? { telegram: form.telegram } : {}),
+      }
     };
-
     try {
       const saved = editing
         ? await updateBusiness(editing.id, payload)
         : await createBusiness(payload);
-
-      setItems((prev) =>
-        editing ? prev.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...prev],
-      );
-      setEditing(null);
-      setForm(EMPTY_FORM);
+      
       setFeedback({
         kind: "success",
-        text: editing
-          ? "پروفایل به‌روزرسانی شد و برای بررسی ارسال شد."
-          : "پروفایل ذخیره شد و برای بررسی ارسال شد.",
+        text: editing ? "پروفایل با موفقیت به‌روزرسانی شد." : "پروفایل ایجاد شد.",
       });
+      setItems((prev) => {
+        if (editing) return prev.map((p) => (p.id === saved.id ? saved : p));
+        return [...prev, saved];
+      });
+      if (!editing) {
+        setEditing(saved);
+      }
     } catch (err) {
       setFeedback({ kind: "error", text: extractApiError(err) });
     } finally {
       setSaving(false);
     }
   }
-
-  async function handleDelete(id: number) {
-    if (!confirm("این پروفایل حذف شود؟")) return;
-    try {
-      await deleteBusiness(id);
-      setItems((prev) => prev.filter((x) => x.id !== id));
-      setFeedback({ kind: "success", text: "پروفایل حذف شد." });
-    } catch (err) {
-      setFeedback({ kind: "error", text: extractApiError(err) });
-    }
-  }
-
-  function startEdit(b: Business) {
-    setEditing(b);
-    setForm({
-      name: b.name,
-      description: b.description ?? "",
-      category: b.category ?? "",
-      phone: b.phone ?? "",
-      address: b.address ?? "",
-      city: b.city ?? "",
-      services: (b.services ?? []).join(", "),
-    });
-    setFeedback(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function cancelEdit() {
-    setEditing(null);
-    setForm(EMPTY_FORM);
-  }
-
-  async function handleLogout() {
-    await logout();
-    router.push("/login");
-  }
-
-  const inputCls =
-    "w-full rounded-xl border border-navy-200 bg-white px-4 py-3 text-navy-950 outline-none transition placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20";
+  
+  const handleLogout = () => {
+    logout().then(() => router.push("/login"));
+  };
 
   if (authLoading || !user) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-24 text-center text-zinc-500">
-        <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-navy-200 border-t-emerald-600" />
         در حال بارگذاری…
       </main>
     );
   }
+  
+  const StatusStyle: Record<BusinessStatus, { label: string; cls: string }> = {
+    draft: { label: "پیش‌نویس", cls: "bg-d-surface-container text-d-on-surface-variant border-d-outline-variant" },
+    pending: { label: "در انتظار بررسی", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+    approved: { label: "تأییدشده", cls: "bg-d-secondary-container text-d-on-secondary-container border-d-secondary/20" },
+    rejected: { label: "ردشده", cls: "bg-d-error-container text-d-on-error-container border-d-error/20" },
+    suspended: { label: "معلق", cls: "bg-d-error-container text-d-on-error-container border-d-error/20" },
+  };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      {/* Header: brand mark + user info + logout */}
-      <header className="mb-10 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-navy-100 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-4">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-800 text-xl font-black text-white shadow-lg shadow-navy-800/25">
-            اَ
-          </span>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
-              پنل صاحب کسب‌وکار
-            </p>
-            <h1 className="text-2xl font-black text-navy-900">اینکارت</h1>
+    <div className="bg-d-background font-body-md text-d-on-surface flex min-h-screen">
+      <aside className="fixed right-0 top-0 h-full w-72 bg-d-surface-container-low backdrop-blur-xl border-l border-d-border-white-low z-50 flex flex-col py-8">
+        <div className="px-8 mb-12 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-d-secondary-container flex items-center justify-center shadow-lg shadow-d-glow-emerald/20">
+            <span className="material-symbols-outlined text-d-secondary">bolt</span>
           </div>
+          <span className="font-headline-lg-mobile text-headline-lg-mobile text-d-on-surface tracking-tight">اینکارت</span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-left">
-            <p className="text-sm font-semibold text-navy-900" dir="ltr">
-              {user.phone}
-            </p>
-            <p className="text-xs text-zinc-500">
-              {user.roles.join(" · ") || "کاربر"}
-            </p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="rounded-full border border-navy-200 bg-white px-5 py-2.5 text-sm font-semibold text-navy-800 transition hover:border-red-300 hover:text-red-600"
-          >
-            خروج
-          </button>
-        </div>
-      </header>
-
-      <FeedbackBanner feedback={feedback} />
-
-      {/* Business profile form */}
-      <form
-        onSubmit={handleSubmit}
-        className="mt-6 grid gap-4 rounded-3xl border border-navy-100 bg-white p-6 shadow-sm sm:p-8"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-navy-900">
-            {editing ? "ویرایش پروفایل" : "پروفایل کسب‌وکار جدید"}
-          </h2>
-          {editing && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="text-sm font-medium text-zinc-500 hover:text-navy-800"
-            >
-              انصراف
-            </button>
-          )}
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1.5 sm:col-span-2">
-            <span className="text-sm font-medium text-navy-900">نام کسب‌وکار *</span>
-            <input
-              required
-              value={form.name}
-              onChange={set("name")}
-              placeholder="مثال: رستوران نمونه"
-              className={inputCls}
-            />
-          </label>
-
-          <label className="grid gap-1.5 sm:col-span-2">
-            <span className="text-sm font-medium text-navy-900">توضیحات</span>
-            <textarea
-              value={form.description}
-              onChange={set("description")}
-              placeholder="کسب‌وکار خود را معرفی کنید…"
-              className={`${inputCls} min-h-28`}
-            />
-          </label>
-
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-navy-900">دسته‌بندی</span>
-            <input
-              value={form.category}
-              onChange={set("category")}
-              placeholder="مثال: رستوران"
-              className={inputCls}
-            />
-          </label>
-
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-navy-900">تلفن</span>
-            <input
-              type="tel"
-              dir="ltr"
-              value={form.phone}
-              onChange={set("phone")}
-              placeholder="021-12345678"
-              className={inputCls}
-            />
-          </label>
-
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-navy-900">شهر</span>
-            <input
-              value={form.city}
-              onChange={set("city")}
-              placeholder="مثال: تهران"
-              className={inputCls}
-            />
-          </label>
-
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-navy-900">خدمات</span>
-            <input
-              value={form.services}
-              onChange={set("services")}
-              placeholder="با کاما جدا کنید: کatering، ارسال"
-              className={inputCls}
-            />
-          </label>
-
-          <label className="grid gap-1.5 sm:col-span-2">
-            <span className="text-sm font-medium text-navy-900">آدرس</span>
-            <input
-              value={form.address}
-              onChange={set("address")}
-              placeholder="آدرس کامل کسب‌وکار"
-              className={inputCls}
-            />
-          </label>
-        </div>
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="btn btn-primary w-full py-3"
-        >
-          {saving
-            ? "در حال ذخیره…"
-            : editing
-              ? "به‌روزرسانی پروفایل"
-              : "ایجاد پروفایل"}
-        </button>
-      </form>
-
-      <section className="mt-8 grid gap-4 sm:grid-cols-2">
-        {items.map((b) => (
-          <div key={`status-${b.id}`} className="rounded-2xl border border-navy-100 bg-white p-5 shadow-sm">
-            <h2 className="font-bold text-navy-900">وضعیت خدمات {b.name}</h2>
-            <div className="mt-3 grid gap-2 text-sm text-zinc-600">
-              <p>تأیید کسب‌وکار: <StatusBadge status={b.status} /></p>
-              <p>اشتراک: <span className="font-semibold">برای مشاهده از بخش اشتراک‌ها اقدام کنید.</span></p>
-              <p>کارت دیجیتال: <a href={`/card-maker?business=${b.id}`} className="font-semibold text-emerald-700">باز کردن کارت‌ساز</a></p>
+        <nav className="flex-1 px-4 space-y-2">
+          <a className="flex items-center px-4 py-3.5 rounded-xl transition-all duration-300 group bg-d-secondary-container/20 text-d-secondary font-bold border-r-4 border-d-secondary" href="#">
+            <span className="material-symbols-outlined ml-3 text-d-secondary group-hover:text-d-secondary">dashboard</span>
+            داشبورد
+          </a>
+        </nav>
+        <div className="px-8 mt-auto pt-8 border-t border-d-border-white-low">
+          <div className="flex items-center gap-3 p-3 rounded-2xl bg-d-surface-container-highest/50 cursor-pointer" onClick={handleLogout}>
+            <div className="w-8 h-8 rounded-full bg-d-error-container flex items-center justify-center">
+              <span className="material-symbols-outlined text-d-on-error-container text-[18px]">logout</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-label-sm font-label-sm text-d-on-surface">خروج از حساب</span>
+              <span className="text-caption-xs font-caption-xs text-d-on-surface-variant" dir="ltr">{user.phone}</span>
             </div>
           </div>
-        ))}
-      </section>
+        </div>
+      </aside>
 
-      {/* Business list */}
-      <section className="mt-10">
-        <h2 className="mb-4 text-lg font-bold text-navy-900">پروفایل‌های من</h2>
+      <div className="pr-72 w-full">
+        <header className="fixed top-0 right-72 left-0 h-16 bg-d-surface/60 backdrop-blur-xl border-b border-d-border-white-low z-40 flex items-center justify-between px-margin-desktop">
+          <div className="flex items-center gap-4">
+             <div className="text-d-on-surface-variant text-sm font-medium">
+               {editing ? (
+                 <span className="flex items-center gap-2">
+                    وضعیت:
+                    <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${StatusStyle[editing.status]?.cls || ''}`}>
+                       {StatusStyle[editing.status]?.label || "نامشخص"}
+                    </span>
+                 </span>
+               ) : null}
+             </div>
+          </div>
+          <div className="flex items-center gap-4 text-d-on-surface-variant">
+             <span className="material-symbols-outlined cursor-pointer hover:text-d-on-surface">search</span>
+             <div className="w-8 h-8 rounded-full bg-d-primary flex items-center justify-center cursor-pointer hover:ring-2 ring-d-secondary transition-all">
+               <span className="material-symbols-outlined text-d-on-primary text-[18px]">person</span>
+             </div>
+          </div>
+        </header>
 
-        {loading ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {[0, 1].map((i) => (
-              <div
-                key={i}
-                className="h-40 animate-pulse rounded-2xl border border-navy-100 bg-white"
-              />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-navy-200 bg-white/60 px-6 py-16 text-center">
-            <p className="text-4xl">🏪</p>
-            <p className="mt-4 font-semibold text-navy-900">هنوز پروفایلی ندارید</p>
-            <p className="mt-2 text-sm text-zinc-500">
-              اولین پروفایل خود را با فرم بالا بسازید.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {items.map((b) => (
-              <article
-                key={b.id}
-                className="flex flex-col rounded-2xl border border-navy-100 bg-white p-5 shadow-sm transition hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-bold text-navy-900">{b.name}</h3>
-                  <StatusBadge status={b.status} />
-                </div>
-                {b.category && (
-                  <p className="mt-1 text-xs font-medium text-emerald-600">
-                    {b.category}
-                  </p>
-                )}
-                {b.description && (
-                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-600">
-                    {b.description}
-                  </p>
-                )}
-                {(b.city || b.phone) && (
-                  <p className="mt-3 text-xs text-zinc-500">
-                    {b.city && <span>📍 {b.city}</span>}
-                    {b.city && b.phone && <span className="mx-2">·</span>}
-                    {b.phone && (
-                      <span dir="ltr" className="font-medium">
-                        {b.phone}
-                      </span>
-                    )}
-                  </p>
-                )}
-                {b.services && b.services.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {b.services.slice(0, 4).map((s) => (
-                      <span
-                        key={s}
-                        className="rounded-full bg-navy-50 px-2.5 py-0.5 text-xs text-navy-700"
-                      >
-                        {s}
-                      </span>
-                    ))}
+        <main className="relative pt-16 min-h-screen bg-d-surface">
+          <form onSubmit={handleSubmit} className="flex flex-col w-full relative pb-margin-desktop">
+            {/* Ambient background glow for depth */}
+            <div className="fixed top-20 right-1/4 w-96 h-96 bg-d-primary/10 rounded-full blur-[100px] pointer-events-none -z-10"></div>
+            <div className="fixed bottom-0 left-1/3 w-[500px] h-[500px] bg-d-secondary-container/10 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+            
+            <div className="w-full max-w-container-max mx-auto px-margin-mobile md:px-gutter mt-8">
+              {/* Page Header */}
+              <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-d-secondary animate-pulse"></div>
+                    <span className="text-label-sm text-d-secondary tracking-widest font-bold">پروفایل دیجیتال</span>
                   </div>
-                )}
-                {b.status === "rejected" && b.moderation_note && (
-                  <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-                    یادداشت بررسی: {b.moderation_note}
+                  <h1 className="text-headline-lg font-headline-lg text-d-on-surface">
+                     {editing ? "ویرایش پروفایل کسب‌وکار" : "ثبت کسب‌وکار جدید"}
+                  </h1>
+                  <p className="text-body-md text-d-on-surface-variant mt-2 max-w-2xl">
+                     اطلاعات، آدرس و راه‌های ارتباطی مجموعه خود را بروزرسانی کنید.
                   </p>
-                )}
-                <div className="mt-4 flex gap-4 border-t border-navy-50 pt-3 text-sm">
-                  <button
-                    onClick={() => startEdit(b)}
-                    className="font-semibold text-emerald-700 hover:text-emerald-800"
-                  >
-                    ویرایش
-                  </button>
-                  <button
-                    onClick={() => handleDelete(b.id)}
-                    className="font-medium text-zinc-400 hover:text-red-600"
-                  >
-                    حذف
+                </div>
+                <div className="flex items-center gap-4 shrink-0">
+                  {feedback && (
+                    <div className={`px-4 py-2 text-sm rounded-xl ${feedback.kind === 'error' ? 'bg-d-error-container text-d-on-error-container' : 'bg-d-secondary-container text-d-on-secondary-container'}`}>
+                       {feedback.text}
+                    </div>
+                  )}
+                  {editing && (
+                    <a href={`/b/${editing.slug}`} target="_blank" rel="noreferrer" className="px-6 py-3 rounded-xl bg-d-surface-container-high hover:bg-d-surface-container-highest text-d-on-surface text-label-sm transition-all flex items-center gap-2 group">
+                      <span className="material-symbols-outlined text-[20px] group-hover:rotate-12 transition-transform">visibility</span>
+                      نمایش پروفایل
+                    </a>
+                  )}
+                  <button type="submit" disabled={saving} className="px-6 py-3 rounded-xl bg-d-secondary-container hover:bg-d-secondary-container/90 text-d-on-secondary-fixed text-label-sm font-bold shadow-lg shadow-d-glow-emerald/30 transition-all flex items-center gap-2 group relative overflow-hidden">
+                    <span className="material-symbols-outlined text-[20px]">save</span>
+                    {saving ? "در حال ذخیره..." : "ذخیره تغییرات"}
                   </button>
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-    </main>
+              </div>
+
+              {/* Main Content Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter relative z-10">
+                <div className="lg:col-span-8 flex flex-col gap-8">
+                  
+                  {/* Section 1: Basic Info */}
+                  <section className="bg-d-surface-container-low backdrop-blur-xl rounded-[24px] p-6 md:p-8 shadow-sm">
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="w-12 h-12 rounded-2xl bg-d-primary/10 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-d-primary text-[24px]">storefront</span>
+                      </div>
+                      <div>
+                        <h2 className="text-title-md font-title-md text-d-on-surface">اطلاعات پایه</h2>
+                        <p className="text-caption-xs text-d-on-surface-variant mt-1">مشخصات اصلی برند که به کاربران نمایش داده می‌شود.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="flex flex-col gap-2 md:col-span-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">نام کسب‌وکار</label>
+                        <input required value={form.name} onChange={set("name")} className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface rounded-xl px-4 py-3.5 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="نام برند شما" type="text" />
+                      </div>
+                      
+                      <div className="flex flex-col gap-2 md:col-span-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">توضیحات</label>
+                        <textarea value={form.description} onChange={set("description")} className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface rounded-xl px-4 py-3.5 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md resize-none" placeholder="کسب‌وکار خود را توصیف کنید..." rows={4}></textarea>
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">دسته‌بندی / زمینه فعالیت</label>
+                        <input value={form.category} onChange={set("category")} className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface rounded-xl px-4 py-3.5 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="مثال: رستوران، کافه، خدماتی..." type="text" />
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">خدمات (با کاما جدا کنید)</label>
+                        <input value={form.services} onChange={set("services")} className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface rounded-xl px-4 py-3.5 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="کترینگ، فضای باز، وای‌فای..." type="text" />
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Section 2: Contact & Address */}
+                  <section className="bg-d-surface-container-low backdrop-blur-xl rounded-[24px] p-6 md:p-8 shadow-sm">
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="w-12 h-12 rounded-2xl bg-d-primary/10 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-d-primary text-[24px]">location_on</span>
+                      </div>
+                      <div>
+                        <h2 className="text-title-md font-title-md text-d-on-surface">ارتباط و موقعیت</h2>
+                        <p className="text-caption-xs text-d-on-surface-variant mt-1">آدرس دقیق و شماره‌های تماس را وارد کنید.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">شهر</label>
+                        <input value={form.city} onChange={set("city")} className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface rounded-xl px-4 py-3.5 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="مثال: تهران" type="text" />
+                      </div>
+                      
+                      <div className="flex flex-col gap-2 md:col-span-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">آدرس کامل</label>
+                        <input value={form.address} onChange={set("address")} className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface rounded-xl px-4 py-3.5 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="نام خیابان، کوچه، پلاک، واحد" type="text" />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">تلفن ثابت یا موبایل</label>
+                        <input value={form.phone} onChange={set("phone")} dir="ltr" className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface text-right rounded-xl px-4 py-3 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="021-XXXXXXX" type="tel" />
+                      </div>
+                    </div>
+                  </section>
+                  
+                  {/* Section 3: Social Media */}
+                  <section className="bg-d-surface-container-low backdrop-blur-xl rounded-[24px] p-6 md:p-8 shadow-sm">
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="w-12 h-12 rounded-2xl bg-d-primary/10 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-d-primary text-[24px]">share</span>
+                      </div>
+                      <div>
+                        <h2 className="text-title-md font-title-md text-d-on-surface">شبکه‌های اجتماعی</h2>
+                        <p className="text-caption-xs text-d-on-surface-variant mt-1">لینک‌های ارتباطی خود را قرار دهید.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">لینک اینستاگرام</label>
+                        <input value={form.instagram} onChange={set("instagram")} dir="ltr" className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface text-right rounded-xl px-4 py-3 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="https://instagram.com/yourid" type="url" />
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        <label className="text-label-sm text-d-on-surface-variant ml-1">آیدی یا لینک تلگرام</label>
+                        <input value={form.telegram} onChange={set("telegram")} dir="ltr" className="w-full bg-d-surface-container hover:bg-d-surface-container-high focus:bg-d-surface-container-highest text-d-on-surface text-right rounded-xl px-4 py-3 outline-none transition-all placeholder-d-on-surface-variant/50 font-body-md" placeholder="@yourid" type="text" />
+                      </div>
+                    </div>
+                  </section>
+
+                </div>
+
+                {/* Right Column: Sidebar features if any */}
+                <div className="lg:col-span-4 flex flex-col gap-8">
+                  {/* Future extensions (QR code, Map) will go here */}
+                  <div className="bg-d-surface-container-low backdrop-blur-xl rounded-[24px] p-6 shadow-sm">
+                     <h3 className="text-label-sm text-d-on-surface-variant mb-4 font-bold flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">qr_code_2</span>
+                        کد QR اختصاصی
+                     </h3>
+                     {editing ? (
+                       <div className="flex flex-col items-center justify-center p-6 bg-d-surface-container rounded-2xl border border-d-outline-variant/30">
+                          <img src={`/api/public/businesses/${editing.slug}/qr`} alt="QR Code" className="w-48 h-48 rounded-xl bg-white p-2" />
+                          <p className="mt-4 text-center text-d-on-surface-variant text-sm">
+                             کاربران با اسکن این کد مستقیماً به صفحه شما هدایت می‌شوند.
+                          </p>
+                       </div>
+                     ) : (
+                       <div className="flex flex-col items-center justify-center p-6 bg-d-surface-container rounded-2xl border border-d-outline-variant/30 text-center">
+                          <span className="material-symbols-outlined text-4xl text-d-outline-variant mb-2">qr_code_scanner</span>
+                          <p className="text-d-on-surface-variant text-sm">ابتدا پروفایل را ذخیره کنید تا QR کد ساخته شود.</p>
+                       </div>
+                     )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </main>
+      </div>
+    </div>
   );
 }
