@@ -15,8 +15,8 @@ import {
   logout as logoutApi,
   sendOtp as sendOtpApi,
   verifyOtp as verifyOtpApi,
+  loginAdmin as loginAdminApi,
 } from "@/lib/auth";
-import { loginAdmin as loginAdminApi } from "@/lib/auth";
 import type { UserInfo } from "@/types/auth";
 
 interface AuthContextValue {
