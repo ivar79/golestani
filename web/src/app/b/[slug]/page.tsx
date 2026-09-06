@@ -132,7 +132,9 @@ export default async function PublicBusinessPage({ params }: PageProps) {
                 </p>
               )}
             </div>
-            {/* QR code linking back to this page */}
+          </div>
+
+          {/* QR code linking back to this page */}
             <div className="flex flex-col items-center gap-2 rounded-2xl border border-navy-100 bg-surface p-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -157,7 +159,8 @@ export default async function PublicBusinessPage({ params }: PageProps) {
               {b.description}
             </p>
           )}
-        </section>
+        </div>
+      </section>
 
         {/* Services */}
         {b.services && b.services.length > 0 && (
