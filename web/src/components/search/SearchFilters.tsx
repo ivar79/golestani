@@ -3,6 +3,8 @@
 import { useState } from "react";
 import HomeIcon from "@/components/home/HomeIcon";
 import type { SearchFacets } from "@/lib/businesses";
+import { getAllProvinces, type ProvinceData } from "@/lib/iranGeo";
+import { ChevronDown, MapPin, X } from "lucide-react";
 
 export type SearchFiltersState = {
   category: string | null;
@@ -26,7 +28,6 @@ export const DEFAULT_FILTERS: SearchFiltersState = {
 
 export type RadiusOption = { label: string; value: number | null };
 
-/** Radius options in meters. null = unlimited (omitted from the API call). */
 export const RADIUS_OPTIONS: RadiusOption[] = [
   { label: "۱ کیلومتر", value: 1000 },
   { label: "۲ کیلومتر", value: 2000 },
@@ -35,16 +36,6 @@ export const RADIUS_OPTIONS: RadiusOption[] = [
   { label: "بدون محدودیت", value: null },
 ];
 
-/**
- * SearchFilters — Phase 3.2 (Stitch: desktop_7 sidebar header).
- *
- * Visual language: search input with inline filter button, location meta row
- * (city + radius), horizontally-scrollable filter chips, result count + sort.
- *
- * Data: category/city options come from the real facets endpoint. Ratings and
- * open-now are deliberately NOT offered — the backend has no data model for
- * them (documented in BusinessController::search).
- */
 export default function SearchFilters({
   filters,
   onChange,
@@ -61,6 +52,9 @@ export default function SearchFilters({
   hasLocation: boolean;
 }) {
   const [showRadius, setShowRadius] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
+  const [selectedProvince, setSelectedProvince] = useState<ProvinceData | null>(null);
+
   const radiusLabel =
     RADIUS_OPTIONS.find((o) => o.value === filters.radius)?.label ?? "بدون محدودیت";
 
@@ -72,19 +66,36 @@ export default function SearchFilters({
     onChange({ ...filters, category: filters.category === cat ? null : cat });
   }
 
+  function pickCity(cityName: string | null) {
+    onChange({ ...filters, city: cityName });
+    setShowCityPicker(false);
+    setSelectedProvince(null);
+  }
+
   return (
-    <div className="flex shrink-0 flex-col gap-4 border-b border-white/10 px-4 pb-4 pt-6">
+    <div className="flex shrink-0 flex-col gap-4 border-b border-white/10 px-4 pb-4 pt-6 relative">
       {/* Location meta row: city chip + radius selector */}
       <div className="flex items-center justify-between text-xs text-on-surface-variant">
         <button
           type="button"
-          onClick={() => onChange({ ...filters, city: null })}
-          className="flex items-center gap-1 rounded-md bg-surface-container-highest px-2 py-1"
-          title={filters.city ? "حذف فیلتر شهر" : undefined}
+          onClick={() => setShowCityPicker(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-surface-container-highest/60 hover:bg-surface-container-highest border border-white/5 px-2.5 py-1.5 text-white transition-colors"
+          title="انتخاب یا تغییر شهر و منطقه"
         >
-          <HomeIcon name="location" className="h-3.5 w-3.5" />
-          <span>{filters.city ?? "همه شهرها"}</span>
+          <MapPin className="h-3.5 w-3.5 text-secondary" />
+          <span>{filters.city ?? "همه شهرها (سراسری)"}</span>
+          <ChevronDown className="h-3 w-3 opacity-60" />
         </button>
+
+        {filters.city && (
+          <button
+            type="button"
+            onClick={() => pickCity(null)}
+            className="text-[11px] text-slate-400 hover:text-white"
+          >
+            حذف فیلتر شهر
+          </button>
+        )}
 
         <div className="relative">
           <button
@@ -93,17 +104,24 @@ export default function SearchFilters({
             className="flex items-center gap-1 rounded-md px-2 py-1 hover:text-white"
           >
             <span>شعاع: {filters.radius ? radiusLabel : "بدون محدودیت"}</span>
-            <HomeIcon name="chevron" className={`h-3.5 w-3.5 transition-transform ${showRadius ? "-rotate-90" : ""}`} />
+            <HomeIcon
+              name="chevron"
+              className={`h-3.5 w-3.5 transition-transform ${showRadius ? "-rotate-90" : ""}`}
+            />
           </button>
           {showRadius && (
-            <div className="absolute left-0 top-full z-20 mt-1 w-40 rounded-xl border border-white/10 bg-panel shadow-xl">
+            <div className="absolute left-0 top-full z-30 mt-1 w-40 rounded-xl border border-white/10 bg-panel shadow-xl">
               {RADIUS_OPTIONS.map((opt) => (
                 <button
                   key={opt.label}
                   type="button"
                   disabled={opt.value !== null && !hasLocation}
                   onClick={() => {
-                    onChange({ ...filters, radius: opt.value, nearest: opt.value !== null ? filters.nearest : false });
+                    onChange({
+                      ...filters,
+                      radius: opt.value,
+                      nearest: opt.value !== null ? filters.nearest : false,
+                    });
                     setShowRadius(false);
                   }}
                   className={`flex w-full items-center justify-between px-3 py-2 text-right text-xs transition-colors ${
@@ -113,13 +131,91 @@ export default function SearchFilters({
                   } ${opt.value !== null && !hasLocation ? "cursor-not-allowed opacity-40" : ""}`}
                 >
                   <span>{opt.label}</span>
-                  {opt.value !== null && !hasLocation && <span className="text-[9px]">نیاز به موقعیت</span>}
+                  {opt.value !== null && !hasLocation && (
+                    <span className="text-[9px]">نیاز به موقعیت</span>
+                  )}
                 </button>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Modal / Dialog for Selecting Province & Cities/Villages */}
+      {showCityPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#0c1626] p-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-cyan-400" />
+                {selectedProvince
+                  ? `شهرها و روستاهای استان ${selectedProvince.name}`
+                  : "پوشش سراسری: انتخاب استان"}
+              </h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCityPicker(false);
+                  setSelectedProvince(null);
+                }}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="py-4">
+              <div className="mb-3 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => pickCity(null)}
+                  className="text-xs text-cyan-400 hover:underline"
+                >
+                  همه شهرهای ایران (بدون محدودیت)
+                </button>
+                {selectedProvince && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProvince(null)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    ← بازگشت به لیست استان‌ها
+                  </button>
+                )}
+              </div>
+
+              {selectedProvince ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                  {selectedProvince.cities.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => pickCity(c)}
+                      className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-right text-xs text-cyan-200 hover:bg-cyan-500/25 transition-colors"
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                  {getAllProvinces().map((p) => (
+                    <button
+                      key={p.slug}
+                      type="button"
+                      onClick={() => setSelectedProvince(p)}
+                      className="rounded-xl border border-white/5 bg-white/[0.04] px-3 py-2 text-right text-xs text-slate-300 hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 transition-colors flex items-center justify-between"
+                    >
+                      <span>{p.name}</span>
+                      <ChevronDown className="w-3 h-3 opacity-40 -rotate-90" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter chips */}
       <div className="scrollbar-hide -mx-4 flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-1">
@@ -161,10 +257,14 @@ export default function SearchFilters({
         </button>
       </div>
 
-      {/* Result count + nearest sort (distance sort only with a real location) */}
+      {/* Result count + nearest sort */}
       <div className="flex items-center justify-between pt-1">
         <span className="text-sm text-white">
-          {loading ? "در حال جست‌وجو…" : resultCount != null ? `${resultCount.toLocaleString("fa-IR")} نتیجه پیدا شد` : ""}
+          {loading
+            ? "در حال جست‌وجو…"
+            : resultCount != null
+            ? `${resultCount.toLocaleString("fa-IR")} نتیجه پیدا شد`
+            : ""}
         </span>
         {hasLocation && (
           <button
