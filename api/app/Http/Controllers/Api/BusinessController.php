@@ -55,6 +55,31 @@ class BusinessController extends Controller
         return response()->json($business->fresh());
     }
 
+    public function upload(Request $request, Business $business): JsonResponse
+    {
+        $this->authorizeOwner($request, $business);
+        $request->validate([
+            'logo' => ['nullable', 'image', 'max:2048'],
+            'cover_image' => ['nullable', 'image', 'max:5120'],
+        ]);
+
+        $data = [];
+        if ($request->hasFile('logo')) {
+            $path = $request->file('logo')->store('businesses/logos', 'public');
+            $data['logo'] = '/storage/' . $path;
+        }
+        if ($request->hasFile('cover_image')) {
+            $path = $request->file('cover_image')->store('businesses/covers', 'public');
+            $data['cover_image'] = '/storage/' . $path;
+        }
+
+        if (!empty($data)) {
+            $business->update($data);
+        }
+
+        return response()->json($business->fresh());
+    }
+
     public function destroy(Request $request, Business $business): JsonResponse
     {
         $this->authorizeOwner($request, $business);

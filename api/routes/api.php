@@ -17,7 +17,7 @@ Route::get('/health', function () {
 
 // Demonstration of the CheckRole middleware (Phase 1 RBAC wiring).
 Route::get('/admin/ping', function () {
-    return response()->json(['ok' => true, 'message' => 'Ø³Ù„Ø§Ù… Ù…Ø¯ÛŒØ±']);
+    return response()->json(['ok' => true, 'message' => 'سلام مدیر']);
 })->middleware(['auth:sanctum', 'role:admin']);
 
 Route::prefix('auth')->group(function (): void {
@@ -85,6 +85,7 @@ Route::get('/public/businesses/{slug}/qr', [PublicBusinessController::class, 'qr
 Route::middleware(['auth:sanctum', 'role:business_owner,user,admin', 'throttle:30,1'])->prefix('businesses')->group(function (): void {
     Route::get('/', [BusinessController::class, 'index']); Route::post('/', [BusinessController::class, 'store']);
     Route::get('/{business}', [BusinessController::class, 'show']); Route::put('/{business}', [BusinessController::class, 'update']); Route::delete('/{business}', [BusinessController::class, 'destroy']);
+    Route::post('/{business}/upload', [BusinessController::class, 'upload']);
 });
 Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/businesses/{business}/moderate', [BusinessController::class, 'moderate']);
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function (): void {

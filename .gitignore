@@ -17,3 +17,4 @@ Desktop.ini
 # --- local backup snapshots (never commit/push) ---
 backup/
 *.zip
+api/public/storage

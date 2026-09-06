@@ -9,6 +9,7 @@ import {
   deleteBusiness,
   listBusinesses,
   updateBusiness,
+  uploadBusinessMedia,
   type Business,
 } from "@/lib/businesses";
 import {
@@ -39,6 +40,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { OnboardingView } from "@/components/dashboard/OnboardingView";
 const CATEGORIES = [
   "مبلمان و دکوراسیون داخلی",
   "کافه و رستوران",
@@ -71,6 +73,7 @@ export default function Dashboard() {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Business[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Business | null>(null);
@@ -102,6 +105,8 @@ export default function Dashboard() {
         setItems(data);
         if (data.length > 0 && !editing) {
           populateForm(data[0]);
+        } else if (data.length === 0) {
+          setShowOnboarding(true);
         }
       })
       .catch((err: unknown) => setFeedback({ kind: "error", text: extractApiError(err) }))
@@ -110,6 +115,8 @@ export default function Dashboard() {
 
   function populateForm(b: Business) {
     setEditing(b);
+    setLogoPreview(b.logo ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '')}${b.logo}` : null);
+    setCoverPreview(b.cover_image ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '')}${b.cover_image}` : "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80");
     let ws = "";
     let wa = "";
     if (b.social_links && typeof b.social_links === "object") {
@@ -145,19 +152,37 @@ export default function Dashboard() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (file && editing) {
       const url = URL.createObjectURL(file);
       setLogoPreview(url);
+      try {
+        const formData = new FormData();
+        formData.append('logo', file);
+        const b = await uploadBusinessMedia(editing.id, formData);
+        setEditing(b);
+        setFeedback({ kind: "success", text: "لوگو با موفقیت آپلود شد." });
+      } catch (err) {
+        setFeedback({ kind: "error", text: "خطا در آپلود لوگو." });
+      }
     }
   };
 
-  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (file && editing) {
       const url = URL.createObjectURL(file);
       setCoverPreview(url);
+      try {
+        const formData = new FormData();
+        formData.append('cover_image', file);
+        const b = await uploadBusinessMedia(editing.id, formData);
+        setEditing(b);
+        setFeedback({ kind: "success", text: "تصویر کاور با موفقیت آپلود شد." });
+      } catch (err) {
+        setFeedback({ kind: "error", text: "خطا در آپلود کاور." });
+      }
     }
   };
 
@@ -233,6 +258,29 @@ export default function Dashboard() {
     } catch (err: unknown) {
       setFeedback({ kind: "error", text: extractApiError(err) });
     }
+  }
+
+  const handleSelectOnboardingPath = async (path: number) => {
+    setSaving(true);
+    try {
+      const b = await createBusiness({ name: "کسب‌وکار من (پیش‌نویس)", category: CATEGORIES[0], onboarding_path: path });
+      setItems([b]);
+      populateForm(b);
+      setShowOnboarding(false);
+      if (path === 2) {
+        router.push("/card-maker?b=" + b.id);
+      } else if (path === 3) {
+        router.push("/designer?b=" + b.id);
+      }
+    } catch (err) {
+      setFeedback({ kind: "error", text: extractApiError(err) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (showOnboarding) {
+    return <OnboardingView onSelect={handleSelectOnboardingPath} />;
   }
 
   const userDisplayName = user?.phone ? user.phone : "کاربر گرامی";

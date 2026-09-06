@@ -19,6 +19,9 @@ export type Business = {
   social_links?: string[] | Record<string, string>;
   status: BusinessStatus;
   moderation_note?: string;
+  logo?: string;
+  cover_image?: string;
+  onboarding_path?: number;
   created_at?: string;
   updated_at?: string;
   distance?: number | null;
@@ -43,6 +46,11 @@ export const updateBusiness = (id: number, data: BusinessDraft) =>
 
 export const deleteBusiness = (id: number) =>
   api.delete<{ message: string }>(`/businesses/${id}`).then((r) => r.data);
+
+export const uploadBusinessMedia = (id: number, data: FormData) =>
+  api.post<Business>(`/businesses/${id}/upload`, data, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
 
 export const getPublicBusiness = (slug: string) =>
   api.get<Business>(`/public/businesses/${slug}`).then((r) => r.data);

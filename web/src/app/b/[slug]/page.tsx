@@ -92,13 +92,37 @@ export default async function PublicBusinessPage({ params }: PageProps) {
       <AppTaskbar />
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 pt-36 pb-12">
         {/* Hero */}
-        <section className="rounded-3xl border border-navy-100 bg-white p-8 shadow-sm sm:p-10">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
-                <span aria-hidden>✓</span> کسب‌وکار تأییدشده
-              </p>
-              <h1 className="mt-4 text-3xl font-black text-navy-900 sm:text-4xl">{b.name}</h1>
+        <section className="rounded-3xl border border-navy-100 bg-white shadow-sm overflow-hidden">
+          {/* Cover Image */}
+          <div className="w-full h-48 sm:h-64 bg-navy-50 relative">
+            <img 
+              src={b.cover_image ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '')}${b.cover_image}` : "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1200&q=80"}
+              alt={`کاور ${b.name}`}
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="p-8 sm:p-10">
+            <div className="flex flex-wrap items-start justify-between gap-6">
+              <div className="flex gap-6 items-start">
+                {/* Logo */}
+                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border-4 border-white shadow-md bg-white -mt-16 sm:-mt-20 shrink-0 relative overflow-hidden flex items-center justify-center">
+                  {b.logo ? (
+                    <img 
+                      src={`${process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '')}${b.logo}`} 
+                      alt={`لوگو ${b.name}`} 
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-emerald-100 to-emerald-50 flex items-center justify-center">
+                      <span className="text-3xl font-black text-emerald-700">{b.name.charAt(0)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2">
+                  <p className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                    <span aria-hidden>✓</span> کسب‌وکار تأییدشده
+                  </p>
+                  <h1 className="mt-4 text-3xl font-black text-navy-900 sm:text-4xl">{b.name}</h1>
               {b.category && (
                 <p className="mt-2 text-lg text-zinc-500">{b.category}</p>
               )}

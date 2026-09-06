@@ -10,7 +10,7 @@ class BusinessCard extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['business_id', 'template', 'theme', 'font_size', 'export_format', 'exported_at'];
+    protected $fillable = ['business_id', 'template', 'theme', 'font_size', 'export_format', 'exported_at', 'creation_type', 'front_image', 'back_image'];
     protected function casts(): array { return ['exported_at' => 'datetime']; }
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 }
