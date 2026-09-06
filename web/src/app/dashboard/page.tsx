@@ -260,27 +260,27 @@ export default function Dashboard() {
     }
   }
 
-  const handleSelectOnboardingPath = async (path: number) => {
-    setSaving(true);
-    try {
-      const b = await createBusiness({ name: "کسب‌وکار من (پیش‌نویس)", category: CATEGORIES[0], onboarding_path: path });
-      setItems([b]);
-      populateForm(b);
-      setShowOnboarding(false);
-      if (path === 2) {
-        router.push("/card-maker?b=" + b.id);
-      } else if (path === 3) {
-        router.push("/designer?b=" + b.id);
-      }
-    } catch (err) {
-      setFeedback({ kind: "error", text: extractApiError(err) });
-    } finally {
-      setSaving(false);
+  const handleSelectOnboardingPath = (path: number) => {
+    setShowOnboarding(false);
+    if (path === 2) {
+      router.push("/card-maker");
+    } else if (path === 3) {
+      router.push("/designer");
     }
+    // Path 1 enters dashboard directly to fill business and card details
   };
 
+  if (loading) {
+    return (
+      <div dir="rtl" className="min-h-screen bg-[#070d18] flex flex-col items-center justify-center p-6 text-slate-100 font-sans">
+        <div className="w-12 h-12 rounded-full border-2 border-[#00c98d]/20 border-t-[#00c98d] animate-spin mb-4" />
+        <p className="text-slate-400 text-sm animate-pulse font-medium">در حال بارگذاری اطلاعات پنل...</p>
+      </div>
+    );
+  }
+
   if (showOnboarding) {
-    return <OnboardingView onSelect={handleSelectOnboardingPath} />;
+    return <OnboardingView onSelect={handleSelectOnboardingPath} onSkip={() => setShowOnboarding(false)} />;
   }
 
   const userDisplayName = user?.phone ? user.phone : "کاربر گرامی";
