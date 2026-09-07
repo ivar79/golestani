@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import {
   Search,
   X,
@@ -15,7 +14,7 @@ import {
   Wrench,
   ChevronDown,
 } from "lucide-react";
-import { IRAN_PROVINCES, getAllProvinces, type ProvinceData } from "@/lib/iranGeo";
+import { getAllProvinces, type ProvinceData } from "@/lib/iranGeo";
 
 /**
  * تب‌های ۳گانه با حفظ کامل هویت بصری دارک آورورا
@@ -60,6 +59,25 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [selectedProvince, setSelectedProvince] = useState<ProvinceData | null>(null);
   const [showAllProvinces, setShowAllProvinces] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isNavigatingRef = useRef(false);
+
+  // Reset navigation lock whenever modal open state changes
+  useEffect(() => {
+    if (isOpen) {
+      isNavigatingRef.current = false;
+    }
+  }, [isOpen]);
+
+  // Centralized, safe navigation: prevents race conditions and ensures clean modal closure
+  const navigateTo = useCallback(
+    (url: string) => {
+      if (isNavigatingRef.current) return;
+      isNavigatingRef.current = true;
+      onClose();
+      router.push(url);
+    },
+    [onClose, router]
+  );
 
   // Lock scroll on open
   useEffect(() => {
@@ -90,18 +108,15 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!q.trim()) return;
-    onClose();
-    router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+    navigateTo(`/search?q=${encodeURIComponent(q.trim())}`);
   };
 
   const quickSearch = (term: string) => {
-    onClose();
-    router.push(`/search?q=${encodeURIComponent(term)}`);
+    navigateTo(`/search?q=${encodeURIComponent(term)}`);
   };
 
   const selectCity = (cityName: string) => {
-    onClose();
-    router.push(`/search?city=${encodeURIComponent(cityName)}`);
+    navigateTo(`/${encodeURIComponent(cityName)}`);
   };
 
   const showProfession = activeTab === "all" || activeTab === "profession";
@@ -110,6 +125,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   return (
     <div
       dir="rtl"
+      data-search-menu
       className="fixed inset-0 z-50 flex items-start justify-center p-0 sm:p-6 sm:pt-20 overflow-y-auto font-sans"
     >
       {/* Dark Ambient Backdrop */}
@@ -119,7 +135,10 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       />
 
       {/* Main Modal Container */}
-      <div className="relative w-full max-w-4xl overflow-hidden rounded-none sm:rounded-3xl border-0 sm:border border-white/10 bg-[#0c1626]/95 backdrop-blur-2xl shadow-2xl shadow-cyan-950/40 my-auto z-10 flex flex-col max-h-[90vh]">
+      <div
+        data-search-menu
+        className="relative w-full max-w-4xl overflow-hidden rounded-none sm:rounded-3xl border-0 sm:border border-white/10 bg-[#0c1626]/95 backdrop-blur-2xl shadow-2xl shadow-cyan-950/40 my-auto z-10 flex flex-col max-h-[90vh]"
+      >
         {/* Search input header */}
         <form
           onSubmit={handleSubmit}
@@ -207,15 +226,15 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               </h3>
               <div className="flex flex-wrap gap-2.5">
                 {CATEGORIES.map((item) => (
-                  <Link
+                  <button
                     key={item.name}
-                    href={`/category/${item.name}`}
-                    onClick={onClose}
-                    className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[14px] text-slate-200 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300"
+                    type="button"
+                    onClick={() => navigateTo(`/category/${encodeURIComponent(item.name)}`)}
+                    className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[14px] text-slate-200 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 cursor-pointer"
                   >
                     <item.icon className="h-4 w-4 text-slate-400" strokeWidth={1.5} />
-                    {item.name}
-                  </Link>
+                    <span>{item.name}</span>
+                  </button>
                 ))}
               </div>
             </section>
@@ -350,10 +369,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
           {/* Discover Card with Aurora Discovery Banner */}
           <div
             className="relative overflow-hidden rounded-2xl min-h-[145px] sm:min-h-[175px] border border-cyan-500/20 group cursor-pointer shadow-2xl bg-[#060b14] mt-3 transition-all duration-300 hover:border-cyan-400/50 hover:shadow-[0_0_30px_rgba(6,182,212,0.25)]"
-            onClick={() => {
-              onClose();
-              router.push("/search");
-            }}
+            onClick={() => navigateTo("/search")}
           >
             {/* Aurora Background Image */}
             <Image

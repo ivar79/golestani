@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import axios from "axios";
 import {
   searchBusinesses,
@@ -33,8 +33,25 @@ function isCancellation(err: unknown): boolean {
 
 function SearchPageContent() {
   const searchParams = useSearchParams();
+  const routeParams = useParams();
+
+  const rawRouteCity = typeof routeParams?.city === "string" ? routeParams.city : null;
+  const rawRouteCategory =
+    typeof routeParams?.category === "string"
+      ? routeParams.category
+      : typeof routeParams?.slug === "string"
+      ? routeParams.slug
+      : null;
+
+  const initialCity =
+    (rawRouteCity ? decodeURIComponent(rawRouteCity) : null) ??
+    searchParams.get("city") ??
+    null;
+  const initialCategory =
+    (rawRouteCategory ? decodeURIComponent(rawRouteCategory) : null) ??
+    searchParams.get("category") ??
+    null;
   const initialQ = searchParams.get("q") ?? "";
-  const initialCity = searchParams.get("city") ?? null;
 
   const [q, setQ] = useState(initialQ);
   const [items, setItems] = useState<Business[]>([]);
@@ -45,6 +62,7 @@ function SearchPageContent() {
   const [filters, setFilters] = useState<SearchFiltersState>({
     ...DEFAULT_FILTERS,
     city: initialCity,
+    category: initialCategory,
   });
   const abortRef = useRef<AbortController | null>(null);
   const {
@@ -113,15 +131,16 @@ function SearchPageContent() {
     []
   );
 
-  // Initial load: search based on URL params (q & city)
+  // Initial load: search based on URL params (q, city, and category)
   useEffect(() => {
     const initialFilterState: SearchFiltersState = {
       ...DEFAULT_FILTERS,
       city: initialCity,
+      category: initialCategory,
     };
     const t = setTimeout(() => void runSearch(initialQ, initialFilterState, null), 0);
     return () => clearTimeout(t);
-  }, [runSearch, initialQ, initialCity]);
+  }, [runSearch, initialQ, initialCity, initialCategory]);
 
   // Re-search when filters change (user action).
   const applyFilters = useCallback(
