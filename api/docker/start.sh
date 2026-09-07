@@ -13,6 +13,9 @@ php artisan config:cache || true
 php artisan route:cache || true
 php artisan view:cache || true
 
+# Auto-run database migrations on container startup
+php artisan migrate --force || true
+
 # Writable storage/bootstrap dirs (fresh volume or new clone).
 mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache || true
