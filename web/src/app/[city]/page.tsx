@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import SearchPage from "@/app/search/page";
+import { isValidLocation } from "@/lib/iranGeo";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ city: string }>;
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ city: string }> }): Promise<Metadata> {
   const { city } = await params;
+  if (!isValidLocation(city)) notFound();
+  
   const decodedCity = decodeURIComponent(city);
   return {
     title: `کسب‌وکارهای ${decodedCity} | اینکارت`,
@@ -15,6 +15,8 @@ export async function generateMetadata({
   };
 }
 
-export default function CityPage() {
+export default async function CityPage({ params }: { params: Promise<{ city: string }> }) {
+  const { city } = await params;
+  if (!isValidLocation(city)) notFound();
   return <SearchPage />;
 }

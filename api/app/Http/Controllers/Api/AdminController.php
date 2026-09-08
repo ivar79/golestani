@@ -35,17 +35,21 @@ class AdminController extends Controller
 
     public function publicHomepage(): JsonResponse
     {
-        $settings = $this->homepageSettings();
-
-        // Cache guard: an empty payload (unseeded database) is NEVER cached.
-        // Caching it once blanked the whole homepage until the TTL expired —
-        // even after seeding. Empty results stay uncached so the page
-        // recovers on the very next request once settings exist.
-        if ($settings !== []) {
-            Cache::put(self::HOMEPAGE_CACHE_KEY, $settings, now()->addSeconds(self::HOMEPAGE_CACHE_TTL));
+        $settings = Cache::get(self::HOMEPAGE_CACHE_KEY);
+        
+        if ($settings === null) {
+            $settings = $this->homepageSettings();
+            
+            // Cache guard: an empty payload (unseeded database) is NEVER cached.
+            // Caching it once blanked the whole homepage until the TTL expired —
+            // even after seeding. Empty results stay uncached so the page
+            // recovers on the very next request once settings exist.
+            if ($settings !== []) {
+                Cache::put(self::HOMEPAGE_CACHE_KEY, $settings, now()->addSeconds(self::HOMEPAGE_CACHE_TTL));
+            }
         }
 
-        return response()->json($settings);
+        return response()->json($settings ?? []);
     }
 
     /** Additive whitelist: original Phase 6.1 keys preserved, new homepage

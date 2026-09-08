@@ -175,13 +175,13 @@ export default function AppTaskbar() {
     setSearchOpen(false);
     setUserMenuOpen(false);
     document.body.style.overflow = "";
-  }, []);
+  }, [setMenuOpen, setDrawerOpen, setSearchOpen, setUserMenuOpen]);
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
     setSearchOpen(false);
     document.body.style.overflow = "hidden";
-  }, []);
+  }, [setDrawerOpen, setSearchOpen]);
 
   const submitSearch = useCallback(
     (e: React.FormEvent) => {

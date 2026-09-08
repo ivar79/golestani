@@ -2,6 +2,15 @@ import api from "@/lib/api";
 
 export type BusinessStatus = "draft" | "pending" | "approved" | "rejected" | "suspended";
 
+export type Showcase = {
+  id: number;
+  title: string;
+  description?: string;
+  price?: number;
+  image_path?: string;
+  is_published: boolean;
+};
+
 export type Business = {
   id: number;
   name: string;
@@ -27,10 +36,10 @@ export type Business = {
   distance?: number | null;
   distance_meters?: number;
   verification_badge?: boolean;
-  /** Raw badge array from the search API (e.g. ["verified", "showcase"]). */
   badges?: string[];
   navigation_url?: string;
   rating?: number | null;
+  showcases?: Showcase[];
 };
 
 export type BusinessDraft = Partial<Omit<Business, "id" | "slug" | "status">>;
@@ -54,6 +63,17 @@ export const uploadBusinessMedia = (id: number, data: FormData) =>
 
 export const getPublicBusiness = (slug: string) =>
   api.get<Business>(`/public/businesses/${slug}`).then((r) => r.data);
+
+export const getPublicShowcases = (slug: string) =>
+  api.get<Showcase[]>(`/public/businesses/${slug}/showcases`).then((r) => r.data);
+
+export const uploadShowcase = (businessId: number, data: FormData) =>
+  api.post<Showcase>(`/businesses/${businessId}/showcases`, data, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+
+export const deleteShowcase = (id: number) =>
+  api.delete<{ message: string }>(`/showcases/${id}`).then((r) => r.data);
 
 export type BusinessSearchResponse = { data: Business[]; pagination: { page: number; limit: number; total: number; last_page: number; next_page: string | null } };
 

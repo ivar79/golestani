@@ -438,3 +438,16 @@ export function searchIranLocations(
 
   return matches;
 }
+
+export function isValidLocation(name: string): boolean {
+  if (!name) return false;
+  const decoded = decodeURIComponent(name).replace(/-/g, " ");
+  const norm = normalizePersian(decoded);
+  return IRAN_PROVINCES.some(
+    (p) =>
+      normalizePersian(p.name) === norm ||
+      p.slug.toLowerCase() === decoded.toLowerCase() ||
+      p.cities.some((c) => normalizePersian(c) === norm)
+  );
+}
+

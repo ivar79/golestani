@@ -118,3 +118,21 @@ export async function moderateAdminAdvertisement(id: number, status: string) {
 export async function moderateAdminPortfolio(id: number, status: string) {
   return (await api.patch(`/admin/portfolios/${id}/moderate`, { status })).data;
 }
+
+export type AdminUser = {
+  id: number;
+  name: string | null;
+  phone: string;
+  email: string | null;
+  is_active: boolean;
+  created_at: string;
+  roles: Array<{ name: string; display_name: string }>;
+};
+
+export async function getAdminUsers(page = 1) {
+  return (await api.get<{ data: AdminUser[]; current_page: number; last_page: number; total: number }>(`/admin/users?page=${page}`)).data;
+}
+
+export async function updateAdminUser(id: number, data: { name?: string; is_active?: boolean }) {
+  return (await api.patch<AdminUser>(`/admin/users/${id}`, data)).data;
+}

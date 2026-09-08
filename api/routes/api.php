@@ -61,7 +61,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/portfolios/{por
 
 Route::get('/plans', [SubscriptionController::class, 'plans']);
 Route::get('/public/homepage', [AdminController::class, 'publicHomepage']);
-Route::get('/public/businesses/{business}/showcases', [ShowcaseController::class, 'public']);
+Route::get('/public/businesses/{business:slug}/showcases', [ShowcaseController::class, 'public']);
 Route::get('/public/advertisements/{slot}', [AdvertisementController::class, 'public']);
 Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function (): void {
     Route::get('/businesses/{business}/subscriptions', [SubscriptionController::class, 'index']);
@@ -87,7 +87,7 @@ Route::middleware(['auth:sanctum', 'role:business_owner,user,admin', 'throttle:3
     Route::get('/{business}', [BusinessController::class, 'show']); Route::put('/{business}', [BusinessController::class, 'update']); Route::delete('/{business}', [BusinessController::class, 'destroy']);
     Route::post('/{business}/upload', [BusinessController::class, 'upload']);
 });
-Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/businesses/{business}/moderate', [BusinessController::class, 'moderate']);
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->patch('/admin/businesses/{business}/moderate', [BusinessController::class, 'moderate']);
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function (): void {
     Route::get('/overview', [AdminController::class, 'overview']);
     Route::get('/users', [AdminController::class, 'users']);
@@ -100,3 +100,5 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::post('/media', [AdminController::class, 'media']);
     Route::get('/media', [AdminController::class, 'mediaList']);
 });
+
+require __DIR__."/phase2.php";

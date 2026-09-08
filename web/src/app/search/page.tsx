@@ -79,12 +79,12 @@ function SearchPageContent() {
     if (filters.city) {
       const prov = getProvince(filters.city);
       if (prov) {
-        setMapCenter([prov.lat, prov.lng]);
+        setTimeout(() => setMapCenter([prov.lat, prov.lng]), 0);
         return;
       }
       const matches = searchIranLocations(filters.city, 1);
       if (matches.length > 0) {
-        setMapCenter([matches[0].lat, matches[0].lng]);
+        setTimeout(() => setMapCenter([matches[0].lat, matches[0].lng]), 0);
       }
     }
   }, [filters.city]);

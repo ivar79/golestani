@@ -1,0 +1,322 @@
+{
+  "baseline": "User supplied golestani (13) ZIP",
+  "source_files": 42,
+  "new_source_files": 22,
+  "modified_source_files": 20,
+  "deleted_files": [],
+  "files": [
+    {
+      "path": "api/.env.example",
+      "status": "modified",
+      "purpose": "نمونه متغیرهای دامنه فرانت و CORS",
+      "sha256": "02c5e5e0e47d793e0a64bf3b41e6948a1ae3646f2a18d55ab2da6734e0f04657",
+      "original_sha256": "ddafe307df0e049fbcf1ee9bfabdaa3c31d64750ccc3820d8fad207382434634"
+    },
+    {
+      "path": "api/app/Console/Commands/ProvisionAdmin.php",
+      "status": "new",
+      "purpose": "ساخت/چرخش تعاملی رمز مدیر، لغو توکن‌ها و ثبت رخداد",
+      "sha256": "245112309b30ad8f4f081e53c234c08177c85cb4ac570fe89f364413b16a8fcd",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Http/Controllers/Api/AdminBusinessController.php",
+      "status": "new",
+      "purpose": "فهرست صفحه‌بندی‌شده همه وضعیت‌ها و خواندن تاریخچه",
+      "sha256": "3167c2093269cc09fb25f20308feeeae621fd0467f84a18687909daf0da1e69f",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Http/Controllers/Api/BusinessController.php",
+      "status": "modified",
+      "purpose": "ثبت، ویرایش، انتشار، رسانه، نشان‌ها، جستجوی پارامتری و audit",
+      "sha256": "aa21b68fc630eaa7223006578a97d04fe0c359764e36b630efda1fe87d9ebfaf",
+      "original_sha256": "c55fc65f6f12897db8846ec30e804aa728b819adb0c6d8f8083619dc91c3b0ef"
+    },
+    {
+      "path": "api/app/Http/Controllers/Api/BusinessImageController.php",
+      "status": "new",
+      "purpose": "گالری پنج‌تصویری مستقل از اشتراک، مالکیت و پاکسازی فایل",
+      "sha256": "168ee267cd2455800f68c3035a559e507ac4cdd68fb2ca64d8ac21c93cba6c7e",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Http/Controllers/Api/PublicBusinessController.php",
+      "status": "modified",
+      "purpose": "اطلاعات عمومی محدود، گالری و QR با مقصد فرانت",
+      "sha256": "520ffcba3bc4c8fe77a5ba6401a406a016606d71ab8be81fa57049c286fb3e37",
+      "original_sha256": "e62c06a1daeb0ad165aefccfc40179e66b8a843585173cdec1ff39bca5c2f1f9"
+    },
+    {
+      "path": "api/app/Http/Middleware/ApiRequestSafety.php",
+      "status": "new",
+      "purpose": "Origin مجاز و جلوگیری از mutation با فرم ساده",
+      "sha256": "fede7b3a1409f96be2d60dce381cef4dd62252991a8b8682fd335b890a02ff8b",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Http/Middleware/ApiSecurityLog.php",
+      "status": "new",
+      "purpose": "لاگ درخواست‌های ورود و خطاها بدون اطلاعات حساس",
+      "sha256": "9a0e6b8204a17e0eecff5565acebd8b8d35125eb9e424724311325a3eb54ab86",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Http/Middleware/CheckRole.php",
+      "status": "modified",
+      "purpose": "منع حساب غیرفعال در مسیرهای نقش‌محور",
+      "sha256": "446f20ba33b32c118fe799fbb478ff9dde3adb05aecd4f5a1092b6440ef7625d",
+      "original_sha256": "c1bea47033d6798fcbdeb48d817eff6714012101a45045910657ebb7840a2123"
+    },
+    {
+      "path": "api/app/Http/Middleware/RequireApiToken.php",
+      "status": "new",
+      "purpose": "قطع fallback احراز API به session وب",
+      "sha256": "c71b795521673436edfa987978e29f02a3573bf72b09fc1995c18a254138fc21",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Http/Requests/Business/BusinessRequest.php",
+      "status": "modified",
+      "purpose": "اعتبارسنجی فیلدها، لینک‌ها، مختصات و کنترل مسیر رسانه",
+      "sha256": "d6caf1f6a68f31f54cf27d4619a43cd04e8b0444c3b21fd5e080f2482b4217c4",
+      "original_sha256": "e079a41065a79390d3218f1f87d602bcf0456eaca8ecf3e87aaae238677f4802"
+    },
+    {
+      "path": "api/app/Models/Business.php",
+      "status": "modified",
+      "purpose": "روابط قبلی به همراه رابطه گالری جدید",
+      "sha256": "f9ee1d737576a20721fa779479e6fffee5f5da3fd2de3d7b98e3d8a85b3eb8ef",
+      "original_sha256": "9bdf2920a249bdfc4ffa875382bfea33f2b1b271b3a6b8c3ca76cadd2c8ec35e"
+    },
+    {
+      "path": "api/app/Models/BusinessImage.php",
+      "status": "new",
+      "purpose": "مدل تصویر اختصاصی کسب‌وکار",
+      "sha256": "369ed032be9ee1b042665f2eb00b549abb3fc9ad272ba0440497aaacf93404c3",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Services/BusinessAudit.php",
+      "status": "new",
+      "purpose": "ثبت transactional رخداد موفق بدون محتوای خصوصی",
+      "sha256": "d24662506e687a4c7eb78e72304afa2c097bd6e7e9f102d8479fa4feb06020c8",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Services/BusinessMedia.php",
+      "status": "new",
+      "purpose": "قواعد تصویر، ذخیره و پاکسازی ایمن",
+      "sha256": "12c8cb0cc7d6c3fa2b6cdf2dbf3f57360d019d989e2799c0eea75f6952625c91",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Services/BusinessPublication.php",
+      "status": "new",
+      "purpose": "بازبینی تغییرات و جلوگیری از رفع تعلیق توسط مالک",
+      "sha256": "51cb24b130bc336cf64275fa8ce265bf7797bba500fcd0397bb3a860de762f9c",
+      "original_sha256": null
+    },
+    {
+      "path": "api/app/Support/BusinessUrl.php",
+      "status": "new",
+      "purpose": "تولید لینک canonical از FRONTEND_URL",
+      "sha256": "2d73e6f2d383fb3ec1e3369f2d7530cfca6aeb7b980e81ec4e3f26e411c5d3e4",
+      "original_sha256": null
+    },
+    {
+      "path": "api/bootstrap/app.php",
+      "status": "modified",
+      "purpose": "اتصال middleware امنیتی جدید به API",
+      "sha256": "54c270cca92c3a355c3ff000b0f9327e016637d89e3601828519a5de87bc5e00",
+      "original_sha256": "b929b6aeab406123754ded7afeb32265c4edf83b453283b3d9ad1c110a4ad8b5"
+    },
+    {
+      "path": "api/config/business.php",
+      "status": "new",
+      "purpose": "دامنه عمومی، سقف گالری و نشان‌های مجاز",
+      "sha256": "0f279cd6973960c16f4b61d9f775b562fe7224b674fcd81dfc1198832016293f",
+      "original_sha256": null
+    },
+    {
+      "path": "api/config/cors.php",
+      "status": "modified",
+      "purpose": "allowlist دقیق به جای wildcard و هدرهای مجاز",
+      "sha256": "7a23b61368f53209074a439590d44d4327b370a6539817fc43896ee3c167c638",
+      "original_sha256": "407efc737938e8e2ae0e5d3a5cda7527596c723aa0fb81ffcdd1ff8b31edf120"
+    },
+    {
+      "path": "api/database/migrations/2026_09_07_000001_ensure_admin_password_and_email.php",
+      "status": "modified",
+      "purpose": "حذف provisioning رمز ثابت در نصب جدید؛ دیتابیس قبلی خودکار تغییر نمی‌کند",
+      "sha256": "3e7b062867f48ef166cf6b6516576a94714740a5c955acfd270e09f9a67a8ded",
+      "original_sha256": "dbed25375fcdb5a3e3ea44adaed5a69d63b833335fac1aea60fe4d03e1406cb5"
+    },
+    {
+      "path": "api/database/migrations/2026_09_08_000001_create_phase2_images_and_audit_events.php",
+      "status": "new",
+      "purpose": "افزودن business_images و audit_events بدون حذف داده قبلی",
+      "sha256": "344d12bd99377bb2d61ef22d8850abbf8f8a7f1b9f51f45dff5c7897874fcd2a",
+      "original_sha256": null
+    },
+    {
+      "path": "api/database/seeders/AdminUserSeeder.php",
+      "status": "modified",
+      "purpose": "جلوگیری از seeding رمز پیش‌فرض و ارجاع به دستور تعاملی",
+      "sha256": "f60a8c9ae3f57194c3484436ef6107746f3a76de6b4df99f5588659ec6fc38ab",
+      "original_sha256": "df2d80c472736a610feb66801db9f0608c260ceea4d672838a44338f7f8d29ae"
+    },
+    {
+      "path": "api/docker/nginx.conf",
+      "status": "modified",
+      "purpose": "عدم اجرای فایل‌های کسب‌وکار توسط PHP و هدرهای امن",
+      "sha256": "ec3f8cff10ec71a02d69e4b35b22d291007dd06101eab9294153ef2950a31a67",
+      "original_sha256": "969a1e9852961f43f151ab9a451cf84303c2524fcc57912f79876b2b81472664"
+    },
+    {
+      "path": "api/docker/start.sh",
+      "status": "modified",
+      "purpose": "ساخت مسیر storage، لینک عمومی و توقف روشن روی خطای migration",
+      "sha256": "a491fcf90787d3f6ade9e0b4b864f255e42dcfcd6ec2ee64d35a1a3c1fac1613",
+      "original_sha256": "dbb120e9b33e693d3e4de044677c05e53594ea5fcf78a9f21f763a629bdfc369"
+    },
+    {
+      "path": "api/routes/api.php",
+      "status": "modified",
+      "purpose": "حفظ مسیرهای قبلی، افزودن routes فاز ۲ و throttle تصمیم مدیر",
+      "sha256": "0f0aaac1f48372803967b157cd418ee95aae6c5c91a24fe30d656b22803fe785",
+      "original_sha256": "fc3a007441cb23fa355c7857072e50aae9b01bab4dca7f06df4ba3ed22a1c98b"
+    },
+    {
+      "path": "api/routes/phase2.php",
+      "status": "new",
+      "purpose": "مسیرهای گالری، مدیریت فهرست و audit",
+      "sha256": "30ea2e522e953513574f14780456e48f3b6c70b6dca8741b43efd35a4d6e3df3",
+      "original_sha256": null
+    },
+    {
+      "path": "api/tests/Feature/PhaseTwoAcceptanceTest.php",
+      "status": "new",
+      "purpose": "آزمون چرخه پروفایل، رسانه، نشان‌ها، QR و audit",
+      "sha256": "7a71e81cbc2432051923acbdc40d30172a9ef80e963c7783a7c7d3ec4ba420ed",
+      "original_sha256": null
+    },
+    {
+      "path": "api/tests/Security/PhaseTwoSecurityTest.php",
+      "status": "new",
+      "purpose": "آزمون XSS/URL، SQL Injection، CSRF، IDOR و نوع تصویر",
+      "sha256": "e74d0b8f0f73e21294c34a354af1da97db9fbb3d0d02f77921cfb37362f791db",
+      "original_sha256": null
+    },
+    {
+      "path": "api/tests/TestCase.php",
+      "status": "modified",
+      "purpose": "تطبیق actingAs تست‌های قبلی با guard واقعی Sanctum",
+      "sha256": "1f9a535ca4127b37cd8db03ec9225a5e8a88eb74df544fd4331daa6279f6f4cd",
+      "original_sha256": "31af0fd2df41a6699b2df2bf4cdda55761d377c264027b59501c942ddeb755bf"
+    },
+    {
+      "path": "docs/PHASE_2_HANDOVER_FA.md",
+      "status": "new",
+      "purpose": "راهنمای تحویل و اجرای آزمون‌ها",
+      "sha256": "6d93bd7ac490e064f3904c4806adf3514494299ee91c98d1a418d88712d7c854",
+      "original_sha256": null
+    },
+    {
+      "path": "web/.env.example",
+      "status": "new",
+      "purpose": "نمونه URL بک‌اند برای build فرانت",
+      "sha256": "8f8d001c13a272fd27dcb9b6993e0f9c52eb85f97fcb56926b4d8ef878758a5a",
+      "original_sha256": null
+    },
+    {
+      "path": "web/next.config.ts",
+      "status": "modified",
+      "purpose": "هدرهای امنیتی بدون شکستن اسکریپت‌های Next.js",
+      "sha256": "ba6fc9d21cc7ceca8f287ce94a4fe4aab01c7beaff1169d3262b66b3a35ab6b0",
+      "original_sha256": "e09c99213238625e308289da3ad07011e3a93a888a46b84fcd052256c0aa682b"
+    },
+    {
+      "path": "web/src/app/admin/businesses/page.tsx",
+      "status": "new",
+      "purpose": "پنل کامل تأیید، رد، تعلیق، نشان‌ها و تاریخچه",
+      "sha256": "ef2c518f1a02057dbeb9736584f8afdf7219b9e146f5b5dfb8683bf471c960b6",
+      "original_sha256": null
+    },
+    {
+      "path": "web/src/app/admin/page.tsx",
+      "status": "modified",
+      "purpose": "لینک مسیر مدیریت کامل و حفظ سایر تب‌های قبلی",
+      "sha256": "0ee0986be939d66f8feb74fd7cd4f125ebebaf30e1e7009575ff94d507ab0c3b",
+      "original_sha256": "2bd9e412d4d1313498cf51b078146fb034aab46e4cc7c6538f4b4b96384c04a1"
+    },
+    {
+      "path": "web/src/app/b/[slug]/page.tsx",
+      "status": "modified",
+      "purpose": "نمایش امن اطلاعات عمومی، تصاویر، نشان‌ها، ویترین و QR",
+      "sha256": "f30dbd3a5a44166d2ceb43d87430bd4273ddd13825bf016c43fa58f097903ab3",
+      "original_sha256": "d070e137390a0a261783bb31df50b3aa96684cea521ab0adb528ddc6ef3ba45b"
+    },
+    {
+      "path": "web/src/app/dashboard/page.tsx",
+      "status": "modified",
+      "purpose": "فرم کامل مالک، مختصات نقشه، شبکه‌ها، رسانه و وضعیت",
+      "sha256": "a8dfbf4bc2a2a0fffab74588f7d4aae2604c519777896523f0797b541fe4496e",
+      "original_sha256": "51cd50d5c59afd59dfaa0dfe02fee76de77b2008cd8e844866fd5193257b691a"
+    },
+    {
+      "path": "web/src/components/business/phase2.module.css",
+      "status": "new",
+      "purpose": "استایل مشترک responsive صفحات فاز ۲",
+      "sha256": "15b4e448290670149e1df7f58e1694cdaabd953a678801b3a4b3bef7e402ebad",
+      "original_sha256": null
+    },
+    {
+      "path": "web/src/contexts/AuthContext.tsx",
+      "status": "modified",
+      "purpose": "cookie صرفاً نشانگر مسیر، عدم تکرار bearer و بارگذاری صحیح",
+      "sha256": "a1c9842513ce23c0e177d15eccfd321673d6bc5eb42205aa3fb9902c6b45e215",
+      "original_sha256": "394f35ca37343e6ff6f003c6199cb282334af531a9510df300441d58139aa052"
+    },
+    {
+      "path": "web/src/lib/api.ts",
+      "status": "modified",
+      "purpose": "هدر درخواست غیرساده، مدیریت multipart و پیام خطای قابل‌استفاده",
+      "sha256": "cddb8b208af3b69db15fadc43fd2d66dd830234ebb4e165124ff2b89bf138a7e",
+      "original_sha256": "63c26267cdc5109de88dc5ea9cdafa6f2c95b15aa5ef6c223c63da2f5ff0804c"
+    },
+    {
+      "path": "web/src/lib/businessSafety.ts",
+      "status": "new",
+      "purpose": "توابع خالص دفاع URL، مسیر تصویر و واتساپ با تست مستقل",
+      "sha256": "b572bbb10211c22b82b09c972348927a0609f46450cead4e35909fece3a87d4a",
+      "original_sha256": null
+    },
+    {
+      "path": "web/src/lib/phase2.ts",
+      "status": "new",
+      "purpose": "انواع داده و توابع API اختصاصی فاز ۲",
+      "sha256": "0ad9afb21f38814710d9cf2ddea5f775ba517ccbc39013829d376e78617d5e59",
+      "original_sha256": null
+    },
+    {
+      "path": "web/tests/phase2-safety.test.cjs",
+      "status": "new",
+      "purpose": "۲۲ تست مستقل اجرایی توابع امنیت لینک",
+      "sha256": "3feee8b029b9f89ad0c41c4fc2ed7ffc27d942227727490d0282da6ac6cc72da",
+      "original_sha256": null
+    }
+  ],
+  "verification": {
+    "url_tests": {
+      "passed": 22,
+      "failed": 0
+    },
+    "ts_syntax_files": 61,
+    "externalized_page_bundles": 3,
+    "php_tests": "not run",
+    "full_typecheck": "not run",
+    "next_build": "not run",
+    "deployment": "not performed"
+  }
+}

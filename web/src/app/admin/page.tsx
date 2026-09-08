@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
-import { getAdminOverview, moderateAdminBusiness, moderateAdminSubscription, type AdminOverview } from "@/lib/admin";
+import { getAdminOverview, moderateAdminSubscription, moderateAdminShowcase, moderateAdminAdvertisement, moderateAdminPortfolio, type AdminOverview } from "@/lib/admin";
 import { getAdminSettings, saveAdminSetting } from "@/lib/admin";
 import AdminPagesTab from "@/components/admin/AdminPagesTab";
 import AdminBlogTab from "@/components/admin/AdminBlogTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
+import AdminUsersTab from "@/components/admin/AdminUsersTab";
 
-const TABS = ["Overview", "Homepage", "Pages", "Blog", "Media"] as const;
+const TABS = ["Overview", "Users", "Homepage", "Pages", "Blog", "Media"] as const;
 type Tab = (typeof TABS)[number];
 
 const HOMEPAGE_KEYS = [
@@ -79,7 +80,7 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    if (!authLoading && (!user || !user.roles.includes("admin"))) router.replace("/");
+    if (!authLoading && (!user || !user.roles.includes("admin"))) router.replace("/admin/login");
   }, [authLoading, user, router]);
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export default function AdminPage() {
         </div>
       </header>
 
+      <p className="mb-6"><a href="/admin/businesses" className="btn btn-primary">مدیریت کامل کسب‌وکارها: تأیید، رد، تعلیق و نشان‌ها</a></p>
       <nav className="mb-6 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
@@ -161,14 +163,32 @@ export default function AdminPage() {
           <Queue
             title="کسب‌وکارها"
             items={data?.queues.businesses ?? []}
-            action={(id) => moderateAdminBusiness(id, "approved")}
-            label="تأیید"
+            action={async () => { router.push("/admin/businesses"); }}
+            label="بررسی و تصمیم"
           />
           <Queue
             title="اشتراک‌ها"
             items={data?.queues.subscriptions ?? []}
             action={(id) => moderateAdminSubscription(id, "active")}
             label="فعال‌سازی"
+          />
+          <Queue
+            title="گالری تصاویر (ویترین)"
+            items={data?.queues.showcases ?? []}
+            action={(id) => moderateAdminShowcase(id, true)}
+            label="تأیید و انتشار"
+          />
+          <Queue
+            title="تبلیغات"
+            items={data?.queues.advertisements ?? []}
+            action={(id) => moderateAdminAdvertisement(id, "approved")}
+            label="تأیید"
+          />
+          <Queue
+            title="نمونه‌کار طراحان"
+            items={data?.queues.portfolios ?? []}
+            action={(id) => moderateAdminPortfolio(id, "approved")}
+            label="تأیید"
           />
         </section>
       )}
@@ -218,6 +238,7 @@ export default function AdminPage() {
       {tab === "Pages" && <AdminPagesTab />}
       {tab === "Blog" && <AdminBlogTab />}
       {tab === "Media" && <AdminMediaTab />}
+      {tab === "Users" && <AdminUsersTab />}
     </main>
   );
 }

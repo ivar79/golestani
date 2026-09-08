@@ -1,198 +1,197 @@
 <?php
-
 namespace App\Http\Controllers\Api;
-
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Business\BusinessRequest;
 use App\Http\Requests\Business\SearchBusinessRequest;
 use App\Models\Business;
+use App\Services\BusinessAudit;
+use App\Services\BusinessMedia;
+use App\Services\BusinessPublication;
+use App\Services\SearchRankingService;
+use App\Support\BusinessUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Services\SearchRankingService;
-
+use Illuminate\Validation\Rule;
 class BusinessController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    private function ownerData(Business $b): array
     {
-        return response()->json($request->user()->businesses()->latest()->get());
+        return $b->toArray() + ['public_url' => BusinessUrl::public($b)];
     }
-
-    public function store(BusinessRequest $request): JsonResponse
+    public function index(Request $r): JsonResponse
     {
-        // P1: a plain user's first business upgrades them to business_owner.
-        // The role is assigned server-side (never from user input), and it
-        // only opens the owner's own-resource endpoints — no escalation.
-        if ($request->user()->hasRole('user') && ! $request->user()->hasRole('business_owner')) {
-            $request->user()->assignRole('business_owner');
-        }
-
-        $business = $request->user()->businesses()->create($this->payload($request));
-        $this->syncGeometry($business);
-
-        return response()->json($business->fresh(), 201);
+        return response()->json($r->user()->businesses()->latest()->get()->map(fn(Business $b) => $this->ownerData($b)));
     }
-
-    public function show(Request $request, Business $business): JsonResponse
+    public function store(BusinessRequest $r): JsonResponse
     {
-        // P0 security hotfix: previously any business_owner could read any
-        // business by ID (including the owner's phone) — IDOR.
-        $this->authorizeOwner($request, $business);
-
-        return response()->json($business->load('owner:id,phone'));
+        $b = DB::transaction(function () use ($r) {
+            // Serialize first-business role assignment for a given user.
+            $user = $r->user()->newQuery()->lockForUpdate()->findOrFail($r->user()->id);
+            if ($user->hasRole('user') && !$user->hasRole('business_owner')) $user->assignRole('business_owner');
+            $data = $r->validated();
+            $data['slug'] = (Str::slug($data['name']) ?: 'business').'-'.Str::lower((string) Str::ulid());
+            $data['status'] = 'pending';
+            $b = $user->businesses()->create($data);
+            $this->syncGeometry($b);
+            BusinessAudit::record($r, 'business.created', $b->id, ['fields' => array_keys($r->validated()), 'status' => 'pending']);
+            return $b->fresh();
+        });
+        return response()->json($this->ownerData($b), 201);
     }
-
-    public function update(BusinessRequest $request, Business $business): JsonResponse
+    public function show(Request $r, Business $business): JsonResponse
     {
-        $this->authorizeOwner($request, $business);
-        $data = $this->payload($request);
-        unset($data['slug']);
-        $business->update($data + ['status' => 'pending', 'moderation_note' => null]);
-        $this->syncGeometry($business);
-
-        return response()->json($business->fresh());
+        $this->authorizeOwner($r, $business);
+        return response()->json($this->ownerData($business->load('images')));
     }
-
-    public function upload(Request $request, Business $business): JsonResponse
+    public function update(BusinessRequest $r, Business $business): JsonResponse
     {
-        $this->authorizeOwner($request, $business);
-        $request->validate([
-            'logo' => ['nullable', 'image', 'max:2048'],
-            'cover_image' => ['nullable', 'image', 'max:5120'],
+        $b = DB::transaction(function () use ($r, $business) {
+            $b = Business::lockForUpdate()->findOrFail($business->id);
+            $this->authorizeOwner($r, $b);
+            $before = $b->status;
+            $b->fill($r->validated());
+            $fields = array_keys($b->getDirty());
+            if ($fields !== []) {
+                BusinessPublication::invalidate($b);
+                $this->syncGeometry($b);
+                BusinessAudit::record($r, 'business.updated', $b->id, ['fields' => $fields, 'from_status' => $before, 'to_status' => $b->status]);
+            }
+            return $b->fresh();
+        });
+        Cache::forget('search_facets_v1');
+        return response()->json($this->ownerData($b));
+    }
+    public function upload(Request $r, Business $business): JsonResponse
+    {
+        $this->authorizeOwner($r, $business);
+        $r->validate([
+            'logo' => array_merge(['nullable'], BusinessMedia::rules(2048)),
+            'cover_image' => array_merge(['nullable'], BusinessMedia::rules()),
+            'remove_logo' => ['sometimes','boolean'], 'remove_cover_image' => ['sometimes','boolean'],
         ]);
-
-        $data = [];
-        if ($request->hasFile('logo')) {
-            $path = $request->file('logo')->store('businesses/logos', 'public');
-            $data['logo'] = '/storage/' . $path;
+        foreach (['logo','cover_image'] as $field) {
+            if ($r->hasFile($field) && $r->boolean('remove_'.$field)) abort(422, 'آپلود و حذف همزمان یک تصویر مجاز نیست.');
         }
-        if ($request->hasFile('cover_image')) {
-            $path = $request->file('cover_image')->store('businesses/covers', 'public');
-            $data['cover_image'] = '/storage/' . $path;
+        $paths = []; $old = [];
+        try {
+            foreach (['logo','cover_image'] as $field) {
+                if ($r->hasFile($field)) $paths[$field] = BusinessMedia::store($r->file($field), $field === 'logo' ? 'logos' : 'covers');
+                elseif ($r->boolean('remove_'.$field)) $paths[$field] = null;
+            }
+            abort_if($paths === [], 422, 'تصویری برای تغییر انتخاب نشده است.');
+            $b = DB::transaction(function () use ($r, $business, $paths, &$old) {
+                $b = Business::lockForUpdate()->findOrFail($business->id);
+                $this->authorizeOwner($r, $b);
+                $before = $b->status;
+                foreach ($paths as $field => $path) { $old[] = $b->{$field}; $b->{$field} = $path; }
+                BusinessPublication::invalidate($b);
+                BusinessAudit::record($r, 'business.media_changed', $b->id, ['fields' => array_keys($paths), 'from_status' => $before, 'to_status' => $b->status]);
+                return $b->fresh();
+            });
+        } catch (\Throwable $e) {
+            foreach ($paths as $path) BusinessMedia::cleanup($path);
+            throw $e;
         }
-
-        if (!empty($data)) {
-            $business->update($data);
-        }
-
-        return response()->json($business->fresh());
+        foreach ($old as $path) BusinessMedia::cleanup($path);
+        Cache::forget('search_facets_v1');
+        return response()->json($this->ownerData($b));
     }
-
-    public function destroy(Request $request, Business $business): JsonResponse
+    public function destroy(Request $r, Business $business): JsonResponse
     {
-        $this->authorizeOwner($request, $business);
-        $business->delete();
-
+        DB::transaction(function () use ($r, $business) {
+            $b = Business::lockForUpdate()->findOrFail($business->id);
+            $this->authorizeOwner($r, $b);
+            BusinessAudit::record($r, 'business.deleted', $b->id, ['from_status' => $b->status]);
+            $b->delete();
+        });
+        // Files intentionally retained on whole-business deletion to avoid
+        // deleting media still referenced by other modules. See retention guide.
+        Cache::forget('search_facets_v1');
         return response()->json(['message' => 'پروفایل کسب‌وکار حذف شد.']);
     }
-
-    public function search(SearchBusinessRequest $request, SearchRankingService $ranking): JsonResponse
+    public function moderate(Request $r, Business $business): JsonResponse
     {
-        $data = $request->validated();
+        abort_unless($r->user()?->hasRole('admin'), 403);
+        $data = $r->validate([
+            'status' => ['required', Rule::in(['approved','rejected','suspended'])],
+            'moderation_note' => ['nullable','string','max:1000'],
+            'badges' => ['sometimes','array','max:3'],
+            'badges.*' => ['string','distinct', Rule::in(config('business.badges'))],
+        ]);
+        $b = DB::transaction(function () use ($r, $business, $data) {
+            $b = Business::lockForUpdate()->findOrFail($business->id);
+            $before = $b->status;
+            $b->status = $data['status'];
+            $b->moderation_note = $data['moderation_note'] ?? null;
+            if (array_key_exists('badges', $data)) $b->badges = $data['badges'];
+            if ($b->status !== 'approved') $b->badges = array_values(array_diff((array) $b->badges, ['verified']));
+            $b->save();
+            BusinessAudit::record($r, 'business.moderated', $b->id, [
+                'from_status' => $before, 'to_status' => $b->status,
+                'badges' => $b->badges, 'has_note' => !empty($b->moderation_note),
+            ]);
+            return $b->fresh();
+        });
+        Cache::forget('search_facets_v1');
+        return response()->json($this->ownerData($b));
+    }
+    public function search(SearchBusinessRequest $r, SearchRankingService $ranking): JsonResponse
+    {
+        $data = $r->validated();
+        $pgsql = DB::connection()->getDriverName() === 'pgsql';
+        $like = $pgsql ? 'ilike' : 'like';
         $query = Business::query()->where('status', 'approved');
         if (!empty($data['q'])) {
-            $term = addcslashes($data['q'], '%_');
-            $query->where(function ($builder) use ($term): void {
-                $builder->where('name', 'ilike', "%{$term}%")
-                    ->orWhere('category', 'ilike', "%{$term}%")
-                    ->orWhere('description', 'ilike', "%{$term}%")
-                    ->orWhere('services', 'ilike', "%{$term}%")
-                    ->orWhere('social_links', 'ilike', "%{$term}%");
+            $term = '%'.addcslashes($data['q'], '%_\\').'%';
+            $query->where(function ($q) use ($term, $like, $pgsql) {
+                $q->where('name', $like, $term)->orWhere('category', $like, $term)->orWhere('description', $like, $term);
+                // Identifiers are fixed; all user input remains bound parameters.
+                foreach (['services','social_links'] as $column) {
+                    if ($pgsql) $q->orWhereRaw('CAST('.$column.' AS TEXT) ILIKE ?', [$term]);
+                    else $q->orWhere($column, 'like', $term);
+                }
             });
         }
-        foreach (['city', 'neighborhood', 'category'] as $field) {
-            if (!empty($data[$field])) $query->where($field, $data[$field]);
-        }
+        foreach (['city','neighborhood','category'] as $field) if (!empty($data[$field])) $query->where($field, $data[$field]);
         if (!empty($data['verified'])) $query->whereJsonContains('badges', 'verified');
-        // M1: previously-declared but unimplemented filters. `rating` and
-        // `open` have no backing data model yet (no reviews / opening hours
-        // exist), so they are intentionally ignored rather than failing —
-        // the UI must not advertise them until a data source exists.
-        if (!empty($data['showcase'])) {
-            $query->whereHas('showcases', fn ($q) => $q->where('is_published', true));
-        }
+        if (!empty($data['showcase'])) $query->whereHas('showcases', fn($q) => $q->where('is_published', true));
         $hasPoint = isset($data['latitude'], $data['longitude']);
-        $pgsql = DB::connection()->getDriverName() === 'pgsql';
         if ($hasPoint && isset($data['radius']) && $pgsql) $query->whereRaw('ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)', [$data['longitude'], $data['latitude'], $data['radius']]);
         if ($hasPoint && $pgsql) {
-            $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderBy('distance_meters');
-        } else $query->latest();
-        $perPage=(int)($data['limit'] ?? 20); $page=(int)($data['page'] ?? 1);
-        $paginator=$query->paginate($perPage,['*'],'page',$page);
-        $items=$paginator->getCollection()->map(fn(Business $b): array => [
+            $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderBy('distance_meters')->orderBy('id');
+        } else $query->latest()->orderByDesc('id');
+        $p = $query->paginate((int) ($data['limit'] ?? 20));
+        $items = $p->getCollection()->map(fn(Business $b) => [
             'id'=>$b->id,'slug'=>$b->slug,'name'=>$b->name,'category'=>$b->category,'city'=>$b->city,'neighborhood'=>$b->neighborhood,'address'=>$b->address,
-            'coordinates'=>['latitude'=>$b->latitude,'longitude'=>$b->longitude],'distance'=>$b->distance_meters ?? null,'verification_badge'=>in_array('verified',(array)$b->badges,true),
-            'badges'=>$b->badges,'rating'=>null,'phone'=>$b->phone,'services'=>$b->services,'description'=>$b->description,
-            'navigation_url'=>$this->navigationUrl($b),
+            'coordinates'=>['latitude'=>$b->latitude,'longitude'=>$b->longitude],'distance'=>$b->distance_meters ?? null,
+            'verification_badge'=>in_array('verified',(array)$b->badges,true),'badges'=>$b->badges,'rating'=>null,
+            'phone'=>$b->phone,'services'=>$b->services,'description'=>$b->description,
+            'navigation_url'=>$b->latitude === null || $b->longitude === null ? null : 'https://www.google.com/maps/dir/?api=1&destination='.$b->latitude.','.$b->longitude,
         ]);
-        return response()->json(['data'=>$items,'pagination'=>['page'=>$paginator->currentPage(),'limit'=>$paginator->perPage(),'total'=>$paginator->total(),'last_page'=>$paginator->lastPage(),'next_page'=>$paginator->nextPageUrl()]]);
+        return response()->json(['data'=>$items,'pagination'=>['page'=>$p->currentPage(),'limit'=>$p->perPage(),'total'=>$p->total(),'last_page'=>$p->lastPage(),'next_page'=>$p->nextPageUrl()]]);
     }
-
-    /**
-     * M1: GET /search/facets — distinct filter values for the search UI.
-     * Public, cheap, cacheable (5 min) — queried on every search page load.
-     */
     public function facets(): JsonResponse
     {
-        $facets = Cache::remember('search_facets_v1', now()->addMinutes(5), function (): array {
-            $base = Business::query()->where('status', 'approved');
-
-            return [
-                'cities' => (clone $base)->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
-                'categories' => (clone $base)->whereNotNull('category')->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category'),
-                'neighborhoods' => (clone $base)->whereNotNull('neighborhood')->where('neighborhood', '!=', '')->distinct()->orderBy('neighborhood')->pluck('neighborhood'),
-            ];
-        });
-
-        return response()->json($facets);
+        return response()->json(Cache::remember('search_facets_v1', 300, function () {
+            $result = []; $base = Business::where('status', 'approved');
+            foreach (['cities'=>'city','categories'=>'category','neighborhoods'=>'neighborhood'] as $key=>$column) {
+                $result[$key] = (clone $base)->whereNotNull($column)->where($column,'!=','')->distinct()->orderBy($column)->pluck($column);
+            }
+            return $result;
+        }));
     }
-
-    private function navigationUrl(Business $business): ?string
+    private function syncGeometry(Business $b): void
     {
-        if ($business->latitude === null || $business->longitude === null) return null;
-        return 'https://www.google.com/maps/dir/?api=1&destination='.$business->latitude.','.$business->longitude;
+        if (DB::connection()->getDriverName() !== 'pgsql') return;
+        if ($b->latitude !== null && $b->longitude !== null) {
+            DB::statement('UPDATE businesses SET geom = ST_SetSRID(ST_MakePoint(?, ?), 4326) WHERE id = ?', [$b->longitude,$b->latitude,$b->id]);
+        } else DB::statement('UPDATE businesses SET geom = NULL WHERE id = ?', [$b->id]);
     }
-
-    public function moderate(Request $request, Business $business): JsonResponse
+    private function authorizeOwner(Request $r, Business $b): void
     {
-        abort_unless($request->user()?->hasRole('admin'), 403);
-        $data = $request->validate([
-            'status' => ['required', 'in:approved,rejected,suspended'],
-            'moderation_note' => ['nullable', 'string', 'max:1000'],
-        ]);
-        $business->update($data);
-
-        return response()->json($business->fresh());
-    }
-
-    private function payload(BusinessRequest $request): array
-    {
-        $data = $request->validated();
-        $data['slug'] = Str::slug($data['name']).'-'.Str::lower(Str::random(8));
-
-        return $data + ['status' => 'pending'];
-    }
-
-    private function syncGeometry(Business $business): void
-    {
-        if (DB::connection()->getDriverName() === 'pgsql' && $business->latitude !== null && $business->longitude !== null) {
-            DB::statement(
-                'UPDATE businesses SET geom = ST_SetSRID(ST_MakePoint(?, ?), 4326) WHERE id = ?',
-                [$business->longitude, $business->latitude, $business->id]
-            );
-
-            return;
-        }
-
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement('UPDATE businesses SET geom = NULL WHERE id = ?', [$business->id]);
-        }
-    }
-
-    private function authorizeOwner(Request $request, Business $business): void
-    {
-        abort_unless($request->user()?->hasRole('admin') || $business->user_id === $request->user()?->id, 403);
+        abort_unless($r->user()?->hasRole('admin') || (int) $b->user_id === (int) $r->user()?->id, 403);
     }
 }
