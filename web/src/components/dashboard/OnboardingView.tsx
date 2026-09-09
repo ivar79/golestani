@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { CreditCard, Palette, Sparkles, ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
+import { CreditCard, Palette, Sparkles, ArrowLeft } from "lucide-react";
 
 interface OnboardingViewProps {
   onSelect: (path: number) => void;

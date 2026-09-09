@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cms, useHomepageContent } from "@/lib/homepage";
 import { getPublicAds, type Advertisement } from "@/lib/ads";
@@ -38,14 +38,6 @@ function ChevronDown() {
   return (
     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
-function MapPinIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="10" r="3" />
     </svg>
   );
 }
@@ -87,17 +79,7 @@ export default function AppTaskbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const [city, setCity] = useState("");
   const [ads, setAds] = useState<Advertisement[]>([]);
-  const qInputRef = useRef<HTMLInputElement>(null);
-
-  // Focus the hero query input when the panel opens (after the open animation).
-  useEffect(() => {
-    if (!searchOpen) return;
-    const t = setTimeout(() => qInputRef.current?.focus(), 160);
-    return () => clearTimeout(t);
-  }, [searchOpen]);
 
   // CMS ad strip (empty -> renders nothing).
   useEffect(() => {
@@ -182,18 +164,6 @@ export default function AppTaskbar() {
     setSearchOpen(false);
     document.body.style.overflow = "hidden";
   }, [setDrawerOpen, setSearchOpen]);
-
-  const submitSearch = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      const params = new URLSearchParams();
-      if (q.trim()) params.set("q", q.trim());
-      if (city.trim()) params.set("city", city.trim());
-      router.push(`/search${params.toString() ? `?${params.toString()}` : ""}`);
-      setSearchOpen(false);
-    },
-    [q, city, router]
-  );
 
   useEffect(() => {
     if (!menuOpen && !drawerOpen && !searchOpen && !userMenuOpen) return;

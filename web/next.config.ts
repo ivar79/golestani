@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 const nextConfig:NextConfig = {
-  images: { remotePatterns: [{ protocol:"https",hostname:"**" }] },
+  images: { remotePatterns: [{ protocol:"https",hostname:"**" },{ protocol:"http",hostname:"localhost",port:"8020" },{ protocol:"http",hostname:"127.0.0.1",port:"8020" }] },
   async headers() {
     return [{ source:"/:path*", headers:[
       {key:"X-Content-Type-Options",value:"nosniff"},

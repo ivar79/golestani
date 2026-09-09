@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
-import { ShieldCheck, Eye, EyeOff, ArrowRight, Lock, User as UserIcon } from "lucide-react";
+import { ShieldCheck, Eye, EyeOff, ArrowRight, User as UserIcon } from "lucide-react";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -38,12 +38,6 @@ export default function AdminLoginPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function fillDemoCredentials() {
-    setIdentifier("admin@golestani.ir");
-    setPassword("Admin@Golestani2026!");
-    setError(null);
   }
 
   return (
@@ -122,17 +116,6 @@ export default function AdminLoginPage() {
           >
             {loading ? "در حال اعتبارسنجی..." : "ورود به پنل مدیریت"}
           </button>
-
-          {/* Staging / Testing Credentials Shortcut */}
-          <div className="mt-2 pt-4 border-t border-white/[0.06] text-center">
-            <button
-              type="button"
-              onClick={fillDemoCredentials}
-              className="text-xs text-cyan-400/80 hover:text-cyan-300 hover:underline transition-colors"
-            >
-              درج خودکار مشخصات ورود تستی (Staging)
-            </button>
-          </div>
         </form>
 
         <div className="mt-6 text-center">

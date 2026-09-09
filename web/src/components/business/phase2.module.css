@@ -24,12 +24,21 @@
 .gallery { display:flex; flex-wrap:wrap; gap:16px; margin:20px 0; }
 .gallery figure { width:180px; margin:0; }
 .gallery img { width:180px; height:140px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+/* fill-mode containers for next/image galleries (frame > Image fill) */
+.frame { position:relative; width:180px; height:140px; }
+.frame > img { border-radius:8px; border:1px solid var(--line); }
 .gallery figcaption { margin-top:8px; }
 .social { display:grid; grid-template-columns:150px minmax(0,1fr) auto; gap:12px; align-items:end; margin:12px 0; }
 .list { list-style:none; padding:0; margin:20px 0; }
 .list>li { padding:20px 0; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+/* Legacy plain-<img> visuals; next/image variants below reproduce them via classes + style. */
 .hero { width:100%; max-height:320px; object-fit:cover; border-radius:12px; margin-bottom:24px; }
 .logo { width:96px; height:96px; object-fit:contain; border:1px solid var(--line); border-radius:12px; }
+/* next/image fill containers: keep legacy box geometry; crop/fit moves onto the Image element */
+.heroFrame { width:100%; max-height:320px; height:320px; border-radius:12px; margin-bottom:24px; }
+.heroFrame > img { object-fit:cover; border-radius:12px; }
+.logoFrame { width:96px; height:96px; border:1px solid var(--line); border-radius:12px; }
+.logoFrame > img { object-fit:contain; }
 .check { display:flex!important; align-items:center; gap:8px; }
 .page pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.875rem; }
 @media(max-width:640px) { .page { padding:28px 16px 80px; margin-top:80px; border-radius:0; } .grid { grid-template-columns:1fr; } .social { grid-template-columns:1fr; border-bottom:1px solid var(--line); padding-bottom:16px; } .toolbar>* { max-width:100%; } }

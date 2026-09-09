@@ -27,11 +27,15 @@ class ApiSecurityLog
         if ($auth && $response instanceof \Illuminate\Http\JsonResponse && $response->getStatusCode() < 400) {
             $actorId = $response->getData(true)['user']['id'] ?? $actorId;
         }
-        Log::build([
+        // Tests that spy the Log facade make Log::build() return null;
+        // logging must never break the HTTP response itself.
+        $logger = Log::build([
             'driver' => 'daily', 'path' => storage_path('logs/security.log'),
             'level' => 'info', 'days' => 30, 'permission' => 0640,
             'formatter' => \Monolog\Formatter\JsonFormatter::class,
-        ])->info($auth ? 'auth.request' : 'api.rejected', [
+        ]);
+        if ($logger === null) return;
+        $logger->info($auth ? 'auth.request' : 'api.rejected', [
             'request_id' => $request->attributes->get('security_request_id'),
             'actor_id' => $actorId,
             'route' => $request->route()?->uri(), 'method' => $request->method(),

@@ -97,6 +97,10 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // EMULATE_PREPARES keeps pooled Postgres endpoints (e.g. Neon
+            // pooler) compatible. PHP booleans are still stored as real SQL
+            // booleans because the App\Database\PostgresBooleanSafeConnection
+            // (registered in AppServiceProvider) binds them typed.
             'options' => extension_loaded('pdo_pgsql') ? array_filter([
                 PDO::ATTR_EMULATE_PREPARES => true,
             ]) : [],

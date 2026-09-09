@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { badgeLabel, getAdminBusinesses, getBusinessAudit, mediaUrl, moderateBusiness, safeHttpUrl, statusLabel, type AuditEvent, type Page, type Phase2Business } from "@/lib/phase2";
 import s from "@/components/business/phase2.module.css";
+import Image from "next/image";
 export default function BusinessModerationPage() {
   const router=useRouter();const {user,loading:authLoading}=useAuth();
   const [status,setStatus]=useState("pending"),[query,setQuery]=useState(""),[search,setSearch]=useState("");
@@ -18,17 +19,29 @@ export default function BusinessModerationPage() {
   const [message,setMessage]=useState<{text:string;error?:boolean}|null>(null);
   const [audit,setAudit]=useState<Page<AuditEvent>|null>(null),[auditPage,setAuditPage]=useState(1),[auditLoading,setAuditLoading]=useState(false);
   useEffect(()=>{if(!authLoading&&!user?.roles.includes("admin"))router.replace("/admin/login");},[user,authLoading,router]);
+  // Data loading lives in async callbacks (not synchronous effect-body
+  // setState) per the react-hooks/set-state-in-effect rule.
   useEffect(()=>{
     if(!user?.roles.includes("admin"))return;
-    const controller=new AbortController();setLoading(true);
-    getAdminBusinesses(status,search,page,controller.signal).then(setData).catch(e=>{if(!controller.signal.aborted)setMessage({text:extractApiError(e),error:true});}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    const controller=new AbortController();
+    void (async()=>{
+      setLoading(true);
+      try{setData(await getAdminBusinesses(status,search,page,controller.signal));}
+      catch(e){if(!controller.signal.aborted)setMessage({text:extractApiError(e),error:true});}
+      finally{if(!controller.signal.aborted)setLoading(false);}
+    })();
     return ()=>controller.abort();
   },[user,status,search,page,revision]);
   useEffect(()=>{
     if(!selected?.id)return;
-    let active=true;setAuditLoading(true);
-    getBusinessAudit(selected.id,auditPage).then(x=>{if(active)setAudit(x);}).catch(e=>{if(active)setMessage({text:extractApiError(e),error:true});}).finally(()=>{if(active)setAuditLoading(false);});
-    return ()=>{active=false;};
+    const controller=new AbortController();
+    void (async()=>{
+      setAuditLoading(true);
+      try{setAudit(await getBusinessAudit(selected.id,auditPage));}
+      catch(e){if(!controller.signal.aborted)setMessage({text:extractApiError(e),error:true});}
+      finally{if(!controller.signal.aborted)setAuditLoading(false);}
+    })();
+    return ()=>controller.abort();
   },[selected?.id,auditPage,revision]);
   function choose(b:Phase2Business){setSelected(b);setNote(b.moderation_note||"");setBadges(b.badges||[]);setDecision("approved");setAudit(null);setAuditPage(1);setMessage(null);}
   async function submit(e:FormEvent){
@@ -50,7 +63,7 @@ export default function BusinessModerationPage() {
       <p style={{whiteSpace:"pre-wrap"}}>{selected.description}</p><p>{[selected.city,selected.neighborhood,selected.address].filter(Boolean).join("، ")}</p><p dir="ltr">{selected.phone} {selected.email}</p><p>خدمات: {(selected.services||[]).join("، ")}</p>
       {selected.latitude!=null&&selected.longitude!=null&&<p dir="ltr">{selected.latitude}, {selected.longitude}</p>}
       <div className={s.toolbar}>{Object.entries(selected.social_links||{}).map(([key,raw])=>{const url=safeHttpUrl(raw);return url?<a key={key} href={url} target="_blank" rel="noopener noreferrer">{key}</a>:<span key={key}>لینک نامعتبر: {key}</span>;})}</div>
-      <div className={s.gallery}>{[{id:"logo",path:selected.logo,alt:"لوگو"},{id:"cover",path:selected.cover_image,alt:"کاور"},...(selected.images||[])].map(image=>{const url=mediaUrl(image.path);return url?<figure key={image.id}><a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={image.alt||"تصویر کسب‌وکار"}/></a></figure>:null;})}</div>
+      <div className={s.gallery}>{[{id:"logo",path:selected.logo,alt:"لوگو"},{id:"cover",path:selected.cover_image,alt:"کاور"},...(selected.images||[])].map(image=>{const url=mediaUrl(image.path);return url?<figure key={image.id}><a href={url} target="_blank" rel="noopener noreferrer"><span className={s.frame}><Image src={url} alt={image.alt||"تصویر کسب‌وکار"} fill sizes="180px"/></span></a></figure>:null;})}</div>
       <form onSubmit={submit}><fieldset disabled={busy}><div className={s.grid}><label>تصمیم<select value={decision} onChange={e=>setDecision(e.target.value as typeof decision)}><option value="approved">تأیید و انتشار</option><option value="rejected">رد</option><option value="suspended">تعلیق و توقف نمایش عمومی</option></select></label><label>دلیل یا توضیح تصمیم<textarea maxLength={1000} required={decision!=="approved"} value={note} onChange={e=>setNote(e.target.value)}/></label></div>
         <p className={s.muted}>نشان احراز شده فقط برای کسب‌وکار تأییدشده باقی می‌ماند.</p><div className={s.toolbar}>{Object.entries(badgeLabel).map(([key,label])=><label key={key} className={s.check}><input type="checkbox" checked={badges.includes(key)} onChange={e=>setBadges(xs=>e.target.checked?[...xs,key]:xs.filter(x=>x!==key))}/>{label}</label>)}</div>
         <button type="submit">{busy?"در حال ثبت…":"ثبت تصمیم و نشان‌ها"}</button></fieldset></form>

@@ -1,5 +1,7 @@
 import axios from "axios";
-export const TOKEN_KEY = "golestani_token";
+import { TOKEN_KEY, clearSession } from "@/lib/session";
+// Backwards-compatible re-export: existing imports of TOKEN_KEY keep working.
+export { TOKEN_KEY } from "@/lib/session";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://golestani-api-production.up.railway.app/api";
 const api = axios.create({
   baseURL: API_URL.replace(/\/$/, ""),
@@ -21,6 +23,25 @@ api.interceptors.request.use(config => {
   }
   return config;
 });
+// Global 401 handling: a rejected/expired token must end the client session
+// and route the user to the right login page — one handler for the whole app,
+// so parallel error handling never diverges.
+// - /admin* pages authenticate through /admin/login (password flow).
+// - Everything else authenticates through /login (OTP flow).
+// /login and /otp are exempt: those pages already run their own redirect
+// logic and a 401 bounce there could loop.
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (axios.isAxiosError(error) && error.response?.status === 401 && typeof window !== "undefined") {
+      clearSession();
+      const path = window.location.pathname;
+      const onAuthPage = path === "/login" || path === "/otp" || path === "/admin/login";
+      if (!onAuthPage) window.location.assign(path.startsWith("/admin") ? "/admin/login" : "/login");
+    }
+    return Promise.reject(error);
+  },
+);
 export function extractApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { errors?: Record<string, string[]>; message?: string } | undefined;

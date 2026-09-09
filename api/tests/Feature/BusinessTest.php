@@ -78,7 +78,14 @@ class BusinessTest extends TestCase
         $business = $owner->businesses()->create($this->data() + ['slug' => 'lifecycle', 'status' => 'draft']);
         $this->assertSame('draft', $business->status);
 
+        // Since phase 2, a save whose content is unchanged keeps the current
+        // status (BusinessPublication::invalidate only runs for real edits),
+        // so re-submit identical data must NOT re-moderate (draft stays draft).
         $this->actingAs($owner)->putJson('/api/businesses/'.$business->id, $this->data())->assertOk();
+        $this->assertSame('draft', $business->fresh()->status);
+
+        // A real content edit sends the business back to the moderation queue.
+        $this->actingAs($owner)->putJson('/api/businesses/'.$business->id, array_merge($this->data(), ['name' => 'نام ویرایش‌شده']))->assertOk();
         $this->assertSame('pending', $business->fresh()->status);
 
         foreach (['approved', 'rejected', 'suspended'] as $status) {

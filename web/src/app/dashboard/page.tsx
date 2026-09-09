@@ -7,6 +7,7 @@ import { extractApiError } from "@/lib/api";
 import { getQrUrl } from "@/lib/businesses";
 import { OnboardingView } from "@/components/dashboard/OnboardingView";
 import MapViewLazy from "@/components/map/MapViewLazy";
+import Image from "next/image";
 import { addImage, badgeLabel, getImages, getOwnedBusiness, getOwnedBusinesses, mediaUrl, normalizeSocial, removeImage, safeHttpUrl, saveProfile, statusLabel, uploadProfileMedia, type BusinessImage, type BusinessInput, type Phase2Business } from "@/lib/phase2";
 import s from "@/components/business/phase2.module.css";
 
@@ -56,8 +57,13 @@ export default function Dashboard() {
   },[user]);
   useEffect(()=>{
     if (!editing?.id) return;
-    let active=true; setGalleryLoading(true);
-    getImages(editing.id).then(data=>{if(active)setImages(data);}).catch(e=>{if(active)setMessage({text:extractApiError(e),error:true});}).finally(()=>{if(active)setGalleryLoading(false);});
+    let active=true;
+    void (async()=>{
+      setGalleryLoading(true);
+      try{const data=await getImages(editing.id);if(active)setImages(data);}
+      catch(e){if(active)setMessage({text:extractApiError(e),error:true});}
+      finally{if(active)setGalleryLoading(false);}
+    })();
     return ()=>{active=false;};
   },[editing?.id]);
   const change = (key:keyof Form, value:string) => setForm(f=>({...f,[key]:value}));
@@ -135,14 +141,16 @@ export default function Dashboard() {
         <button type="button" disabled={social.length>=10} onClick={()=>setSocial(xs=>[...xs,{key:"",url:""}])}>افزودن شبکه</button>
       </fieldset>
       <fieldset disabled={busy} className={s.section} ref={mediaForm}><legend>لوگو و تصویر کاور</legend><div className={s.grid}>
-        <label>لوگو، حداکثر ۲ مگابایت{mediaUrl(editing?.logo)&&<img className={s.logo} src={mediaUrl(editing?.logo)!} alt="لوگوی فعلی"/>}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setLogo(e.target.files?.[0]||null)}/>{logo&&<span>{logo.name} (پس از ذخیره آپلود می‌شود)</span>}</label>
-        <label>کاور، حداکثر ۵ مگابایت{mediaUrl(editing?.cover_image)&&<img className={s.logo} src={mediaUrl(editing?.cover_image)!} alt="کاور فعلی"/>}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setCover(e.target.files?.[0]||null)}/>{cover&&<span>{cover.name} (پس از ذخیره آپلود می‌شود)</span>}</label>
+        <label>لوگو، حداکثر ۲ مگابایت{mediaUrl(editing?.logo)&&<span className={s.logoFrame}><Image src={mediaUrl(editing?.logo)!} alt="لوگوی فعلی" fill sizes="96px"/></span>}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setLogo(e.target.files?.[0]||null)}/>{logo&&<span>{logo.name} (پس از ذخیره آپلود می‌شود)</span>}</label>
+        <label>کاور، حداکثر ۵ مگابایت{mediaUrl(editing?.cover_image)&&<span className={s.logoFrame}><Image src={mediaUrl(editing?.cover_image)!} alt="کاور فعلی" fill sizes="96px"/></span>}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setCover(e.target.files?.[0]||null)}/>{cover&&<span>{cover.name} (پس از ذخیره آپلود می‌شود)</span>}</label>
       </div><div className={s.toolbar}>{editing?.logo&&<button type="button" onClick={()=>void clearMedia("logo")}>حذف لوگوی فعلی</button>}{editing?.cover_image&&<button type="button" onClick={()=>void clearMedia("cover_image")}>حذف کاور فعلی</button>}</div></fieldset>
       <div className={s.toolbar}><button type="submit" disabled={busy}>{busy?"در حال ذخیره…":"ذخیره پروفایل"}</button><span className={s.muted}>خالی‌کردن فیلد و ذخیره، مقدار قبلی آن را پاک می‌کند.</span></div>
     </form>
     <section className={s.section}><h2>گالری کسب‌وکار</h2><p className={s.muted}>پنج تصویر رایگان، بدون نیاز به اشتراک. آپلود گالری مستقل از دکمه ذخیره پروفایل است.</p>
-      {!editing?<p>ابتدا پروفایل را ذخیره کنید.</p>:<><label>افزودن تصاویر<input disabled={busy||galleryLoading||images.length>=5} type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={e=>{void gallery(e.target.files);e.target.value="";}}/></label>{galleryLoading?<p aria-busy="true">در حال دریافت تصاویر…</p>:<div className={s.gallery}>{images.map(image=><figure key={image.id}>{mediaUrl(image.path)&&<img src={mediaUrl(image.path)!} alt={image.alt||"تصویر کسب‌وکار"}/>}<figcaption>{deleteImage===image.id?<><span>حذف این تصویر؟ </span><button disabled={busy} onClick={()=>void eraseImage(image.id)}>بله، حذف</button><button disabled={busy} onClick={()=>setDeleteImage(null)}>انصراف</button></>:<button disabled={busy} onClick={()=>setDeleteImage(image.id)}>حذف تصویر</button>}</figcaption></figure>)}</div>}</>}
+      {!editing?<p>ابتدا پروفایل را ذخیره کنید.</p>:<><label>افزودن تصاویر<input disabled={busy||galleryLoading||images.length>=5} type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={e=>{void gallery(e.target.files);e.target.value="";}}/></label>{galleryLoading?<p aria-busy="true">در حال دریافت تصاویر…</p>:<div className={s.gallery}>{images.map(image=><figure key={image.id}>{mediaUrl(image.path)&&<span className={s.frame}><Image src={mediaUrl(image.path)!} alt={image.alt||"تصویر کسب‌وکار"} fill sizes="180px"/></span>}<figcaption>{deleteImage===image.id?<><span>حذف این تصویر؟ </span><button disabled={busy} onClick={()=>void eraseImage(image.id)}>بله، حذف</button><button disabled={busy} onClick={()=>setDeleteImage(null)}>انصراف</button></>:<button disabled={busy} onClick={()=>setDeleteImage(image.id)}>حذف تصویر</button>}</figcaption></figure>)}</div>}</>}
     </section>
-    {editing&&<section className={s.section}><h2>لینک مستقل و QR</h2>{publicUrl&&<p dir="ltr">{publicUrl}</p>}{editing.status==="approved"&&publicUrl?<div className={s.toolbar}><a href={publicUrl} target="_blank" rel="noopener noreferrer">مشاهده صفحه عمومی</a><img src={getQrUrl(editing.slug)} alt="QR اختصاصی کسب‌وکار" width={140} height={140}/><a href={getQrUrl(editing.slug)} target="_blank" rel="noopener noreferrer">بازکردن QR اختصاصی</a></div>:<p>لینک ثابت است؛ صفحه عمومی و QR پس از تأیید مدیر در دسترس قرار می‌گیرند.</p>}</section>}
+    {editing&&<section className={s.section}><h2>لینک مستقل و QR</h2>{publicUrl&&<p dir="ltr">{publicUrl}</p>}{editing.status==="approved"&&publicUrl?<div className={s.toolbar}><a href={publicUrl} target="_blank" rel="noopener noreferrer">مشاهده صفحه عمومی</a>{/* QR endpoint serves SVG; next/image cannot optimize SVG without enabling dangerouslyAllowSVG globally. */}
+{/* eslint-disable-next-line @next/next/no-img-element */}
+<img src={getQrUrl(editing.slug)} alt="QR اختصاصی کسب‌وکار" width={140} height={140}/><a href={getQrUrl(editing.slug)} target="_blank" rel="noopener noreferrer">بازکردن QR اختصاصی</a></div>:<p>لینک ثابت است؛ صفحه عمومی و QR پس از تأیید مدیر در دسترس قرار می‌گیرند.</p>}</section>}
   </main>;
 }

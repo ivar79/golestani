@@ -29,6 +29,11 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            // The database column defaults to TRUE, but a factory-built model
+            // never re-reads that default, so the in-memory attribute stays
+            // null and role middleware (CheckRole) would 403 every request
+            // with "حساب کاربری غیرفعال است". Always materialize it.
+            'is_active' => true,
             'remember_token' => Str::random(10),
         ];
     }

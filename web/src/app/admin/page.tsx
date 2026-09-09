@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
@@ -130,7 +131,7 @@ export default function AdminPage() {
         </div>
       </header>
 
-      <p className="mb-6"><a href="/admin/businesses" className="btn btn-primary">مدیریت کامل کسب‌وکارها: تأیید، رد، تعلیق و نشان‌ها</a></p>
+      <p className="mb-6"><Link href="/admin/businesses" className="btn btn-primary">مدیریت کامل کسب‌وکارها: تأیید، رد، تعلیق و نشان‌ها</Link></p>
       <nav className="mb-6 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button

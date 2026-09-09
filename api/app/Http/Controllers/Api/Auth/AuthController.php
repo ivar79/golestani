@@ -77,6 +77,9 @@ class AuthController extends Controller
         if (! $user instanceof User) {
             $user = User::create([
                 'phone' => $phone,
+                // A real PHP boolean: the pgsql driver (see
+                // App\Database\PostgresBooleanSafeConnection) binds it as a
+                // true SQL boolean. Never store this as 1/0.
                 'is_active' => true,
             ]);
 
