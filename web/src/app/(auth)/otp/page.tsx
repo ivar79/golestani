@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { panelPath } from "@/lib/panelPath";
@@ -77,52 +79,65 @@ export default function OtpPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <div className="text-center">
-        <h1 className="text-2xl font-semibold text-white tracking-tight">
-          کد تأیید
+        <h1 className="text-2xl font-bold text-white tracking-tight">
+          کد تأیید یک‌بار مصرف
         </h1>
-        <p className="mt-3 text-[14px] leading-relaxed text-surface-variant/70">
-          کد ۵ رقمی ارسال‌شده به شماره{" "}
-          <span dir="ltr" className="font-medium text-cyan-400">
+        <div className="mt-2 flex items-center justify-center flex-wrap gap-1.5 text-[14px] text-slate-300">
+          <span>کد ارسال‌شده به</span>
+          <span dir="ltr" className="font-mono font-medium text-cyan-400">
             {phone ? maskPhone(phone) : "..."}
-          </span>{" "}
-          را وارد کنید.
-        </p>
+          </span>
+          <span className="text-slate-500">|</span>
+          <Link
+            href="/login"
+            className="text-[13px] font-medium text-cyan-400 hover:text-cyan-300 underline underline-offset-4"
+          >
+            تغییر شماره
+          </Link>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
-        <OtpInput value={code} onChange={setCode} disabled={loading} autoFocus />
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+        <div className="flex flex-col items-center gap-2">
+          <label className="text-[13px] font-medium text-slate-300 mb-1">
+            کد ۵ رقمی را وارد کنید
+          </label>
+          <OtpInput value={code} onChange={setCode} disabled={loading} autoFocus />
+        </div>
 
         {error && (
-          <p
+          <div
             role="alert"
-            className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-400 text-center"
+            className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-300"
           >
-            {error}
-          </p>
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+            <span>{error}</span>
+          </div>
         )}
 
         {notice && (
-          <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-400 text-center">
-            {notice}
-          </p>
+          <div className="flex items-start gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-300">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+            <span>{notice}</span>
+          </div>
         )}
 
         <button
           type="submit"
           disabled={loading || code.length !== 5}
-          className="btn btn-primary w-full py-4 rounded-xl text-[15px] font-medium shadow-[0_10px_20px_-10px_rgba(16,185,129,0.6)]"
+          className="btn btn-primary w-full py-3.5 rounded-xl text-[15px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           {loading ? "در حال بررسی..." : "تأیید و ورود"}
         </button>
       </form>
 
-      <div className="text-center text-[13px] text-surface-variant/60">
+      <div className="pt-2 border-t border-white/[0.06] text-center text-[13px] text-slate-400">
         {resendIn > 0 ? (
           <span>
-            ارسال مجدد کد تا{" "}
-            <span className="font-medium text-cyan-400">
+            امکان ارسال مجدد کد تا{" "}
+            <span className="font-mono font-medium text-cyan-400">
               {resendIn}
             </span>{" "}
             ثانیه دیگر
@@ -131,9 +146,9 @@ export default function OtpPage() {
           <button
             type="button"
             onClick={handleResend}
-            className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+            className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
           >
-            ارسال مجدد کد
+            ارسال مجدد کد تأیید
           </button>
         )}
       </div>

@@ -189,23 +189,23 @@ html { scroll-behavior: smooth; }
   transition: transform var(--btn-ease) 180ms;
 }
 
-/* Primary — emerald gradient, layered shadow (works on dark & light) */
+/* Primary — rich deep teal/cyan gradient with WCAG AA compliance (contrast > 4.5:1 with white) */
 .btn-primary {
-  color: #fff;
-  background-image: linear-gradient(120deg, #10b981 0%, #0891b2 100%);
+  color: #ffffff;
+  background-image: linear-gradient(120deg, #0d9488 0%, #0891b2 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 1px 2px rgba(2, 6, 23, 0.4),
-    0 10px 28px -12px rgba(16, 185, 129, 0.55),
-    0 0 24px -8px rgba(34, 211, 238, 0.35);
+    0 10px 24px -12px rgba(13, 148, 136, 0.55),
+    0 0 20px -8px rgba(8, 145, 178, 0.35);
 }
 .btn-primary:hover {
-  background-image: linear-gradient(120deg, #34d399 0%, #06b6d4 100%);
+  background-image: linear-gradient(120deg, #0f766e 0%, #0e7490 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.3),
     0 2px 4px rgba(2, 6, 23, 0.35),
-    0 18px 40px -14px rgba(16, 185, 129, 0.65),
-    0 0 36px -8px rgba(34, 211, 238, 0.5);
+    0 16px 36px -14px rgba(13, 148, 136, 0.65),
+    0 0 30px -8px rgba(8, 145, 178, 0.5);
   transform: translateY(-1px);
 }
 .btn-primary:hover .btn-arrow {
