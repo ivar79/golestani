@@ -47,8 +47,14 @@ export default function HomeHero() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Rendered as a root-level fragment sibling (NOT inside the section): the
+  // section creates a z-10 stacking context that would otherwise trap the
+  // fixed, z-50 modal beneath the taskbar (z-50) and scroll progress line
+  // (z-60). Root-level placement matches the AppTaskbar's (correct) pattern,
+  // so both search buttons behave identically. The modal itself is untouched.
   return (
-    <section className="relative z-10 w-full overflow-hidden pb-24 pt-32 lg:pb-40">
+    <>
+      <section className="relative z-10 w-full overflow-hidden pb-24 pt-32 lg:pb-40">
       {/* Full-bleed atmospheric background (aurora) — spans the whole viewport so
           the desktop hero is not empty on the sides. Content stays in a 1280px box. */}
       <div className="pointer-events-none absolute inset-0 -z-10">
@@ -158,8 +164,11 @@ export default function HomeHero() {
         </div>
       </div>
 
-      {/* Render the exact SearchModal (100% frozen, untouched) */}
+      </section>
+
+      {/* Render the exact SearchModal (100% frozen, untouched) — root-level so
+          it stacks above the taskbar like the taskbar's own search modal. */}
       <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
-    </section>
+    </>
   );
 }
