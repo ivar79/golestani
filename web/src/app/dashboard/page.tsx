@@ -392,51 +392,60 @@ export default function Dashboard() {
 
   return (
     <div dir="rtl" className="min-h-screen bg-[#090d16] text-slate-100 selection:bg-cyan-500/20 font-sans pb-28">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-800/80 bg-[#090d16]/90 px-4 sm:px-8 backdrop-blur-md">
-        <div className="flex items-center gap-3 sm:gap-4">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-teal-400 text-slate-950 font-black shadow-md shadow-cyan-500/20">
-              <Sparkles className="h-5 w-5" />
+      {/* Top Floating Smart Taskbar */}
+      <div className="sticky top-3 sm:top-5 z-50 px-3 sm:px-6">
+        <header className="mx-auto max-w-5xl rounded-2xl border border-slate-800/80 bg-[#0b1120]/85 p-1 backdrop-blur-2xl shadow-[0_10px_35px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)]">
+          <div className="flex h-14 sm:h-16 items-center justify-between px-3 sm:px-5">
+            {/* Right: Brand & Panel Indicator */}
+            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+              <Link href="/" className="flex items-center gap-2 group shrink-0" aria-label="اینکارت">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-400 text-slate-950 font-black text-base shadow-sm">
+                  اَ
+                </span>
+                <span className="font-black text-base sm:text-lg text-white group-hover:text-cyan-400 transition-colors">
+                  اینکارت
+                </span>
+              </Link>
+              <div className="h-4 w-px bg-slate-800 hidden sm:block shrink-0" />
+              <span className="truncate rounded-md bg-slate-850 px-2.5 py-1 text-[11px] font-semibold text-slate-300 border border-slate-700/50 hidden sm:inline-block">
+                پنل مدیریت کسب‌وکار
+              </span>
             </div>
-            <span className="font-black text-base sm:text-lg text-white group-hover:text-cyan-400 transition-colors">
-              اینکارت
-            </span>
-          </Link>
-          <span className="text-xs text-slate-500 hidden sm:inline">|</span>
-          <span className="text-xs font-semibold text-slate-400 hidden sm:inline">
-            پنل مدیریت صاحب کسب‌وکار
-          </span>
-        </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Link
-            href="/card-maker"
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:border-slate-700 hover:text-white transition-all"
-          >
-            <CreditCard className="h-3.5 w-3.5 text-cyan-400" />
-            <span>کارت‌ساز دیجیتال</span>
-          </Link>
+            {/* Left: Human-Engineered Button Controls */}
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              <Link
+                href="/card-maker"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-850/80 px-2.5 sm:px-3 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:bg-slate-800 hover:text-white transition-all active:scale-[0.98]"
+                title="کارت‌ساز دیجیتال"
+              >
+                <CreditCard className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                <span className="hidden md:inline">کارت‌ساز دیجیتال</span>
+                <span className="md:hidden text-[11px]">کارت‌ساز</span>
+              </Link>
 
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-700 hover:text-white transition-all"
-          >
-            <span>صفحه اصلی</span>
-          </Link>
+              <Link
+                href="/"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/60 px-2.5 sm:px-3 text-xs font-medium text-slate-300 hover:border-slate-700 hover:bg-slate-850 hover:text-white transition-all active:scale-[0.98]"
+              >
+                <span className="hidden sm:inline">صفحه اصلی</span>
+                <span className="sm:hidden text-[11px]">خانه</span>
+              </Link>
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void logout()}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 active:scale-95 transition-all cursor-pointer"
-            title="خروج از حساب کاربری"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">خروج</span>
-          </button>
-        </div>
-      </header>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void logout()}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 sm:px-3 text-xs font-medium text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40 active:scale-[0.98] transition-all cursor-pointer"
+                title="خروج از حساب کاربری"
+              >
+                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">خروج</span>
+              </button>
+            </div>
+          </div>
+        </header>
+      </div>
 
       <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         {/* Page Title & Business Switcher Header */}
@@ -1004,7 +1013,7 @@ export default function Dashboard() {
             </div>
 
             {/* Interactive Map */}
-            <div className="overflow-hidden rounded-xl border border-slate-800">
+            <div className="relative isolate z-10 overflow-hidden rounded-xl border border-slate-800">
               <MapViewLazy
                 className="h-[320px] w-full"
                 markers={
@@ -1141,23 +1150,26 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Sticky Contextual Save Bar (Polaris Save Bar) */}
-          <div className="fixed bottom-0 inset-x-0 z-40 border-t border-slate-800 bg-[#090d16]/95 p-4 backdrop-blur-md shadow-2xl">
-            <div className="mx-auto max-w-5xl flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="hidden sm:block">
-                <span className="text-xs font-bold text-white">
-                  {editing ? `در حال ویرایش: ${form.name || editing.name}` : "ثبت کسب‌وکار جدید"}
-                </span>
-                <p className="text-[11px] text-slate-400">
-                  تغییرات شما بلافاصله در دیتابیس ثبت و برای بررسی ارسال خواهد شد.
+          {/* Floating Contextual Save Bar (Linear / Vercel Pattern) */}
+          <div className="fixed bottom-3 sm:bottom-5 inset-x-0 z-50 pointer-events-none px-4">
+            <div className="mx-auto max-w-3xl pointer-events-auto rounded-2xl border border-slate-700/60 bg-[#0b1120]/95 backdrop-blur-2xl p-3 sm:px-6 sm:py-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)] flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 transition-all">
+              <div className="text-center sm:text-right min-w-0">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                  <span className="text-xs sm:text-sm font-bold text-white truncate">
+                    {editing ? `در حال ویرایش: ${form.name || editing.name}` : "ثبت کسب‌وکار جدید"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
+                  تغییرات شما در دیتابیس ثبت و برای بررسی ارسال خواهد شد.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-center sm:justify-end shrink-0">
                 <button
                   type="submit"
                   disabled={busy}
-                  className="flex min-h-[44px] flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-cyan-600 to-teal-600 px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-cyan-500/20 hover:from-cyan-500 hover:to-teal-500 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                  className="flex h-11 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-cyan-400 px-6 sm:px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-sm transition-all hover:bg-cyan-300 active:scale-[0.98] disabled:opacity-50 cursor-pointer whitespace-nowrap select-none"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره تغییرات نمایه"}</span>

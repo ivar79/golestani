@@ -22,7 +22,6 @@ import {
   ChevronRight,
   Search,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
   History,
   ExternalLink,
@@ -134,31 +133,33 @@ export default function BusinessModerationPage() {
 
   return (
     <div dir="rtl" className="min-h-screen bg-[#090d16] text-slate-100 selection:bg-cyan-500/20">
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-800/80 bg-[#090d16]/90 px-4 sm:px-8 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/admin"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-700 hover:text-white"
-          >
-            <ChevronRight className="h-4 w-4 text-cyan-400" />
-            <span>پیشخوان ادمین</span>
-          </Link>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
-            <span>/</span>
-            <span className="font-semibold text-white">میزکار بررسی و احراز کسب‌وکارها</span>
+      {/* Top Floating Smart Taskbar */}
+      <div className="sticky top-2 sm:top-4 z-40 px-3 sm:px-6">
+        <header className="mx-auto max-w-7xl flex h-14 sm:h-16 items-center justify-between rounded-2xl border border-slate-800/80 bg-[#0b1120]/85 px-3 sm:px-5 backdrop-blur-2xl shadow-[0_10px_35px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)]">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-850/80 px-3 text-xs font-semibold text-slate-200 transition-all hover:bg-slate-800 hover:text-white active:scale-[0.98]"
+            >
+              <ChevronRight className="h-4 w-4 text-cyan-400" />
+              <span>پیشخوان ادمین</span>
+            </Link>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
+              <span>/</span>
+              <span className="font-semibold text-white">میزکار بررسی و احراز کسب‌وکارها</span>
+            </div>
           </div>
-        </div>
 
-        <Link
-          href="/"
-          target="_blank"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-300 hover:text-white"
-        >
-          <span>مشاهده سایت</span>
-          <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
-        </Link>
-      </header>
+          <Link
+            href="/"
+            target="_blank"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-850/80 px-3 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all active:scale-[0.98]"
+          >
+            <span>مشاهده سایت</span>
+            <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+          </Link>
+        </header>
+      </div>
 
       <main className="mx-auto max-w-7xl px-4 sm:px-8 py-6 sm:py-8 space-y-6">
         {/* Title */}

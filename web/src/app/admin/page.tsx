@@ -14,7 +14,6 @@ import {
   LogOut,
   ExternalLink,
   CheckCircle2,
-  Clock,
   ShieldCheck,
   Menu,
   X,
@@ -343,45 +342,47 @@ export default function AdminPage() {
 
       {/* Main Content Stage */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* TopBar (Breadcrumbs, Quick Actions, Mobile Toggle) */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-800/80 bg-[#090d16]/90 px-4 sm:px-8 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white lg:hidden active:scale-95"
-              aria-label="باز کردن منو"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="hidden sm:inline">مدیریت</span>
-              <span className="hidden sm:inline text-slate-600">/</span>
-              <span className="font-semibold text-white">
-                {TABS.find((x) => x.id === tab)?.label}
-              </span>
+        {/* Floating Top Taskbar */}
+        <div className="sticky top-2 sm:top-4 z-40 px-3 sm:px-6">
+          <header className="flex h-14 sm:h-16 items-center justify-between rounded-2xl border border-slate-800/80 bg-[#0b1120]/85 px-3 sm:px-5 backdrop-blur-2xl shadow-[0_10px_35px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)]">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-850 text-slate-300 hover:text-white lg:hidden active:scale-95 cursor-pointer"
+                aria-label="باز کردن منو"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="hidden sm:inline text-slate-400">مرکز مدیریت</span>
+                <span className="hidden sm:inline text-slate-600">/</span>
+                <span className="font-semibold text-white">
+                  {TABS.find((x) => x.id === tab)?.label}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              disabled={refreshing}
-              className="flex sm:hidden h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-300 active:scale-95 disabled:opacity-50"
-              aria-label="تازه‌سازی"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin text-cyan-400" : ""}`} />
-            </button>
-            <Link
-              href="/"
-              target="_blank"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:border-slate-700 hover:text-white"
-            >
-              <span>مشاهده سایت</span>
-              <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
-            </Link>
-          </div>
-        </header>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                disabled={refreshing}
+                className="flex sm:hidden h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-850 text-slate-300 active:scale-95 disabled:opacity-50 cursor-pointer"
+                aria-label="تازه‌سازی"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-cyan-400" : ""}`} />
+              </button>
+              <Link
+                href="/"
+                target="_blank"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-850/80 px-3 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all active:scale-[0.98]"
+              >
+                <span>مشاهده سایت</span>
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+              </Link>
+            </div>
+          </header>
+        </div>
 
         {/* Quick mobile horizontal tab switcher (for instant touch navigation) */}
         <div className="lg:hidden flex items-center gap-2 overflow-x-auto border-b border-slate-800/80 bg-[#0b1120] px-4 py-2.5 no-scrollbar">
