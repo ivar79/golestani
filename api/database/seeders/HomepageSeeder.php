@@ -81,7 +81,7 @@ class HomepageSeeder extends Seeder
                 ['icon' => 'share', 'href' => '#', 'label' => 'Share'],
                 ['icon' => 'at', 'href' => 'mailto:hello@inkart.ir', 'label' => 'Email'],
             ], JSON_UNESCAPED_UNICODE),
-            'homepage.footer.copyright' => '© ۱۴۰۳ تمامی حقوق برای اینکارت محفوظ است.',
+            'homepage.footer.copyright' => '© ۱۴۰۵ تمامی حقوق برای اینکارت محفوظ است.',
 
             // SEO (used by the homepage server component's generateMetadata)
             'seo.homepage' => json_encode([

@@ -114,7 +114,7 @@ export default function AdminBlogTab() {
           <button
             type="button"
             onClick={startCreate}
-            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer self-start sm:self-auto"
+            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white transition-all cursor-pointer self-start sm:self-auto"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>ایجاد مقاله جدید</span>
@@ -135,7 +135,7 @@ export default function AdminBlogTab() {
       {saved && (
         <div
           role="status"
-          className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs sm:text-sm text-emerald-300"
+          className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs sm:text-sm text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
         >
           <Check className="h-4 w-4 shrink-0 text-emerald-400" />
           <span>مقاله با موفقیت ذخیره شد.</span>
@@ -143,9 +143,11 @@ export default function AdminBlogTab() {
       )}
 
       {/* Editor Form Card */}
-      <section className="rounded-xl border border-slate-800 bg-[#0b1120] p-4 sm:p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-2 border-b border-slate-800/80 pb-3">
-          <PenSquare className="h-4 w-4 text-cyan-400" />
+      <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
+        <div className="mb-4 flex items-center gap-2.5 border-b border-white/[0.08] pb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-400 shrink-0 shadow-[0_0_12px_rgba(34,211,238,0.15)]">
+            <PenSquare className="h-4 w-4" />
+          </div>
           <h3 className="text-sm sm:text-base font-bold text-white">
             {editingId ? "ویرایش مقاله انتخابی" : "ایجاد مقاله جدید"}
           </h3>
@@ -159,7 +161,7 @@ export default function AdminBlogTab() {
                 value={draft.title}
                 onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
                 placeholder="عنوان جذاب برای مقاله..."
-                className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
               />
             </label>
             <label className="grid gap-1.5">
@@ -169,7 +171,7 @@ export default function AdminBlogTab() {
               <input
                 value={draft.slug}
                 onChange={(e) => setDraft((d) => ({ ...d, slug: e.target.value }))}
-                className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 placeholder="slug-name"
                 dir="ltr"
               />
@@ -183,7 +185,7 @@ export default function AdminBlogTab() {
               onChange={(e) => setDraft((d) => ({ ...d, content: e.target.value }))}
               rows={8}
               placeholder="متن کامل مقاله..."
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+              className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
             />
           </label>
 
@@ -195,7 +197,7 @@ export default function AdminBlogTab() {
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, status: e.target.value as Article["status"] }))
                 }
-                className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
               >
                 <option value="draft">پیش‌نویس (عدم نمایش عمومی)</option>
                 <option value="published">منتشر شده (نمایش در سایت)</option>
@@ -209,12 +211,12 @@ export default function AdminBlogTab() {
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={(e) => setCoverFile(e.target.files?.[0])}
-                className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-800 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-cyan-300 hover:file:bg-slate-700"
+                className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-white/10 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-cyan-300 hover:file:bg-white/15 cursor-pointer"
               />
             </label>
           </div>
 
-          <details className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-4">
+          <details className="rounded-xl border border-white/[0.08] bg-slate-950/40 p-4">
             <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-300 select-none">
               <ChevronDown className="h-4 w-4 text-slate-500" />
               <span>تنظیمات پیشرفته سئو (SEO & OpenGraph)</span>
@@ -225,7 +227,7 @@ export default function AdminBlogTab() {
                 <input
                   value={draft.seo_title ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, seo_title: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2 text-sm text-slate-100"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
                 />
               </label>
               <label className="grid gap-1.5">
@@ -234,7 +236,7 @@ export default function AdminBlogTab() {
                   value={draft.seo_description ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, seo_description: e.target.value }))}
                   rows={2}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2 text-sm text-slate-100"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
                 />
               </label>
               <label className="grid gap-1.5">
@@ -242,7 +244,7 @@ export default function AdminBlogTab() {
                 <input
                   value={draft.og_title ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, og_title: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2 text-sm text-slate-100"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
                 />
               </label>
               <label className="grid gap-1.5">
@@ -251,7 +253,7 @@ export default function AdminBlogTab() {
                   value={draft.og_description ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, og_description: e.target.value }))}
                   rows={2}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2 text-sm text-slate-100"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
                 />
               </label>
             </div>
@@ -262,7 +264,7 @@ export default function AdminBlogTab() {
               type="button"
               onClick={() => void submit()}
               disabled={!draft.title || !draft.content || submitting}
-              className="flex min-h-[42px] items-center justify-center rounded-xl bg-gradient-to-l from-cyan-600 to-teal-600 px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md transition-all hover:from-cyan-500 hover:to-teal-500 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+              className="inline-flex min-h-[42px] items-center justify-center rounded-xl bg-gradient-to-l from-cyan-400 to-teal-400 px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
             >
               {submitting ? "در حال ذخیره..." : editingId ? "ذخیره تغییرات مقاله" : "انتشار / ذخیره مقاله"}
             </button>
@@ -270,7 +272,7 @@ export default function AdminBlogTab() {
               <button
                 type="button"
                 onClick={startCreate}
-                className="flex min-h-[42px] items-center justify-center rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-850 whitespace-nowrap cursor-pointer"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white transition-all whitespace-nowrap cursor-pointer"
               >
                 انصراف از ویرایش
               </button>
@@ -280,10 +282,12 @@ export default function AdminBlogTab() {
       </section>
 
       {/* Article List Card */}
-      <section className="rounded-xl border border-slate-800 bg-[#0b1120] p-4 sm:p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between border-b border-slate-800/80 pb-3">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-cyan-400" />
+      <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
+        <div className="mb-4 flex items-center justify-between border-b border-white/[0.08] pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-400 shrink-0 shadow-[0_0_12px_rgba(34,211,238,0.15)]">
+              <FileText className="h-4 w-4" />
+            </div>
             <h3 className="text-sm sm:text-base font-bold text-white">فهرست مقالات منتشرشده</h3>
           </div>
           <span className="text-xs text-slate-400">{articles.length} مقاله</span>
@@ -294,7 +298,7 @@ export default function AdminBlogTab() {
         ) : articles.length === 0 ? (
           <p className="py-6 text-center text-xs text-slate-400">هنوز مقاله‌ای ثبت نشده است.</p>
         ) : (
-          <ul className="divide-y divide-slate-800/60">
+          <ul className="divide-y divide-white/[0.08]">
             {articles.map((article) => (
               <li
                 key={article.id ?? article.slug}
@@ -304,10 +308,10 @@ export default function AdminBlogTab() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-white text-sm">{article.title}</span>
                     <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                      className={`inline-flex rounded-md px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap ${
                         article.status === "published"
-                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                          : "bg-slate-800 text-slate-400 border border-slate-700/50"
+                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+                          : "bg-white/5 text-slate-400 border border-white/10"
                       }`}
                     >
                       {article.status === "published" ? "منتشر شده" : "پیش‌نویس"}
@@ -321,7 +325,7 @@ export default function AdminBlogTab() {
                   <button
                     type="button"
                     onClick={() => startEdit(article)}
-                    className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 whitespace-nowrap cursor-pointer"
+                    className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-semibold text-cyan-300 hover:border-cyan-400/60 hover:bg-cyan-500/20 active:scale-95 transition-all whitespace-nowrap cursor-pointer shadow-[0_0_10px_rgba(34,211,238,0.1)]"
                   >
                     <PenSquare className="h-3 w-3" />
                     <span>ویرایش</span>
@@ -329,7 +333,7 @@ export default function AdminBlogTab() {
                   <button
                     type="button"
                     onClick={() => void remove(article)}
-                    className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 active:scale-95 whitespace-nowrap cursor-pointer"
+                    className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 active:scale-95 transition-all whitespace-nowrap cursor-pointer shadow-[0_0_10px_rgba(244,63,94,0.1)]"
                   >
                     <Trash2 className="h-3 w-3" />
                     <span>حذف</span>

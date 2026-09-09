@@ -7,6 +7,7 @@ import { cms, useHomepageContent } from "@/lib/homepage";
 import { getPublicAds, type Advertisement } from "@/lib/ads";
 import { panelPath } from "@/lib/panelPath";
 import SearchModal from "@/components/search/SearchModal";
+import { CreditCard, LayoutDashboard, LogOut } from "lucide-react";
 
 // Site-wide smart taskbar (LeadFresh pattern tuned to the emerald/navy RTL
 // theme). A floating pill header crossfades with a slim emerald scroll-progress
@@ -202,7 +203,8 @@ export default function AppTaskbar() {
   // Search components have been moved to SearchModal
 
   // Auth-aware header action: guest sees ورود / ثبت‌نام, logged-in user
-  // gets a compact phone chip opening a menu with panel + logout.
+  // gets an elegant glassmorphism chip with digital card icon, active online indicator,
+  // phone number, and chevron opening the user dropdown.
   const authAction = user ? (
     <div className="relative" data-user-menu>
       <button
@@ -213,32 +215,76 @@ export default function AppTaskbar() {
           setUserMenuOpen((v) => !v);
           setDrawerOpen(false);
         }}
-        className="btn btn-secondary btn-sm h-10 max-w-[10rem] gap-2 sm:max-w-[14rem]"
+        className={`group flex h-10 items-center gap-2.5 rounded-xl border px-3 py-1.5 backdrop-blur-md transition-all cursor-pointer select-none ${
+          userMenuOpen
+            ? "border-emerald-400/50 bg-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.25)] text-white"
+            : "border-white/10 bg-white/[0.04] hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] text-slate-200 hover:text-white"
+        }`}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold text-white">
-          {user.phone.slice(-2)}
-        </span>
-        <span dir="ltr" className="truncate text-xs font-semibold">
+        {/* Smart Card / Identity Avatar with Active Neon Status Dot */}
+        <div className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400/25 to-teal-500/35 border border-emerald-400/30 text-emerald-300 shadow-inner">
+          <CreditCard className="h-3.5 w-3.5" />
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 border border-slate-900" />
+          </span>
+        </div>
+
+        {/* Clean Phone Number */}
+        <span dir="ltr" className="font-mono text-xs font-semibold tracking-wide">
           {user.phone}
         </span>
+
+        {/* Smooth Animated Chevron */}
+        <svg
+          className={`h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-300 transition-transform duration-200 ${
+            userMenuOpen ? "rotate-180 text-emerald-300" : ""
+          }`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
+
       {userMenuOpen && (
-        <div className="drawer-panel absolute left-0 top-[calc(100%+12px)] z-[70] w-56 rounded-2xl border border-white/10 bg-night/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+        <div className="drawer-panel absolute left-0 top-[calc(100%+10px)] z-[70] w-60 rounded-2xl border border-white/10 bg-[#070e1c]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.65),0_0_30px_rgba(16,185,129,0.1)] backdrop-blur-2xl">
+          {/* Header Info inside Dropdown */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-white/5 mb-1">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+              <CreditCard className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] text-slate-400">حساب کاربری اینکارت</div>
+              <div dir="ltr" className="truncate font-mono text-xs font-bold text-white">
+                {user.phone}
+              </div>
+            </div>
+          </div>
+
           {panel && (
             <Link
               href={panel}
               onClick={closeUserMenu}
-              className="block rounded-xl px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/5"
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-500/15 hover:text-white group"
             >
-              پنل کاربری
+              <LayoutDashboard className="h-4 w-4 text-slate-400 group-hover:text-emerald-300 transition-colors" />
+              <span>پنل کاربری</span>
             </Link>
           )}
+
           <button
             type="button"
             onClick={handleLogout}
-            className="block w-full rounded-xl px-4 py-3 text-right text-sm font-medium text-red-400 transition hover:bg-white/5"
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-right text-xs font-medium text-rose-400 transition hover:bg-rose-500/10 hover:text-rose-300 group cursor-pointer"
           >
-            خروج
+            <LogOut className="h-4 w-4 text-rose-400/80 group-hover:text-rose-300 transition-colors" />
+            <span>خروج از حساب</span>
           </button>
         </div>
       )}
@@ -399,20 +445,41 @@ export default function AppTaskbar() {
               </span>
             </button>
             {user ? (
-              <>
+              <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-2.5">
+                <div className="flex items-center gap-2.5 pb-2.5 border-b border-white/5">
+                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400/20 to-teal-500/30 border border-emerald-400/30 text-emerald-300">
+                    <CreditCard className="h-4 w-4" />
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 border border-slate-900" />
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] text-slate-400">حساب کاربری اینکارت</div>
+                    <div dir="ltr" className="font-mono text-xs font-bold text-white">
+                      {user.phone}
+                    </div>
+                  </div>
+                </div>
                 {panel && (
-                  <Link href={panel} onClick={closeAll} className="btn btn-secondary btn-md mt-4 block w-full">
-                    پنل کاربری
+                  <Link
+                    href={panel}
+                    onClick={closeAll}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/25 hover:text-white"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    <span>ورود به پنل کاربری</span>
                   </Link>
                 )}
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="mt-3 block w-full rounded-xl px-4 py-3 text-sm font-medium text-red-400 transition hover:bg-white/5"
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-medium text-rose-400 transition hover:bg-rose-500/10 cursor-pointer"
                 >
-                  خروج
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>خروج از حساب</span>
                 </button>
-              </>
+              </div>
             ) : (
               <Link href="/login" onClick={closeAll} className="btn btn-primary btn-md mt-4 block w-full">
                 {loginLabel}

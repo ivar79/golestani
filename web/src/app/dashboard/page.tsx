@@ -49,6 +49,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Share2,
+  Home,
 } from "lucide-react";
 
 type Form = {
@@ -119,7 +120,48 @@ export default function Dashboard() {
   const [cover, setCover] = useState<File | null>(null);
   const [deleteImage, setDeleteImage] = useState<number | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [maxScroll, setMaxScroll] = useState(0);
   const mediaForm = useRef<HTMLDivElement>(null);
+
+  // Throttled scroll tracking for the smart taskbar and progress line
+  useEffect(() => {
+    let raf = 0;
+    let lastY = -1;
+    let lastMax = -1;
+    const measure = () => {
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (max !== lastMax) {
+        lastMax = max;
+        setMaxScroll(max);
+      }
+    };
+    const onScroll = () => {
+      if (!raf) {
+        raf = window.requestAnimationFrame(() => {
+          raf = 0;
+          const y = window.scrollY;
+          if (y !== lastY) {
+            lastY = y;
+            setScrollY(y);
+          }
+          measure();
+        });
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    measure();
+    onScroll();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const sp = maxScroll > 0 ? Math.min(1, Math.max(0, scrollY / maxScroll)) : 0;
+  const isScrolled = scrollY > 20;
 
   function choose(b: Phase2Business | null) {
     setEditing(b);
@@ -391,32 +433,60 @@ export default function Dashboard() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#090d16] text-slate-100 selection:bg-cyan-500/20 font-sans pb-28">
+    <div dir="rtl" className="relative min-h-screen bg-[#070b14] text-slate-100 selection:bg-cyan-500/20 font-sans pb-36 sm:pb-32 overflow-x-hidden">
+      {/* Ambient background light glows to alleviate visual heaviness & bring depth */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -top-32 right-1/4 h-[550px] w-[550px] rounded-full bg-cyan-500/[0.06] blur-[140px]" />
+        <div className="absolute top-1/3 -left-28 h-[650px] w-[650px] rounded-full bg-emerald-500/[0.05] blur-[150px]" />
+        <div className="absolute bottom-1/4 right-5 h-[500px] w-[500px] rounded-full bg-blue-600/[0.04] blur-[130px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(14,165,233,0.07),rgba(255,255,255,0))]" />
+      </div>
+
+      {/* Slim Neon Scroll Progress Indicator */}
+      <div aria-hidden className="fixed left-0 top-0 z-[60] h-[3px] w-full pointer-events-none">
+        <div
+          className="h-full bg-gradient-to-l from-cyan-400 via-teal-400 to-emerald-400 shadow-[0_0_14px_rgba(34,211,238,0.7)] transition-[width] duration-150 ease-out"
+          style={{ width: `${(sp * 100).toFixed(2)}%` }}
+        />
+      </div>
+
       {/* Top Floating Smart Taskbar */}
-      <div className="sticky top-3 sm:top-5 z-50 px-3 sm:px-6">
-        <header className="mx-auto max-w-5xl rounded-2xl border border-slate-800/80 bg-[#0b1120]/85 p-1 backdrop-blur-2xl shadow-[0_10px_35px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)]">
-          <div className="flex h-14 sm:h-16 items-center justify-between px-3 sm:px-5">
+      <div className="sticky top-2.5 sm:top-4 z-50 px-3 sm:px-6 transition-all duration-300">
+        <header
+          className={`mx-auto max-w-5xl rounded-2xl p-px bg-gradient-to-l from-cyan-400/35 via-purple-500/25 to-cyan-400/35 shadow-[0_10px_35px_rgba(0,0,0,0.4),0_0_35px_-8px_rgba(34,211,238,0.25)] transition-all duration-300 ${
+            isScrolled ? "scale-[0.99] shadow-[0_15px_40px_rgba(0,0,0,0.65),0_0_40px_-5px_rgba(34,211,238,0.35)]" : ""
+          }`}
+        >
+          <div
+            className={`flex items-center justify-between rounded-[15px] bg-[#080d1a]/85 px-3.5 sm:px-5 backdrop-blur-2xl transition-all duration-300 ${
+              isScrolled ? "h-13 sm:h-14 bg-[#050914]/92" : "h-14 sm:h-16"
+            }`}
+          >
             {/* Right: Brand & Panel Indicator */}
             <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-              <Link href="/" className="flex items-center gap-2 group shrink-0" aria-label="اینکارت">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-400 text-slate-950 font-black text-base shadow-sm">
+              <Link href="/" className="flex items-center gap-2.5 group shrink-0" aria-label="اینکارت">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-teal-400 text-slate-950 font-black text-base shadow-[0_0_15px_rgba(34,211,238,0.4)] group-hover:scale-105 transition-transform">
                   اَ
                 </span>
                 <span className="font-black text-base sm:text-lg text-white group-hover:text-cyan-400 transition-colors">
                   اینکارت
                 </span>
               </Link>
-              <div className="h-4 w-px bg-slate-800 hidden sm:block shrink-0" />
-              <span className="truncate rounded-md bg-slate-850 px-2.5 py-1 text-[11px] font-semibold text-slate-300 border border-slate-700/50 hidden sm:inline-block">
-                پنل مدیریت کسب‌وکار
-              </span>
+              <div className="h-4 w-px bg-white/10 hidden sm:block shrink-0" />
+              <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                </span>
+                <span>پنل مدیریت کسب‌وکار</span>
+              </div>
             </div>
 
-            {/* Left: Human-Engineered Button Controls */}
+            {/* Left: Ordered Button Controls */}
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
               <Link
                 href="/card-maker"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-850/80 px-2.5 sm:px-3 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:bg-slate-800 hover:text-white transition-all active:scale-[0.98]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-2.5 sm:px-3 text-xs font-semibold text-cyan-200 hover:border-cyan-400/60 hover:bg-cyan-500/20 hover:text-white transition-all active:scale-[0.98] shadow-[0_0_15px_rgba(6,182,212,0.12)]"
                 title="کارت‌ساز دیجیتال"
               >
                 <CreditCard className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
@@ -426,8 +496,9 @@ export default function Dashboard() {
 
               <Link
                 href="/"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/60 px-2.5 sm:px-3 text-xs font-medium text-slate-300 hover:border-slate-700 hover:bg-slate-850 hover:text-white transition-all active:scale-[0.98]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 sm:px-3 text-xs font-medium text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white transition-all active:scale-[0.98]"
               >
+                <Home className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                 <span className="hidden sm:inline">صفحه اصلی</span>
                 <span className="sm:hidden text-[11px]">خانه</span>
               </Link>
@@ -436,7 +507,7 @@ export default function Dashboard() {
                 type="button"
                 disabled={busy}
                 onClick={() => void logout()}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 sm:px-3 text-xs font-medium text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40 active:scale-[0.98] transition-all cursor-pointer"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 sm:px-3 text-xs font-medium text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
                 title="خروج از حساب کاربری"
               >
                 <LogOut className="h-3.5 w-3.5 shrink-0" />
@@ -447,9 +518,9 @@ export default function Dashboard() {
         </header>
       </div>
 
-      <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      <main className="relative z-10 mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         {/* Page Title & Business Switcher Header */}
-        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm">
+        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
           <div>
             <span className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider">
               مرکز مدیریت نمایه
@@ -524,8 +595,8 @@ export default function Dashboard() {
 
         {/* Verification Status & Public Links Card (Polaris Banner) */}
         {editing && (
-          <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5">
+          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-4 transition-all hover:border-white/[0.12]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3.5">
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold text-slate-400">وضعیت نمایه:</span>
                 <span
@@ -593,7 +664,7 @@ export default function Dashboard() {
                     href={publicUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:text-white"
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-xs text-slate-200 hover:text-white transition-colors"
                   >
                     <span>مشاهده صفحه</span>
                     <ExternalLink className="h-3 w-3" />
@@ -603,7 +674,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setShowQrModal(true)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:text-white cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-xs text-slate-200 hover:text-white cursor-pointer transition-colors"
                   >
                     <QrCode className="h-3 w-3 text-cyan-400" />
                     <span>کد QR اختصاصی</span>
@@ -616,12 +687,12 @@ export default function Dashboard() {
 
         {/* QR Code Modal */}
         {showQrModal && editing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in">
-            <div className="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-[#0f172a] p-6 text-center shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in">
+            <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#0c1427]/95 backdrop-blur-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.7),0_0_30px_rgba(6,182,212,0.1)] space-y-4">
               <button
                 type="button"
                 onClick={() => setShowQrModal(false)}
-                className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-white"
+                className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-white cursor-pointer transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -662,9 +733,9 @@ export default function Dashboard() {
         {/* Main Edit Form */}
         <form onSubmit={submit} className="space-y-6">
           {/* Card 1: Visual Identity & Branding (Logo & Cover) */}
-          <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm space-y-5" ref={mediaForm}>
-            <div className="flex items-center gap-2.5 border-b border-slate-800/80 pb-3.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-850 text-cyan-400">
+          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]" ref={mediaForm}>
+            <div className="flex items-center gap-2.5 border-b border-white/5 pb-3.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
                 <ImageIcon className="h-4 w-4" />
               </div>
               <div>
@@ -681,8 +752,8 @@ export default function Dashboard() {
               {/* Logo Box */}
               <div className="space-y-2">
                 <span className="text-xs font-semibold text-slate-300">لوگوی کسب‌وکار</span>
-                <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                  <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-slate-900">
+                <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-4 transition-all hover:border-white/10">
+                  <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-950/80">
                     {mediaUrl(editing?.logo) ? (
                       <Image
                         src={mediaUrl(editing?.logo)!}
@@ -696,7 +767,7 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="space-y-2 min-w-0 flex-1">
-                    <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white cursor-pointer whitespace-nowrap">
+                    <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-white/20 hover:bg-white/10 hover:text-white cursor-pointer whitespace-nowrap transition-all">
                       <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
                       <span>{logo ? logo.name : "انتخاب لوگوی جدید"}</span>
                       <input
@@ -725,8 +796,8 @@ export default function Dashboard() {
               {/* Cover Photo Box */}
               <div className="space-y-2">
                 <span className="text-xs font-semibold text-slate-300">تصویر کاور و بنر</span>
-                <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                  <div className="relative h-24 w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
+                <div className="flex flex-col gap-3 rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-4 transition-all hover:border-white/10">
+                  <div className="relative h-24 w-full overflow-hidden rounded-lg border border-white/10 bg-slate-950/80">
                     {mediaUrl(editing?.cover_image) ? (
                       <Image
                         src={mediaUrl(editing?.cover_image)!}
@@ -742,7 +813,7 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white cursor-pointer whitespace-nowrap">
+                    <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-white/20 hover:bg-white/10 hover:text-white cursor-pointer whitespace-nowrap transition-all">
                       <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
                       <span>{cover ? cover.name : "انتخاب کاور جدید"}</span>
                       <input
@@ -770,9 +841,9 @@ export default function Dashboard() {
           </section>
 
           {/* Card 2: Core Business Info & Contact */}
-          <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm space-y-5">
-            <div className="flex items-center gap-2.5 border-b border-slate-800/80 pb-3.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-850 text-cyan-400">
+          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
+            <div className="flex items-center gap-2.5 border-b border-white/5 pb-3.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
                 <Building2 className="h-4 w-4" />
               </div>
               <div>
@@ -794,7 +865,7 @@ export default function Dashboard() {
                   value={form.name}
                   onChange={(e) => change("name", e.target.value)}
                   placeholder="مثال: کافه رستوران سپیدار"
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
 
@@ -806,7 +877,7 @@ export default function Dashboard() {
                   value={form.category}
                   onChange={(e) => change("category", e.target.value)}
                   placeholder="انتخاب یا تایپ صنف..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
                 <datalist id="business-categories">
                   {CATEGORIES.map((x) => (
@@ -827,7 +898,7 @@ export default function Dashboard() {
                       className={`rounded-lg px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
                         form.category === cat
                           ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                          : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200"
+                          : "bg-white/5 text-slate-400 border border-white/10 hover:text-slate-200 hover:border-white/20"
                       }`}
                     >
                       {cat}
@@ -848,7 +919,7 @@ export default function Dashboard() {
                   value={form.phone}
                   onChange={(e) => change("phone", e.target.value)}
                   placeholder="0912... یا 021..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
 
@@ -864,7 +935,7 @@ export default function Dashboard() {
                   value={form.email}
                   onChange={(e) => change("email", e.target.value)}
                   placeholder="contact@example.com"
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
 
@@ -875,7 +946,7 @@ export default function Dashboard() {
                   value={form.city}
                   onChange={(e) => change("city", e.target.value)}
                   placeholder="مثال: تهران، مشهد، اصفهان..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
 
@@ -886,7 +957,7 @@ export default function Dashboard() {
                   value={form.neighborhood}
                   onChange={(e) => change("neighborhood", e.target.value)}
                   placeholder="مثال: سعادت‌آباد، احمدآباد..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
 
@@ -900,16 +971,16 @@ export default function Dashboard() {
                   value={form.address}
                   onChange={(e) => change("address", e.target.value)}
                   placeholder="خیابان، پلاک، طبقه یا نشانی دقیق..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
             </div>
           </section>
 
           {/* Card 3: About & Services */}
-          <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm space-y-5">
-            <div className="flex items-center gap-2.5 border-b border-slate-800/80 pb-3.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-850 text-cyan-400">
+          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
+            <div className="flex items-center gap-2.5 border-b border-white/5 pb-3.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
                 <Sparkles className="h-4 w-4" />
               </div>
               <div>
@@ -934,7 +1005,7 @@ export default function Dashboard() {
                   value={form.description}
                   onChange={(e) => change("description", e.target.value)}
                   placeholder="توضیح کامل درباره تاریخچه، زمینه فعالیت، خدمات ویژه و ساعات کاری..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
 
@@ -950,17 +1021,17 @@ export default function Dashboard() {
                   value={form.services}
                   onChange={(e) => change("services", e.target.value)}
                   placeholder="مثال:&#10;اینترنت رایگان&#10;پارکینگ اختصاصی&#10;سفارش بیرون‌بر&#10;مشاوره رایگان"
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
             </div>
           </section>
 
           {/* Card 4: Location & Map Picker */}
-          <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3.5">
+          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-850 text-cyan-400">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
                   <MapPin className="h-4 w-4" />
                 </div>
                 <div>
@@ -993,7 +1064,7 @@ export default function Dashboard() {
                   value={form.latitude}
                   onChange={(e) => change("latitude", e.target.value)}
                   placeholder="35.6892..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2 font-mono text-sm text-slate-100 outline-none focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
               <label className="space-y-1">
@@ -1007,13 +1078,13 @@ export default function Dashboard() {
                   value={form.longitude}
                   onChange={(e) => change("longitude", e.target.value)}
                   placeholder="51.3890..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2 font-mono text-sm text-slate-100 outline-none focus:border-cyan-400"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
                 />
               </label>
             </div>
 
             {/* Interactive Map */}
-            <div className="relative isolate z-10 overflow-hidden rounded-xl border border-slate-800">
+            <div className="relative isolate z-10 overflow-hidden rounded-xl border border-white/10">
               <MapViewLazy
                 className="h-[320px] w-full"
                 markers={
@@ -1046,10 +1117,10 @@ export default function Dashboard() {
           </section>
 
           {/* Card 5: Social Media & Channels */}
-          <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3.5">
+          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-850 text-cyan-400">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
                   <Share2 className="h-4 w-4" />
                 </div>
                 <div>
@@ -1073,7 +1144,7 @@ export default function Dashboard() {
                       type="button"
                       disabled={alreadyHas || social.length >= 10}
                       onClick={() => setSocial((xs) => [...xs, { key: p.key, url: "" }])}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300 hover:border-slate-700 hover:text-white disabled:opacity-40 cursor-pointer"
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:border-white/20 hover:text-white disabled:opacity-40 cursor-pointer transition-colors"
                     >
                       <p.icon className="h-3 w-3 text-cyan-400" />
                       <span>{p.label}</span>
@@ -1087,7 +1158,7 @@ export default function Dashboard() {
               {social.map((row, i) => (
                 <div
                   key={i}
-                  className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-950/50 p-3"
+                  className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-3 transition-all hover:border-white/10"
                 >
                   <div className="sm:w-44 space-y-1">
                     <span className="text-[11px] text-slate-400">نام شبکه (انگلیسی)</span>
@@ -1101,7 +1172,7 @@ export default function Dashboard() {
                           xs.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
                         )
                       }
-                      className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400"
+                      className="w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
                     />
                   </div>
 
@@ -1117,14 +1188,14 @@ export default function Dashboard() {
                           xs.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)),
                         )
                       }
-                      className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400"
+                      className="w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
                     />
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setSocial((xs) => xs.filter((_, j) => j !== i))}
-                    className="self-end sm:self-center mt-2 sm:mt-5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 cursor-pointer"
+                    className="self-end sm:self-center mt-2 sm:mt-5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
                     title="حذف این شبکه"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -1142,7 +1213,7 @@ export default function Dashboard() {
                 type="button"
                 disabled={social.length >= 10}
                 onClick={() => setSocial((xs) => [...xs, { key: "", url: "" }])}
-                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-white/20 hover:text-white cursor-pointer transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>افزودن شبکه دلخواه دیگر</span>
@@ -1150,14 +1221,23 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Floating Contextual Save Bar (Linear / Vercel Pattern) */}
-          <div className="fixed bottom-3 sm:bottom-5 inset-x-0 z-50 pointer-events-none px-4">
-            <div className="mx-auto max-w-3xl pointer-events-auto rounded-2xl border border-slate-700/60 bg-[#0b1120]/95 backdrop-blur-2xl p-3 sm:px-6 sm:py-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)] flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 transition-all">
+          {/* Full-Width Docked Action Bar */}
+          <div className="fixed bottom-0 inset-x-0 z-50 w-full border-t border-cyan-500/20 bg-[#060b14]/90 backdrop-blur-2xl shadow-[0_-10px_35px_rgba(0,0,0,0.6)]">
+            {/* Top illuminated glow line */}
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+
+            <div className="mx-auto max-w-5xl px-4 sm:px-6 py-3 sm:py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
               <div className="text-center sm:text-right min-w-0">
                 <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
+                  </span>
                   <span className="text-xs sm:text-sm font-bold text-white truncate">
                     {editing ? `در حال ویرایش: ${form.name || editing.name}` : "ثبت کسب‌وکار جدید"}
+                  </span>
+                  <span className="hidden md:inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300">
+                    {busy ? "در حال ارسال اطلاعات..." : "آماده ذخیره"}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
@@ -1169,7 +1249,7 @@ export default function Dashboard() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="flex h-11 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-cyan-400 px-6 sm:px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-sm transition-all hover:bg-cyan-300 active:scale-[0.98] disabled:opacity-50 cursor-pointer whitespace-nowrap select-none"
+                  className="flex h-11 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-6 sm:px-9 text-xs sm:text-sm font-bold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50 cursor-pointer whitespace-nowrap select-none"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره تغییرات نمایه"}</span>
@@ -1180,10 +1260,10 @@ export default function Dashboard() {
         </form>
 
         {/* Card 6: Showcase Gallery (Independent form section) */}
-        <section className="rounded-2xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6 shadow-sm space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3.5">
+        <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3.5">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-850 text-cyan-400">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
                 <ImageIcon className="h-4 w-4" />
               </div>
               <div>
@@ -1201,15 +1281,15 @@ export default function Dashboard() {
           </div>
 
           {!editing ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-6 text-center text-xs text-slate-400">
+            <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-6 text-center text-xs text-slate-400">
               برای مدیریت گالری تصاویر، ابتدا فرم بالا را یک بار ذخیره کنید تا شناسه کسب‌وکار ایجاد شود.
             </div>
           ) : (
             <div className="space-y-4">
               {/* Upload Dropzone */}
               {images.length < 5 && (
-                <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-700 bg-slate-950/40 p-6 text-center cursor-pointer transition-colors hover:border-cyan-400/60 hover:bg-slate-900/30">
-                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-cyan-400">
+                <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/15 bg-slate-950/40 backdrop-blur-sm p-6 text-center cursor-pointer transition-all hover:border-cyan-400/60 hover:bg-slate-900/40">
+                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-cyan-400">
                     <UploadCloud className="h-5 w-5" />
                   </div>
                   <span className="text-xs sm:text-sm font-semibold text-slate-200">
@@ -1250,7 +1330,7 @@ export default function Dashboard() {
                     return (
                       <div
                         key={image.id}
-                        className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm"
+                        className="group relative flex flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-950/60 backdrop-blur-md shadow-sm transition-all hover:border-cyan-500/40"
                       >
                         <div className="relative aspect-square w-full">
                           {url ? (
@@ -1269,7 +1349,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Actions overlay */}
-                        <div className="p-2 border-t border-slate-800/80 bg-slate-900">
+                        <div className="p-2 border-t border-white/5 bg-slate-950/90">
                           {isDeleting ? (
                             <div className="flex flex-col gap-1">
                               <span className="text-[10px] text-rose-300 font-bold text-center">
@@ -1299,7 +1379,7 @@ export default function Dashboard() {
                               type="button"
                               disabled={busy}
                               onClick={() => setDeleteImage(image.id)}
-                              className="flex w-full items-center justify-center gap-1 rounded-lg border border-slate-800 bg-slate-950 py-1 text-[11px] font-medium text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                              className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/5 bg-white/5 py-1 text-[11px] font-medium text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10 cursor-pointer transition-colors"
                             >
                               <Trash2 className="h-3 w-3" />
                               <span>حذف</span>

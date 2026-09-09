@@ -79,13 +79,15 @@ export default function AdminMediaTab() {
       )}
 
       {/* Upload Zone Card */}
-      <section className="rounded-xl border border-slate-800 bg-[#0b1120] p-4 sm:p-6 shadow-sm">
-        <h3 className="mb-3 text-sm sm:text-base font-bold text-white flex items-center gap-2">
-          <UploadCloud className="h-4 w-4 text-cyan-400" />
-          <span>بارگذاری فایل جدید</span>
-        </h3>
-        <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-700 bg-slate-950/50 p-6 text-center cursor-pointer transition-colors hover:border-cyan-400/50 hover:bg-slate-900/40">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-cyan-400">
+      <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
+        <div className="mb-4 flex items-center gap-2.5 border-b border-white/[0.08] pb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-400 shrink-0 shadow-[0_0_12px_rgba(34,211,238,0.15)]">
+            <UploadCloud className="h-4 w-4" />
+          </div>
+          <h3 className="text-sm sm:text-base font-bold text-white">بارگذاری فایل جدید</h3>
+        </div>
+        <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/15 bg-slate-950/50 p-7 text-center cursor-pointer transition-all hover:border-cyan-400/50 hover:bg-cyan-500/[0.03]">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
             {busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6" />}
           </div>
           <span className="text-xs sm:text-sm font-semibold text-slate-200">
@@ -105,8 +107,8 @@ export default function AdminMediaTab() {
       </section>
 
       {/* Files List Card */}
-      <section className="rounded-xl border border-slate-800 bg-[#0b1120] p-4 sm:p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between border-b border-slate-800/80 pb-3">
+      <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
+        <div className="mb-4 flex items-center justify-between border-b border-white/[0.08] pb-3">
           <h3 className="text-sm sm:text-base font-bold text-white">فایل‌های بارگذاری‌شده</h3>
           <span className="text-xs text-slate-400">{files.length} فایل</span>
         </div>
@@ -116,7 +118,7 @@ export default function AdminMediaTab() {
         ) : files.length === 0 ? (
           <p className="py-6 text-center text-xs text-slate-400">هنوز فایلی بارگذاری نشده است.</p>
         ) : (
-          <ul className="divide-y divide-slate-800/60">
+          <ul className="divide-y divide-white/[0.08]">
             {files.map((f) => {
               const isImage = f.mime_type?.startsWith("image/");
               const isCopied = copiedId === f.id;
@@ -124,10 +126,10 @@ export default function AdminMediaTab() {
               return (
                 <li
                   key={f.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 overflow-hidden">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/80 text-slate-300 overflow-hidden shadow-inner">
                       {isImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -153,10 +155,10 @@ export default function AdminMediaTab() {
                     <button
                       type="button"
                       onClick={() => void copyUrl(f)}
-                      className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition-all whitespace-nowrap active:scale-95 cursor-pointer ${
+                      className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-all whitespace-nowrap active:scale-95 cursor-pointer ${
                         isCopied
-                          ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
-                          : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600 hover:text-white"
+                          ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                          : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white"
                       }`}
                     >
                       {isCopied ? (

@@ -22,6 +22,8 @@ import {
   Palette,
   Check,
   AlertCircle,
+  Save,
+  Home,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
@@ -132,6 +134,47 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeGroup, setActiveGroup] = useState("hero");
+  const [scrollY, setScrollY] = useState(0);
+  const [maxScroll, setMaxScroll] = useState(0);
+
+  // Throttled scroll tracking for the smart taskbar and progress line
+  useEffect(() => {
+    let raf = 0;
+    let lastY = -1;
+    let lastMax = -1;
+    const measure = () => {
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (max !== lastMax) {
+        lastMax = max;
+        setMaxScroll(max);
+      }
+    };
+    const onScroll = () => {
+      if (!raf) {
+        raf = window.requestAnimationFrame(() => {
+          raf = 0;
+          const y = window.scrollY;
+          if (y !== lastY) {
+            lastY = y;
+            setScrollY(y);
+          }
+          measure();
+        });
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    measure();
+    onScroll();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const sp = maxScroll > 0 ? Math.min(1, Math.max(0, scrollY / maxScroll)) : 0;
+  const isScrolled = scrollY > 20;
 
   async function refresh() {
     setRefreshing(true);
@@ -202,30 +245,46 @@ export default function AdminPage() {
     pendingPortfolios;
 
   return (
-    <div dir="rtl" className="flex min-h-screen bg-[#090d16] text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div dir="rtl" className="relative flex min-h-screen bg-[#070b14] text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200 overflow-x-hidden">
+      {/* Ambient background light glows */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -top-32 right-1/4 h-[520px] w-[520px] rounded-full bg-cyan-500/[0.05] blur-[140px]" />
+        <div className="absolute top-1/3 -left-20 h-[450px] w-[450px] rounded-full bg-indigo-600/[0.04] blur-[150px]" />
+        <div className="absolute bottom-10 right-1/3 h-[450px] w-[450px] rounded-full bg-teal-500/[0.03] blur-[130px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(14,165,233,0.06),rgba(255,255,255,0))]" />
+      </div>
+
+      {/* Slim Neon Scroll Progress Indicator */}
+      <div aria-hidden className="fixed left-0 top-0 z-[60] h-[3px] w-full pointer-events-none">
+        <div
+          className="h-full bg-gradient-to-l from-cyan-400 via-teal-400 to-emerald-400 shadow-[0_0_14px_rgba(34,211,238,0.7)] transition-[width] duration-150 ease-out"
+          style={{ width: `${(sp * 100).toFixed(2)}%` }}
+        />
+      </div>
+
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
 
       {/* Modern Right Sidebar (Shopify Polaris & Geist Shell) */}
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-72 flex-col justify-between border-l border-slate-800/80 bg-[#0b1120] transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-72 flex-col justify-between border-l border-white/[0.08] bg-[#070b14]/92 backdrop-blur-2xl transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
           mobileMenuOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div>
           {/* Brand Header */}
-          <div className="flex items-center justify-between border-b border-slate-800/80 px-6 py-5">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 text-lg font-black text-cyan-400 shadow-sm">
+          <div className="flex items-center justify-between border-b border-white/[0.08] px-6 py-5">
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-teal-400 text-lg font-black text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] group-hover:scale-105 transition-transform">
                 اَ
               </div>
               <div>
-                <h1 className="text-base font-bold tracking-tight text-white">
+                <h1 className="text-base font-bold tracking-tight text-white group-hover:text-cyan-400 transition-colors">
                   مرکز مدیریت اینکارت
                 </h1>
                 <p className="text-[11px] text-slate-400">سامانه جامع معرفی کسب‌وکارها</p>
@@ -233,7 +292,7 @@ export default function AdminPage() {
             </Link>
             <button
               onClick={() => setMobileMenuOpen(false)}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 lg:hidden"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 lg:hidden cursor-pointer"
               aria-label="بستن منو"
             >
               <X className="h-5 w-5" />
@@ -244,20 +303,20 @@ export default function AdminPage() {
           <div className="p-4">
             <Link
               href="/admin/businesses"
-              className="group flex items-center justify-between rounded-xl border border-cyan-500/30 bg-cyan-950/30 px-3.5 py-3 text-sm font-semibold text-cyan-200 shadow-sm transition-all hover:border-cyan-400/50 hover:bg-cyan-950/50 active:scale-[0.99]"
+              className="group flex items-center justify-between rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3.5 py-3 text-sm font-semibold text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.12)] transition-all hover:border-cyan-400/60 hover:bg-cyan-500/20 active:scale-[0.99]"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <Building2 className="h-4 w-4 shrink-0 text-cyan-400" />
                 <span className="truncate">میزکار کسب‌وکارها</span>
               </div>
-              <span className="shrink-0 rounded-md bg-cyan-500/20 px-2 py-0.5 text-[11px] font-bold text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
+              <span className="shrink-0 rounded-md bg-cyan-400/20 px-2 py-0.5 text-[11px] font-bold text-cyan-300 border border-cyan-400/30 whitespace-nowrap">
                 بررسی
               </span>
             </Link>
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-1 px-3">
+          <nav className="space-y-1.5 px-3">
             <div className="px-3 pb-2 pt-1 text-[11px] font-semibold text-slate-400">
               بخش‌ها و صف‌های مدیریت
             </div>
@@ -271,10 +330,10 @@ export default function AdminPage() {
                     setTab(t.id);
                     setMobileMenuOpen(false);
                   }}
-                  className={`flex min-h-[44px] w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
+                  className={`flex min-h-[44px] w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all cursor-pointer ${
                     isActive
-                      ? "bg-slate-800 text-white border border-slate-700/80 shadow-inner"
-                      : "text-slate-400 hover:bg-slate-850 hover:text-slate-200"
+                      ? "bg-cyan-500/15 text-white border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+                      : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -297,16 +356,20 @@ export default function AdminPage() {
         </div>
 
         {/* Sidebar Footer: Admin Identity & System Controls */}
-        <div className="border-t border-slate-800/80 p-4">
-          <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-800/70 bg-slate-900/60 p-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-cyan-400">
+        <div className="border-t border-white/[0.08] p-4">
+          <div className="mb-3 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md p-3">
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-400">
               <ShieldCheck className="h-5 w-5" />
+              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              </span>
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold text-white">
                 مدیر ارشد سامانه
               </p>
-              <p className="truncate text-[11px] text-slate-400" dir="ltr">
+              <p className="truncate text-[11px] text-slate-400 font-mono" dir="ltr">
                 {user?.phone ?? "Admin"}
               </p>
             </div>
@@ -317,11 +380,11 @@ export default function AdminPage() {
               type="button"
               onClick={() => void refresh()}
               disabled={refreshing}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-850 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50 cursor-pointer"
               title="تازه‌سازی داده‌ها"
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-cyan-400" : ""}`}
+                className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-cyan-400" : "text-cyan-400"}`}
               />
               <span>تازه‌سازی</span>
             </button>
@@ -331,7 +394,7 @@ export default function AdminPage() {
                 await logout();
                 router.push("/login");
               }}
-              className="flex items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 transition-colors hover:bg-rose-500/20 cursor-pointer"
+              className="flex items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 transition-colors hover:bg-rose-500/20 cursor-pointer"
               title="خروج از حساب"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -341,51 +404,67 @@ export default function AdminPage() {
       </aside>
 
       {/* Main Content Stage */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 relative z-10">
         {/* Floating Top Taskbar */}
-        <div className="sticky top-2 sm:top-4 z-40 px-3 sm:px-6">
-          <header className="flex h-14 sm:h-16 items-center justify-between rounded-2xl border border-slate-800/80 bg-[#0b1120]/85 px-3 sm:px-5 backdrop-blur-2xl shadow-[0_10px_35px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)]">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setMobileMenuOpen(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-850 text-slate-300 hover:text-white lg:hidden active:scale-95 cursor-pointer"
-                aria-label="باز کردن منو"
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="hidden sm:inline text-slate-400">مرکز مدیریت</span>
-                <span className="hidden sm:inline text-slate-600">/</span>
-                <span className="font-semibold text-white">
-                  {TABS.find((x) => x.id === tab)?.label}
-                </span>
+        <div className="sticky top-2 sm:top-4 z-40 px-3 sm:px-6 transition-all duration-300">
+          <header
+            className={`flex items-center justify-between rounded-2xl p-px bg-gradient-to-l from-cyan-400/35 via-purple-500/25 to-cyan-400/35 shadow-[0_10px_35px_rgba(0,0,0,0.4),0_0_35px_-8px_rgba(34,211,238,0.25)] transition-all duration-300 ${
+              isScrolled ? "scale-[0.99] shadow-[0_15px_40px_rgba(0,0,0,0.65),0_0_40px_-5px_rgba(34,211,238,0.35)]" : ""
+            }`}
+          >
+            <div
+              className={`flex w-full items-center justify-between rounded-[15px] bg-[#080d1a]/85 px-3.5 sm:px-5 backdrop-blur-2xl transition-all duration-300 ${
+                isScrolled ? "h-13 sm:h-14 bg-[#050914]/92" : "h-14 sm:h-16"
+              }`}
+            >
+              <div className="flex items-center gap-2.5 sm:gap-3.5">
+                <button
+                  onClick={() => setMobileMenuOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-white lg:hidden active:scale-95 cursor-pointer transition-colors"
+                  aria-label="باز کردن منو"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="hidden sm:inline text-slate-400">مرکز مدیریت</span>
+                  <span className="hidden sm:inline text-slate-600">/</span>
+                  <div className="flex items-center gap-1.5 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                    </span>
+                    <span>{TABS.find((x) => x.id === tab)?.label}</span>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void refresh()}
-                disabled={refreshing}
-                className="flex sm:hidden h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-850 text-slate-300 active:scale-95 disabled:opacity-50 cursor-pointer"
-                aria-label="تازه‌سازی"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-cyan-400" : ""}`} />
-              </button>
-              <Link
-                href="/"
-                target="_blank"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-850/80 px-3 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all active:scale-[0.98]"
-              >
-                <span>مشاهده سایت</span>
-                <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
-              </Link>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  disabled={refreshing}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 sm:px-3 text-xs font-medium text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                  title="تازه‌سازی داده‌ها"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-cyan-400" : "text-cyan-400"}`} />
+                  <span className="hidden sm:inline">تازه‌سازی</span>
+                </button>
+                <Link
+                  href="/"
+                  target="_blank"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-2.5 sm:px-3 text-xs font-semibold text-cyan-200 hover:border-cyan-400/60 hover:bg-cyan-500/20 hover:text-white transition-all active:scale-[0.98] shadow-[0_0_15px_rgba(6,182,212,0.12)]"
+                >
+                  <Home className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                  <span>مشاهده سایت</span>
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                </Link>
+              </div>
             </div>
           </header>
         </div>
 
         {/* Quick mobile horizontal tab switcher (for instant touch navigation) */}
-        <div className="lg:hidden flex items-center gap-2 overflow-x-auto border-b border-slate-800/80 bg-[#0b1120] px-4 py-2.5 no-scrollbar">
+        <div className="lg:hidden flex items-center gap-2 overflow-x-auto border-b border-white/[0.08] bg-[#070b14]/90 backdrop-blur-xl px-4 py-2.5 no-scrollbar">
           {TABS.map((t) => {
             const Icon = t.icon;
             const isActive = tab === t.id;
@@ -393,10 +472,10 @@ export default function AdminPage() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
                   isActive
-                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                    : "bg-slate-900 text-slate-400 border border-slate-800"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(34,211,238,0.2)]"
+                    : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10 hover:text-slate-200"
                 }`}
               >
                 <Icon className={`h-3.5 w-3.5 ${isActive ? "text-cyan-400" : "text-slate-400"}`} />
@@ -416,7 +495,7 @@ export default function AdminPage() {
           {error && (
             <div
               role="alert"
-              className="mb-4 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 sm:p-4 text-xs sm:text-sm text-rose-300 shadow-sm"
+              className="mb-4 flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 sm:p-4 text-xs sm:text-sm text-rose-300 shadow-sm backdrop-blur-md"
             >
               <AlertCircle className="h-5 w-5 shrink-0 text-rose-400" />
               <span>{error}</span>
@@ -425,7 +504,7 @@ export default function AdminPage() {
           {saved && (
             <div
               role="status"
-              className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 sm:p-4 text-xs sm:text-sm text-emerald-300 shadow-sm"
+              className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 sm:p-4 text-xs sm:text-sm text-emerald-300 shadow-sm backdrop-blur-md"
             >
               <Check className="h-5 w-5 shrink-0 text-emerald-400" />
               <span>تنظیمات و محتوای سایت با موفقیت ذخیره شد.</span>
@@ -449,7 +528,7 @@ export default function AdminPage() {
 
               {/* KPI Summary Cards (Polaris Metric Cards) - 2x2 grid on mobile */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                <div className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-5 shadow-sm">
+                <div className="group flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.14] hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
                   <div className="flex items-center justify-between text-slate-400">
                     <span className="text-[11px] sm:text-xs font-medium">کسب‌وکارهای معلق</span>
                     <Building2 className="h-4 w-4 text-cyan-400" />
@@ -463,14 +542,15 @@ export default function AdminPage() {
                   <div className="mt-2 sm:mt-3">
                     <Link
                       href="/admin/businesses"
-                      className="text-[11px] sm:text-xs font-medium text-cyan-400 hover:text-cyan-300 whitespace-nowrap"
+                      className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-medium text-cyan-400 hover:text-cyan-300 whitespace-nowrap transition-colors"
                     >
-                      ورود به بررسی ←
+                      <span>ورود به بررسی</span>
+                      <span>←</span>
                     </Link>
                   </div>
                 </div>
 
-                <div className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-5 shadow-sm">
+                <div className="group flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.14] hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
                   <div className="flex items-center justify-between text-slate-400">
                     <span className="text-[11px] sm:text-xs font-medium">اشتراک‌های جدید</span>
                     <CreditCard className="h-4 w-4 text-emerald-400" />
@@ -486,7 +566,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-5 shadow-sm">
+                <div className="group flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.14] hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
                   <div className="flex items-center justify-between text-slate-400">
                     <span className="text-[11px] sm:text-xs font-medium">تصاویر ویترین</span>
                     <ImageIcon className="h-4 w-4 text-cyan-400" />
@@ -502,7 +582,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-5 shadow-sm">
+                <div className="group flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.14] hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
                   <div className="flex items-center justify-between text-slate-400">
                     <span className="text-[11px] sm:text-xs font-medium">تبلیغات و طراحان</span>
                     <Megaphone className="h-4 w-4 text-amber-400" />
@@ -602,22 +682,23 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => void save()}
-                  className="btn btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md cursor-pointer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all hover:brightness-110 active:scale-[0.98] cursor-pointer whitespace-nowrap"
                 >
-                  ذخیره تمام تغییرات
+                  <Save className="h-4 w-4" />
+                  <span>ذخیره تمام تغییرات</span>
                 </button>
               </div>
 
               {/* Category selector */}
-              <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
+              <div className="flex flex-wrap gap-2 border-b border-white/[0.08] pb-3">
                 {HOMEPAGE_GROUPS.map((grp) => (
                   <button
                     key={grp.id}
                     onClick={() => setActiveGroup(grp.id)}
-                    className={`rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${
+                    className={`rounded-xl px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
                       activeGroup === grp.id
-                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                        : "bg-slate-900 text-slate-400 hover:bg-slate-850 hover:text-slate-200 border border-slate-800"
+                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(34,211,238,0.15)]"
+                        : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 border border-white/10"
                     }`}
                   >
                     {grp.title}
@@ -629,7 +710,7 @@ export default function AdminPage() {
               {HOMEPAGE_GROUPS.filter((g) => g.id === activeGroup).map((grp) => (
                 <div
                   key={grp.id}
-                  className="rounded-2xl border border-slate-800 bg-[#0f172a] p-6 shadow-sm space-y-6"
+                  className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-6 transition-all hover:border-white/[0.12]"
                 >
                   <div>
                     <h3 className="text-base font-bold text-white">{grp.title}</h3>
@@ -667,7 +748,7 @@ export default function AdminPage() {
                               onChange={(e) =>
                                 setSettings((x) => ({ ...x, [key]: e.target.value }))
                               }
-                              className="min-h-[96px] w-full rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                              className="min-h-[96px] w-full rounded-xl border border-white/10 bg-slate-950/60 p-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                             />
                           ) : (
                             <input
@@ -677,7 +758,7 @@ export default function AdminPage() {
                               onChange={(e) =>
                                 setSettings((x) => ({ ...x, [key]: e.target.value }))
                               }
-                              className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                              className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                             />
                           )}
                         </div>
@@ -685,13 +766,14 @@ export default function AdminPage() {
                     })}
                   </div>
 
-                  <div className="pt-4 border-t border-slate-800/80 flex justify-end">
+                  <div className="pt-4 border-t border-white/[0.08] flex justify-end">
                     <button
                       type="button"
                       onClick={() => void save()}
-                      className="btn btn-primary px-5 py-2 rounded-xl text-sm font-medium cursor-pointer"
+                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all hover:brightness-110 active:scale-[0.98] cursor-pointer"
                     >
-                      ذخیره تغییرات این بخش
+                      <Check className="h-4 w-4" />
+                      <span>ذخیره تغییرات این بخش</span>
                     </button>
                   </div>
                 </div>
@@ -701,25 +783,25 @@ export default function AdminPage() {
 
           {/* Other Tabs with Clean Card Shell */}
           {tab === "Pages" && (
-            <div className="rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-6 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
               <AdminPagesTab />
             </div>
           )}
 
           {tab === "Blog" && (
-            <div className="rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-6 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
               <AdminBlogTab />
             </div>
           )}
 
           {tab === "Media" && (
-            <div className="rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-6 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
               <AdminMediaTab />
             </div>
           )}
 
           {tab === "Users" && (
-            <div className="rounded-2xl border border-slate-800 bg-[#0f172a] p-4 sm:p-6 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
               <AdminUsersTab />
             </div>
           )}
@@ -759,11 +841,11 @@ function QueueCard({
   }
 
   return (
-    <article className="flex flex-col rounded-2xl border border-slate-800 bg-[#0f172a] shadow-sm overflow-hidden">
+    <article className="flex flex-col rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden transition-all hover:border-white/[0.12]">
       {/* Card Header */}
-      <div className="flex items-center justify-between border-b border-slate-800/80 px-4 sm:px-5 py-3.5 sm:py-4">
+      <div className="flex items-center justify-between border-b border-white/[0.08] px-4 sm:px-5 py-3.5 sm:py-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80 text-cyan-400 shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-400 shrink-0 shadow-[0_0_12px_rgba(34,211,238,0.15)]">
             <Icon className="h-4 w-4" />
           </div>
           <h3 className="text-xs sm:text-sm font-bold text-white">{title}</h3>
@@ -772,7 +854,7 @@ function QueueCard({
           className={`flex h-5 items-center justify-center rounded-md px-2 text-[11px] font-semibold whitespace-nowrap shrink-0 ${
             items.length > 0
               ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-              : "bg-slate-800 text-slate-400 border border-slate-700/60"
+              : "bg-white/5 text-slate-400 border border-white/10"
           }`}
         >
           {items.length} مورد
@@ -782,7 +864,7 @@ function QueueCard({
       {/* Card Content */}
       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-center">
         {items.length > 0 ? (
-          <ul className="divide-y divide-slate-800/70">
+          <ul className="divide-y divide-white/[0.06]">
             {items.map((x, i) => {
               const name = String(
                 x.name ??
@@ -799,14 +881,14 @@ function QueueCard({
                   className="flex items-center justify-between gap-3 py-3 text-sm first:pt-0 last:pb-0"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="flex h-2 w-2 shrink-0 rounded-full bg-cyan-400" />
+                    <span className="flex h-2 w-2 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.7)]" />
                     <span className="truncate font-medium text-slate-200">{name}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleAction(id)}
                     disabled={isBusy}
-                    className="shrink-0 min-h-[36px] rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-semibold text-cyan-300 transition-colors hover:bg-cyan-500/20 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                    className="shrink-0 min-h-[36px] rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-semibold text-cyan-300 transition-all hover:border-cyan-400/60 hover:bg-cyan-500/20 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap shadow-[0_0_12px_rgba(34,211,238,0.1)]"
                   >
                     {isBusy ? "در حال انجام..." : actionLabel}
                   </button>
@@ -817,7 +899,7 @@ function QueueCard({
         ) : (
           /* Polaris Empty State */
           <div className="flex flex-col items-center justify-center py-6 text-center">
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
               <CheckCircle2 className="h-5 w-5" />
             </div>
             <p className="text-sm font-semibold text-slate-300">{emptyText}</p>

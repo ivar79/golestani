@@ -106,11 +106,13 @@ export default function AdminPagesTab() {
           return (
             <section
               key={page.slug}
-              className="rounded-xl border border-slate-800 bg-[#0b1120] p-4 sm:p-6 shadow-sm"
+              className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]"
             >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-cyan-400" />
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-400 shrink-0 shadow-[0_0_12px_rgba(34,211,238,0.15)]">
+                    <FileText className="h-4 w-4" />
+                  </div>
                   <h3 className="font-bold text-white text-sm sm:text-base">
                     {label}
                     <span className="ms-2 font-mono text-xs text-slate-400" dir="ltr">
@@ -119,7 +121,7 @@ export default function AdminPagesTab() {
                   </h3>
                 </div>
                 {isSaved && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-semibold text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
                     <Check className="h-3 w-3" />
                     ذخیره شد
                   </span>
@@ -132,7 +134,7 @@ export default function AdminPagesTab() {
                   <input
                     value={draft.title ?? ""}
                     onChange={(e) => updateDraft(page.slug, { title: e.target.value })}
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                    className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                   />
                 </label>
 
@@ -144,7 +146,7 @@ export default function AdminPagesTab() {
                     value={draft.content ?? ""}
                     onChange={(e) => updateDraft(page.slug, { content: e.target.value })}
                     rows={6}
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                    className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-base sm:text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                   />
                 </label>
 
@@ -154,7 +156,7 @@ export default function AdminPagesTab() {
                     <input
                       value={draft.seo_title ?? ""}
                       onChange={(e) => updateDraft(page.slug, { seo_title: e.target.value })}
-                      className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                     />
                   </label>
                   <label className="grid gap-1.5">
@@ -165,18 +167,18 @@ export default function AdminPagesTab() {
                         updateDraft(page.slug, { seo_description: e.target.value })
                       }
                       rows={2}
-                      className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                     />
                   </label>
                 </div>
               </div>
 
-              <div className="mt-4 flex justify-end">
+              <div className="mt-5 flex justify-end pt-3 border-t border-white/[0.08]">
                 <button
                   type="button"
                   disabled={isSaving}
                   onClick={() => void save(page.slug)}
-                  className="flex min-h-[40px] items-center gap-1.5 rounded-xl bg-cyan-600 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-md transition-all hover:bg-cyan-500 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                  className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-gradient-to-l from-cyan-400 to-teal-400 px-6 py-2 text-xs sm:text-sm font-bold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
                 >
                   {isSaving ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
