@@ -33,7 +33,7 @@ import {
   MapPin,
   Phone,
   Mail,
-  Instagram,
+  Camera,
   Globe,
   Trash2,
   UploadCloud,
@@ -96,7 +96,7 @@ const CATEGORIES = [
 ];
 
 const PRESET_SOCIALS = [
-  { key: "instagram", label: "اینستاگرام", placeholder: "username یا لینک کامل", icon: Instagram },
+  { key: "instagram", label: "اینستاگرام", placeholder: "username یا لینک کامل", icon: Camera },
   { key: "telegram", label: "تلگرام", placeholder: "username یا t.me/username", icon: Share2 },
   { key: "whatsapp", label: "واتساپ", placeholder: "شماره با 98 یا لینک wa.me", icon: Phone },
   { key: "website", label: "وب‌سایت", placeholder: "https://example.com", icon: Globe },
