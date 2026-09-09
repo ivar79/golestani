@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { extractApiError } from "@/lib/api";
 import { listAdminMedia, uploadAdminMedia, type MediaFile } from "@/lib/admin";
+import { mediaUrl } from "@/lib/phase2";
 import { UploadCloud, FileIcon, Copy, Check, AlertCircle, Loader2 } from "lucide-react";
 
 /** Media library: upload and list uploaded files with copyable URLs. */
@@ -11,6 +12,10 @@ export default function AdminMediaTab() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  function getFileUrl(f: MediaFile): string {
+    return f.url || mediaUrl(f.path) || f.path || "";
+  }
 
   async function refresh() {
     try {
@@ -45,7 +50,8 @@ export default function AdminMediaTab() {
 
   async function copyUrl(f: MediaFile) {
     try {
-      await navigator.clipboard.writeText(f.url);
+      const url = getFileUrl(f);
+      await navigator.clipboard.writeText(url);
       setCopiedId(f.id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
@@ -125,7 +131,7 @@ export default function AdminMediaTab() {
                       {isImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={f.url}
+                          src={getFileUrl(f)}
                           alt={f.original_name}
                           className="h-full w-full object-cover"
                         />

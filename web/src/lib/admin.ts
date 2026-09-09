@@ -39,6 +39,7 @@ export type Article = {
 export type MediaFile = {
   id: number;
   path: string;
+  url?: string;
   original_name: string;
   mime_type: string;
   file_size: number;
