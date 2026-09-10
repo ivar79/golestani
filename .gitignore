@@ -18,3 +18,15 @@ Desktop.ini
 backup/
 *.zip
 api/public/storage
+
+# --- huge local map archives (never commit/push to GitHub) ---
+iran-260909.osm.pbf
+iran-shortbread-1.0.mbtiles
+iran-shortbread-*.mbtiles
+iran-*.osm.pbf
+*.mbtiles
+*.osm.pbf
+*.pbf
+
+# --- local documentation drafts ---
+*.md

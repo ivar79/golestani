@@ -9,11 +9,30 @@ use App\Http\Controllers\Api\AdvertisementController;
 use App\Http\Controllers\Api\ShowcaseController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\MapTileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
 });
+
+// Vector basemap tiles from the local Shortbread MBTiles archive (pure PHP
+// reader) + raster fallback proxied through the Laravel HTTP client (also
+// pure PHP — the former Node.js proxy in the Next.js app was retired) +
+// diagnostics for auto source-mode detection. Public on purpose: tiles are
+// open ODbL data, responses are CDN-cacheable, and the map must work for
+// anonymous visitors. z/x/y validated and range-checked in the controller;
+// public write access is impossible by construction (GET-only).
+// NOTE: x/y allow up to 5/6 digits — z14 vector tiles need x≤16383 and
+// z19 raster tiles need x≤524287; the controller still range-checks strictly.
+Route::get('/map/tile/{z}/{x}/{y}', [MapTileController::class, 'tile'])
+    ->where(['z' => '[0-9]{1,2}', 'x' => '[0-9]{1,5}', 'y' => '[0-9]{1,5}'])
+    ->middleware('throttle:600,1');
+Route::get('/map/raster-tile/{z}/{x}/{y}', [MapTileController::class, 'rasterTile'])
+    ->where(['z' => '[0-9]{1,2}', 'x' => '[0-9]{1,6}', 'y' => '[0-9]{1,6}'])
+    ->middleware('throttle:600,1');
+Route::get('/map/status', [MapTileController::class, 'status'])
+    ->middleware('throttle:30,1');
 
 // Demonstration of the CheckRole middleware (Phase 1 RBAC wiring).
 Route::get('/admin/ping', function () {

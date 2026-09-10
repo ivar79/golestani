@@ -20,6 +20,7 @@ import {
   CreditCard,
   Megaphone,
   Palette,
+  Map as MapIcon,
   Check,
   AlertCircle,
   Save,
@@ -37,6 +38,7 @@ import {
 } from "@/lib/admin";
 import { getAdminSettings, saveAdminSetting } from "@/lib/admin";
 import AdminPagesTab from "@/components/admin/AdminPagesTab";
+import AdminMapTab from "@/components/admin/AdminMapTab";
 import AdminBlogTab from "@/components/admin/AdminBlogTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
 import AdminUsersTab from "@/components/admin/AdminUsersTab";
@@ -47,6 +49,7 @@ const TABS = [
   { id: "Homepage", label: "محتوای صفحه اصلی (CMS)", icon: SlidersHorizontal },
   { id: "Pages", label: "صفحات مستقل", icon: FileText },
   { id: "Blog", label: "وبلاگ و مقالات", icon: BookOpen },
+  { id: "Map", label: "زیرساخت نقشه", icon: MapIcon },
   { id: "Media", label: "کتابخانه رسانه", icon: ImageIcon },
 ] as const;
 
@@ -791,6 +794,12 @@ export default function AdminPage() {
           {tab === "Blog" && (
             <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
               <AdminBlogTab />
+            </div>
+          )}
+
+          {tab === "Map" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl transition-all hover:border-white/[0.12]">
+              <AdminMapTab />
             </div>
           )}
 

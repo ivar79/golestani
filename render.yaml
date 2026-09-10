@@ -4,6 +4,15 @@
 # (see DEPLOYMENT.md and vercel.json at the repo root).
 
 services:
+  # Redis (Render Key Value) — cache / session / queue backend, per the
+  # declared stack: Laravel + PHP 8.3 / PostgreSQL + PostGIS / Redis.
+  - type: keyvalue
+    name: golestani-redis
+    plan: free
+    region: frankfurt
+    maxmemoryPolicy: noeviction
+    ipAllowList: []            # internal connections from golestani-api only
+
   - type: web
     name: golestani-api
     runtime: docker            # Docker runtime — builds api/Dockerfile
@@ -34,13 +43,21 @@ services:
         value: pgsql
       - key: DB_SSLMODE
         value: require
-      # Redis-free phase 1: cache/session/queue backed by DB migrations
+      # Cache/session/queue on Redis (the keyvalue service above).
+      # REDIS_URL is injected from the keyvalue service's connection string.
+      - key: REDIS_URL
+        fromService:
+          name: golestani-redis
+          type: keyvalue
+          property: connectionString
+      - key: REDIS_CLIENT
+        value: predis           # pure-PHP client — no phpredis extension needed
       - key: CACHE_STORE
-        value: database
+        value: redis
       - key: SESSION_DRIVER
-        value: database
+        value: redis
       - key: QUEUE_CONNECTION
-        value: database
+        value: redis
       - key: LOG_CHANNEL
         value: stderr
       # OTP must never be exposed in production
@@ -53,6 +70,26 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         sync: false                # set to https://<your-app>.vercel.app in dashboard
 
+# NOTE ON THE MAP TILE ARCHIVE (MBTiles):
+# The vector basemap tiles for Iran are served directly by the Laravel API
+# (GET /api/map/tile/{z}/{x}/{y}) from the Shortbread MBTiles archive using
+# PHP's pdo_sqlite driver — no Node.js involved. To activate the offline
+# archive on Railway:
+#   1. Attach a Railway Volume (~1 GB, ≈$0.15/GB/mo) to the api service,
+#      mount point /data.
+#   2. Upload iran-shortbread-1.0.mbtiles onto the volume (one-time: Railway
+#      CLI `railway volume` + upload container, or any SFTP sidecar).
+#   3. Set env var MBTILES_PATH=/data/iran-shortbread-1.0.mbtiles.
+# Without the file the endpoint answers 404 per tile and /api/map/status
+# reports mbtiles_present=false — the frontend then falls back to the
+# online raster proxy automatically.
+#
+# NOTE ON REDIS:
+# Cache, sessions and the queue run on the golestani-redis Key Value instance
+# (Laravel talks to it through predis — pure PHP, no extra PHP extension).
+# Locally without Redis, Laravel falls back gracefully: leave CACHE_STORE etc.
+# unset so the defaults (database) apply.
+#
 # NOTE ON THE DATABASE:
 # Migrations enable the PostGIS extension and add a `geom` geography column,
 # so the DB must be PostGIS-capable. Render's managed PostgreSQL does NOT

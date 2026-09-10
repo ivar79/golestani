@@ -11,13 +11,18 @@ import {
 } from "@/lib/businesses";
 import { extractApiError } from "@/lib/api";
 import AppTaskbar from "@/components/layout/AppTaskbar";
-import MapViewLazy, { type MapMarker } from "@/components/map/MapViewLazy";
 import { useLocationPick } from "@/hooks/useLocationPick";
+import LocationChip from "@/components/search/LocationChip";
 import MiniCard from "@/components/search/MiniCard";
 import SearchFilters, {
   DEFAULT_FILTERS,
   type SearchFiltersState,
 } from "@/components/search/SearchFilters";
+import SearchResultsSplitView, {
+  type SplitViewCardData,
+} from "@/components/search/SearchResultsSplitView";
+import type { MapMarker } from "@/components/map/MapViewLazy";
+import type { MapSourceMode } from "@/lib/mapSource";
 import { searchIranLocations, getProvince } from "@/lib/iranGeo";
 
 /** True for axios cancellation errors — these are expected, not user-facing failures. */
@@ -52,6 +57,11 @@ function SearchPageContent() {
     searchParams.get("category") ??
     null;
   const initialQ = searchParams.get("q") ?? "";
+  // Tile source preference from the admin tab (map.tile_source CMS key is
+  // exposed to the public homepage payload; "auto" stays the safe default).
+  const sourceParam = searchParams.get("mapsource");
+  const sourceMode: MapSourceMode =
+    sourceParam === "local" || sourceParam === "online" ? sourceParam : "auto";
 
   const [q, setQ] = useState(initialQ);
   const [items, setItems] = useState<Business[]>([]);
@@ -65,12 +75,12 @@ function SearchPageContent() {
     category: initialCategory,
   });
   const abortRef = useRef<AbortController | null>(null);
+  const locationState = useLocationPick();
   const {
     location,
-    requestBrowserLocation,
     setManualLocation,
     error: locationError,
-  } = useLocationPick();
+  } = locationState;
 
   // Determine map center: prefer user location, fallback to selected city/province coords, fallback to Tehran
   const [mapCenter, setMapCenter] = useState<[number, number]>([35.6892, 51.389]);
@@ -107,6 +117,7 @@ function SearchPageContent() {
             q: text || undefined,
             category: f.category || undefined,
             city: f.city || undefined,
+            neighborhood: f.neighborhood || undefined,
             verified: f.verified || undefined,
             showcase: f.showcase || undefined,
             latitude: loc?.latitude,
@@ -192,23 +203,59 @@ function SearchPageContent() {
         .filter(Boolean)
         .join(" — "),
       href: `/b/${b.slug}`,
+      category: b.category,
+      distance: b.distance ?? null,
     }));
+
+  const cards: SplitViewCardData[] = items.map((b) => ({
+    id: b.id,
+    slug: b.slug,
+    name: b.name,
+    category: b.category,
+    city: b.city,
+    neighborhood: b.neighborhood,
+    verification_badge: b.verification_badge,
+    distance: b.distance ?? null,
+    featured:
+      filters.showcase ||
+      (Array.isArray(b.badges) && b.badges.includes("showcase")),
+    phone: b.phone ?? null,
+    latitude: b.latitude ?? null,
+    longitude: b.longitude ?? null,
+  }));
+
+  const renderCard = useCallback(
+    (card: SplitViewCardData) => <MiniCard business={card} />,
+    []
+  );
+
+  const emptyState = (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-slate-400">
+      <p className="font-medium text-slate-300 mb-1">کسب‌وکاری در این محدوده یافت نشد.</p>
+      <p className="text-xs text-slate-500">
+        فیلترها را تغییر دهید یا شهر دیگری را انتخاب کنید.
+      </p>
+    </div>
+  );
 
   return (
     <main dir="rtl" className="min-h-screen bg-[#050B14] pb-10 pt-32 sm:pt-36 text-white">
       <AppTaskbar />
       <div className="mx-auto max-w-7xl px-4">
-        {/* Search header form */}
+        {/* Search header form with the location chip */}
         <form
           onSubmit={submit}
           className="mt-6 grid gap-3 rounded-2xl border border-white/10 bg-[#0c1626]/80 backdrop-blur-md p-3 sm:p-4 md:grid-cols-[1fr_auto]"
         >
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="چه چیزی پیدا می‌کنید؟ (نام شغل، محصول، کلمه کلیدی یا مکان...)"
-            className="rounded-xl bg-white/[0.04] border border-white/5 p-3.5 sm:p-4 outline-none placeholder:text-slate-400 text-white text-base focus:border-cyan-400/40 transition-colors"
-          />
+          <div className="flex items-center gap-2">
+            <LocationChip location={locationState} />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="چه چیزی پیدا می‌کنید؟ (نام شغل، محصول، کلمه کلیدی یا مکان...)"
+              className="w-full rounded-xl bg-white/[0.04] border border-white/5 p-3.5 sm:p-4 outline-none placeholder:text-slate-400 text-white text-base focus:border-cyan-400/40 transition-colors"
+            />
+          </div>
           <button
             type="submit"
             className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-[#050B14] font-bold px-8 py-3.5 text-base transition-all shadow-lg shadow-emerald-950/40"
@@ -217,77 +264,42 @@ function SearchPageContent() {
           </button>
         </form>
 
-        {(error || locationError) && (
+        {error && (
           <p className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-            {error ?? locationError}
+            {error}
+          </p>
+        )}
+        {locationError && (
+          <p className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            {locationError}
           </p>
         )}
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_420px]">
-          {/* Filters + results */}
-          <div className="rounded-2xl border border-white/10 bg-[#0c1626]/60 backdrop-blur-md">
-            <SearchFilters
-              filters={filters}
-              onChange={applyFilters}
-              facets={facets}
-              resultCount={total}
-              loading={loading}
-              hasLocation={!!location}
-            />
-            <div className="grid gap-4 p-4">
-              {!loading && !error && items.length === 0 && (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-slate-400">
-                  <p className="font-medium text-slate-300 mb-1">کسب‌وکاری در این محدوده یافت نشد.</p>
-                  <p className="text-xs text-slate-500">
-                    فیلترها را تغییر دهید یا شهر دیگری را انتخاب کنید.
-                  </p>
-                </div>
-              )}
-              {items.map((b) => (
-                <MiniCard
-                  key={b.id}
-                  business={{
-                    id: b.id,
-                    slug: b.slug,
-                    name: b.name,
-                    category: b.category,
-                    city: b.city,
-                    neighborhood: b.neighborhood,
-                    verification_badge: b.verification_badge,
-                    distance: b.distance ?? null,
-                    featured:
-                      filters.showcase ||
-                      (Array.isArray(b.badges) && b.badges.includes("showcase")),
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+        {/* Sticky filter bar (task 9) above the split view */}
+        <div className="mt-6 rounded-2xl border border-white/10 bg-[#0c1626]/60 backdrop-blur-md">
+          <SearchFilters
+            filters={filters}
+            onChange={applyFilters}
+            facets={facets}
+            resultCount={total}
+            loading={loading}
+            hasLocation={!!location}
+          />
+        </div>
 
-          {/* Real map (provider-independent & nationwide) */}
-          <div className="lg:sticky lg:top-36 lg:h-[calc(100vh-12rem)]">
-            <div className="rounded-2xl border border-white/10 bg-[#0c1626]/60 backdrop-blur-md p-3 h-full flex flex-col">
-              <MapViewLazy
-                className="h-[400px] w-full lg:h-full min-h-[380px]"
-                markers={markers}
-                center={mapCenter}
-                userCoords={location ? { lat: location.latitude, lng: location.longitude } : null}
-                onPick={setManualLocation}
-              />
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-400 px-1">
-                <button
-                  type="button"
-                  onClick={requestBrowserLocation}
-                  className="text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 font-medium"
-                >
-                  📍 {location ? "به‌روزرسانی موقعیت من" : "یافتن موقعیت من با GPS"}
-                </button>
-                <span className="text-[11px] text-slate-500">
-                  {location ? "برای تغییر مکان، روی نقشه کلیک کنید" : "امکان انتخاب دستی با کلیک روی نقشه"}
-                </span>
-              </div>
-            </div>
-          </div>
+        {/* Split view (task 10): list + sticky map with two-way sync */}
+        <div className="mt-6">
+          <SearchResultsSplitView
+            markers={markers}
+            cards={cards}
+            renderCard={renderCard}
+            center={mapCenter}
+            userCoords={location ? { lat: location.latitude, lng: location.longitude } : null}
+            onPick={setManualLocation}
+            sourceMode={sourceMode}
+            loading={loading}
+            emptyState={emptyState}
+          />
         </div>
       </div>
     </main>
@@ -299,8 +311,7 @@ export default function SearchPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-[#050B14] flex items-center justify-center text-slate-400 text-sm">
-          در حال بارگذاری صفحه جست‌وجو…
-        </div>
+          در حال بارگذاری صفحه جست‌وجو…</div>
       }
     >
       <SearchPageContent />

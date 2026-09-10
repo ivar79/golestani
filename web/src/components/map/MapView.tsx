@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import type { LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { businessMarkerIcon, userLocationMarkerIcon, activeMarkerIcon } from "./leafletIcons";
+import VectorBasemapLayer from "./VectorBasemapLayer";
+import {
+  localVectorTileUrl,
+  rasterTileUrl,
+  resolveMapSource,
+  type MapSourceMode,
+} from "@/lib/mapSource";
 
 export type MapMarker = {
   id: number | string;
@@ -24,7 +31,10 @@ export type MapViewProps = {
   userCoords?: { lat: number; lng: number } | null;
   selectedId?: number | string | null;
   onPick?: (lat: number, lng: number) => void;
+  onSelectMarker?: (id: number | string) => void;
   className?: string;
+  /** Tile source preference; "auto" probes /api/map/status once per session. */
+  sourceMode?: MapSourceMode;
 };
 
 function MapController({
@@ -63,6 +73,30 @@ function MapController({
   return null;
 }
 
+/** Keeps the marker popup open for the currently selected business id. */
+function SelectedMarkerPopup({ selectedId }: { selectedId: number | string | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (selectedId == null) return;
+    // Wait for marker layers to settle, then open the matching popup.
+    const t = setTimeout(() => {
+      map.eachLayer((layer) => {
+        const marker = layer as unknown as { _popup?: unknown; getPopup?: () => { isOpen: () => boolean } | null };
+        if (typeof marker.getPopup === "function") {
+          const popup = marker.getPopup();
+          if (popup && (layer as unknown as { options?: { id?: number | string } }).options?.id === selectedId) {
+            if (!popup.isOpen()) layer.openPopup();
+          }
+        }
+      });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [selectedId, map]);
+
+  return null;
+}
+
 function ClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e: LeafletMouseEvent) {
@@ -79,14 +113,36 @@ export default function MapView({
   userCoords,
   selectedId,
   onPick,
+  onSelectMarker,
   className = "h-[460px] w-full",
+  sourceMode = "auto",
 }: MapViewProps) {
-  // Use internal local tile proxy by default for maximum Iranian intranet resilience & caching
-  const tileUrl =
-    process.env.NEXT_PUBLIC_MAP_TILE_URL ?? "/api/map/tile/{z}/{x}/{y}";
+  const [effective, setEffective] = useState<"local" | "online" | null>(null);
+
+  // Resolve the requested mode to a concrete source (auto → probe status API).
+  useEffect(() => {
+    let cancelled = false;
+    resolveMapSource(sourceMode).then((res) => {
+      if (!cancelled) setEffective(res.effective);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceMode]);
+
+  const vectorUrl = useMemo(() => localVectorTileUrl(), []);
+
+  /** Vector tile failures downgrade this session to the raster proxy. */
+  const handleVectorUnavailable = useCallback(() => setEffective("online"), []);
+
+  // Raster fallback (online mode) — the Laravel (PHP) OSM proxy, cached 7 days.
+  const rasterUrl = process.env.NEXT_PUBLIC_MAP_TILE_URL ?? rasterTileUrl();
   const attribution =
     process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ??
     '&copy; <a href="https://incard.ir">اینکارت</a> | نقشه‌پایه پایدار';
+
+  const showVector = effective === "local";
+  const showRaster = effective === "online";
 
   const defaultCenter: [number, number] = userCoords
     ? [userCoords.lat, userCoords.lng]
@@ -100,13 +156,22 @@ export default function MapView({
         scrollWheelZoom
         className="h-full w-full rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm"
       >
-        <TileLayer url={tileUrl} attribution={attribution} maxZoom={19} />
+        {showVector && (
+          <VectorBasemapLayer url={vectorUrl} onUnavailable={handleVectorUnavailable} />
+        )}
+
+        {showRaster && (
+          <TileLayer url={rasterUrl} attribution={attribution} maxZoom={19} />
+        )}
 
         {/* User Location Marker */}
         {userCoords?.lat && userCoords?.lng && (
           <Marker
             position={[userCoords.lat, userCoords.lng]}
             icon={userLocationMarkerIcon}
+            eventHandlers={{
+              click: () => onSelectMarker?.("__user__"),
+            }}
           >
             <Popup>
               <div dir="rtl" className="p-1 text-xs font-bold text-blue-600 text-center">
@@ -123,6 +188,9 @@ export default function MapView({
               key={m.id}
               position={[m.latitude, m.longitude]}
               icon={m.id === selectedId ? activeMarkerIcon : businessMarkerIcon}
+              eventHandlers={{
+                click: () => onSelectMarker?.(m.id),
+              }}
             >
               <Popup>
                 <div dir="rtl" className="p-2 min-w-[160px] text-right font-sans">
@@ -159,6 +227,7 @@ export default function MapView({
           zoom={zoom}
           userCoords={userCoords}
         />
+        <SelectedMarkerPopup selectedId={selectedId ?? null} />
         {onPick && <ClickPicker onPick={onPick} />}
       </MapContainer>
     </div>

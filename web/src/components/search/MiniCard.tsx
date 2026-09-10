@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Phone, Route } from "lucide-react";
 import HomeIcon from "@/components/home/HomeIcon";
 import type { Business } from "@/lib/businesses";
 
@@ -12,6 +13,11 @@ export type MiniCardData = Pick<
   distance?: number | null;
   /** Featured/showcase flag (real API badge or the showcase filter match). */
   featured?: boolean;
+  /** Public contact phone (E.164 or 09xxxxxxxxx) — enables the tel: action. */
+  phone?: string | null;
+  /** Coordinates enable the routing action buttons (نشان / بلد / گوگل‌مپس). */
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 /** Format meters the way the contract UI shows them: <۱۰۰۰ m → متر, else کیلومتر. */
@@ -24,14 +30,55 @@ function locationLabel(b: MiniCardData): string | null {
   return b.neighborhood || b.city || null;
 }
 
+type RoutingApp = "neshan" | "balad" | "google";
+
+/**
+ * Deep links into Iranian navigation apps. Neshan/Balad use universal links
+ * (they open the installed app on mobile, the web viewer on desktop).
+ */
+function routingUrl(app: RoutingApp, lat: number, lng: number, label: string): string {
+  const ll = `${lat},${lng}`;
+  switch (app) {
+    case "neshan":
+      return `https://neshan.org/maps/@${ll},17z,0p?q=${ll}&title=${encodeURIComponent(label)}`;
+    case "balad":
+      return `https://balad.site/location/${ll}?latitude=${lat}&longitude=${lng}&title=${encodeURIComponent(label)}`;
+    case "google":
+      return `https://www.google.com/maps/dir/?api=1&destination=${ll}`;
+  }
+}
+
+function RoutingButtons({ lat, lng, name }: { lat: number; lng: number; name: string }) {
+  const apps: Array<{ key: RoutingApp; label: string }> = [
+    { key: "neshan", label: "نشان" },
+    { key: "balad", label: "بلد" },
+    { key: "google", label: "گوگل‌مپس" },
+  ];
+  return (
+    <div className="flex items-center gap-1.5">
+      <Route className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+      {apps.map((a) => (
+        <a
+          key={a.key}
+          href={routingUrl(a.key, lat, lng, name)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
+        >
+          {a.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /**
  * MiniCard — Phase 3.1 (Stitch: mini_business_card / high_density_mini_cards).
  *
- * Glassmorphism card on the dark public theme, 4 data-driven states:
- *  - default            → plain card
- *  - verified           → emerald check overlay + inline verified icon
- *  - with distance      → distance chip (only when API returns distance)
- *  - featured (ویژه)     → glowing gradient border + corner ribbon
+ * Glassmorphism card on the dark public theme, states:
+ *  - default / verified / with distance / featured (ویژه)
+ *  - quick actions (task 8): direct call (tel:) + routing to
+ *    نیشان / بلد / گوگل‌مپس when the API returns coordinates & phone
  *
  * Data source: real search API payload only. No image field exists in the
  * API yet, so the image slot renders the No-Image placeholder state from the
@@ -42,6 +89,12 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
   const featured = business.featured === true;
   const location = locationLabel(business);
   const hasDistance = typeof business.distance === "number" && business.distance >= 0;
+  const hasPhone = typeof business.phone === "string" && business.phone.trim().length > 0;
+  const hasCoords =
+    typeof business.latitude === "number" &&
+    typeof business.longitude === "number" &&
+    Number.isFinite(business.latitude) &&
+    Number.isFinite(business.longitude);
 
   const body = (
     <>
@@ -65,31 +118,57 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
           <p className="mt-1 text-sm text-on-surface-variant">{business.category ?? "کسب‌وکار محلی"}</p>
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-2">
-          {hasDistance ? (
-            <span className="flex items-center gap-1 rounded-md bg-surface-container-highest px-2 py-1 text-white">
-              <HomeIcon name="location" className="h-3.5 w-3.5 text-secondary" />
-              <span className="text-[10px] font-bold">{formatDistance(business.distance as number)}</span>
-            </span>
-          ) : location ? (
-            <span className="flex items-center gap-1 text-on-surface-variant">
-              <HomeIcon name="location" className="h-4 w-4" />
-              <span className="text-[10px]">{location}</span>
-            </span>
-          ) : (
-            <span />
-          )}
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            {hasDistance ? (
+              <span className="flex items-center gap-1 rounded-md bg-surface-container-highest px-2 py-1 text-white">
+                <HomeIcon name="location" className="h-3.5 w-3.5 text-secondary" />
+                <span className="text-[10px] font-bold">{formatDistance(business.distance as number)}</span>
+              </span>
+            ) : location ? (
+              <span className="flex items-center gap-1 text-on-surface-variant">
+                <HomeIcon name="location" className="h-4 w-4" />
+                <span className="text-[10px]">{location}</span>
+              </span>
+            ) : (
+              <span />
+            )}
 
-          <Link
-            href={`/b/${business.slug}`}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              featured
-                ? "bg-secondary text-white shadow-md shadow-secondary/30 hover:bg-secondary/90"
-                : "bg-surface-container-highest text-white hover:bg-surface-container"
-            }`}
-          >
-            مشاهده
-          </Link>
+            <Link
+              href={`/b/${business.slug}`}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                featured
+                  ? "bg-secondary text-white shadow-md shadow-secondary/30 hover:bg-secondary/90"
+                  : "bg-surface-container-highest text-white hover:bg-surface-container"
+              }`}
+            >
+              مشاهده
+            </Link>
+          </div>
+
+          {/* Quick actions: call + routing (rendered only with real API data) */}
+          {(hasPhone || hasCoords) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-2">
+              {hasPhone ? (
+                <a
+                  href={`tel:${encodeURIComponent((business.phone as string).trim())}`}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition-colors hover:border-emerald-400/60 hover:bg-emerald-500/20"
+                >
+                  <Phone className="h-3 w-3" />
+                  <span dir="ltr">{business.phone}</span>
+                </a>
+              ) : (
+                <span />
+              )}
+              {hasCoords && (
+                <RoutingButtons
+                  lat={business.latitude as number}
+                  lng={business.longitude as number}
+                  name={business.name}
+                />
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

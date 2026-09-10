@@ -9,6 +9,8 @@ import { ChevronDown, MapPin, X } from "lucide-react";
 export type SearchFiltersState = {
   category: string | null;
   city: string | null;
+  /** Neighborhood text filter — sent as `neighborhood` to the search API. */
+  neighborhood: string | null;
   verified: boolean;
   showcase: boolean;
   /** Radius in meters; null = unlimited (no radius param sent). */
@@ -20,6 +22,7 @@ export type SearchFiltersState = {
 export const DEFAULT_FILTERS: SearchFiltersState = {
   category: null,
   city: null,
+  neighborhood: null,
   verified: false,
   showcase: false,
   radius: null,
@@ -53,10 +56,13 @@ export default function SearchFilters({
 }) {
   const [showRadius, setShowRadius] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showNeighborhood, setShowNeighborhood] = useState(false);
   const [selectedProvince, setSelectedProvince] = useState<ProvinceData | null>(null);
 
   const radiusLabel =
     RADIUS_OPTIONS.find((o) => o.value === filters.radius)?.label ?? "بدون محدودیت";
+
+  const neighborhoods = (facets?.neighborhoods ?? []).filter(Boolean).slice(0, 40);
 
   function toggle(kind: "verified" | "showcase") {
     onChange({ ...filters, [kind]: !filters[kind] });
@@ -67,14 +73,20 @@ export default function SearchFilters({
   }
 
   function pickCity(cityName: string | null) {
-    onChange({ ...filters, city: cityName });
+    // Changing the city invalidates the neighborhood filter (different area).
+    onChange({ ...filters, city: cityName, neighborhood: null });
     setShowCityPicker(false);
     setSelectedProvince(null);
   }
 
+  function pickNeighborhood(name: string | null) {
+    onChange({ ...filters, neighborhood: filters.neighborhood === name ? null : name });
+    setShowNeighborhood(false);
+  }
+
   return (
-    <div className="flex shrink-0 flex-col gap-4 border-b border-white/10 px-4 pb-4 pt-6 relative">
-      {/* Location meta row: city chip + radius selector */}
+    <div className="sticky top-[4.5rem] z-20 flex shrink-0 flex-col gap-4 rounded-t-2xl border-b border-white/10 bg-[#0c1626]/85 px-4 pb-4 pt-5 backdrop-blur-xl">
+      {/* Location meta row: city chip + neighborhood + radius selector */}
       <div className="flex items-center justify-between text-xs text-on-surface-variant">
         <button
           type="button"
@@ -97,47 +109,89 @@ export default function SearchFilters({
           </button>
         )}
 
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowRadius((v) => !v)}
-            className="flex items-center gap-1 rounded-md px-2 py-1 hover:text-white"
-          >
-            <span>شعاع: {filters.radius ? radiusLabel : "بدون محدودیت"}</span>
-            <HomeIcon
-              name="chevron"
-              className={`h-3.5 w-3.5 transition-transform ${showRadius ? "-rotate-90" : ""}`}
-            />
-          </button>
-          {showRadius && (
-            <div className="absolute left-0 top-full z-30 mt-1 w-40 rounded-xl border border-white/10 bg-panel shadow-xl">
-              {RADIUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.label}
-                  type="button"
-                  disabled={opt.value !== null && !hasLocation}
-                  onClick={() => {
-                    onChange({
-                      ...filters,
-                      radius: opt.value,
-                      nearest: opt.value !== null ? filters.nearest : false,
-                    });
-                    setShowRadius(false);
-                  }}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-right text-xs transition-colors ${
-                    filters.radius === opt.value
-                      ? "bg-secondary/10 text-secondary"
-                      : "text-on-surface-variant hover:bg-white/5"
-                  } ${opt.value !== null && !hasLocation ? "cursor-not-allowed opacity-40" : ""}`}
-                >
-                  <span>{opt.label}</span>
-                  {opt.value !== null && !hasLocation && (
-                    <span className="text-[9px]">نیاز به موقعیت</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-1">
+          {/* Neighborhood dropdown (populated from real API facets) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowNeighborhood((v) => !v)}
+              disabled={neighborhoods.length === 0}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 transition-colors ${
+                filters.neighborhood
+                  ? "text-secondary"
+                  : "hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              }`}
+              title={neighborhoods.length === 0 ? "محله‌ای ثبت نشده است" : "فیلتر محله"}
+            >
+              <span>{filters.neighborhood ? `محله: ${filters.neighborhood}` : "محله"}</span>
+              <HomeIcon
+                name="chevron"
+                className={`h-3.5 w-3.5 transition-transform ${showNeighborhood ? "-rotate-90" : ""}`}
+              />
+            </button>
+            {showNeighborhood && neighborhoods.length > 0 && (
+              <div className="absolute left-0 top-full z-30 mt-1 max-h-56 w-44 overflow-y-auto rounded-xl border border-white/10 bg-panel shadow-xl">
+                {neighborhoods.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => pickNeighborhood(n)}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-right text-xs transition-colors ${
+                      filters.neighborhood === n
+                        ? "bg-secondary/10 text-secondary"
+                        : "text-on-surface-variant hover:bg-white/5"
+                    }`}
+                  >
+                    <span>{n}</span>
+                    {filters.neighborhood === n && <X className="h-3 w-3" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowRadius((v) => !v)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 hover:text-white"
+            >
+              <span>شعاع: {filters.radius ? radiusLabel : "بدون محدودیت"}</span>
+              <HomeIcon
+                name="chevron"
+                className={`h-3.5 w-3.5 transition-transform ${showRadius ? "-rotate-90" : ""}`}
+              />
+            </button>
+            {showRadius && (
+              <div className="absolute left-0 top-full z-30 mt-1 w-40 rounded-xl border border-white/10 bg-panel shadow-xl">
+                {RADIUS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    disabled={opt.value !== null && !hasLocation}
+                    onClick={() => {
+                      onChange({
+                        ...filters,
+                        radius: opt.value,
+                        nearest: opt.value !== null ? filters.nearest : false,
+                      });
+                      setShowRadius(false);
+                    }}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-right text-xs transition-colors ${
+                      filters.radius === opt.value
+                        ? "bg-secondary/10 text-secondary"
+                        : "text-on-surface-variant hover:bg-white/5"
+                    } ${opt.value !== null && !hasLocation ? "cursor-not-allowed opacity-40" : ""}`}
+                  >
+                    <span>{opt.label}</span>
+                    {opt.value !== null && !hasLocation && (
+                      <span className="text-[9px]">نیاز به موقعیت</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
