@@ -3,9 +3,12 @@
 FROM php:8.3-fpm-alpine AS base
 
 # System deps + PHP extensions required by Laravel 12 / PostGIS / QR-code.
+# sqlite-dev: headers + sqlite3.pc for the pdo_sqlite build (MBTiles tile
+# server). The php:8.3-fpm-alpine base no longer pulls it in transitively.
 RUN apk add --no-cache \
         nginx \
         postgresql-dev \
+        sqlite-dev \
         libzip-dev \
         icu-dev \
         oniguruma-dev \

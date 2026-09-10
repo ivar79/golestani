@@ -12,4 +12,8 @@ storage/framework/views/*
 bootstrap/cache/*.php
 tests
 .pytest_cache
-C
+# Dangling Laravel symlink on checkouts without `php artisan storage:link` —
+# Docker's context loader errors on it ("invalid file request"); the
+# container recreates the link at startup (docker/start.sh).
+public/storage
+public/hot

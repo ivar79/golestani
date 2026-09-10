@@ -5,7 +5,20 @@ Monorepo با دو بخش مستقل:
 | بخش | مسیر | استک | پلتفرم |
 |-----|------|------|--------|
 | فرانت‌اند | `web/` | Next.js 16 + Tailwind v4 | **Vercel** |
-| بک‌اند | `api/` | Laravel 12 (PHP 8.3) + PostgreSQL/PostGIS | **Render** |
+| بک‌اند | `api/` | Laravel 12 (PHP 8.3) + PostgreSQL/PostGIS | **Render / Railway** |
+
+---
+
+## ۰. زیرساخت نقشه (تایل‌سرور محلی — فقط PHP)
+
+تایل‌های وکتوری ایران از فایل `iran-shortbread-1.0.mbtiles` (اسکیمای Shortbread 1.0، زوم ۰ تا ۱۴، حدود ۶۵۰ مگابایت) مستقیماً توسط **API لاراول** سرو می‌شود — با درایور بومی `pdo_sqlite` در PHP 8.3 و **بدون هیچ سرویس Node.js** (فرانت‌اند Next.js فقط لایه نمایش است و هیچ منطق ران‌تایم Node ندارد).
+
+- **اندپوینت تایل وکتور:** `GET /api/map/tile/{z}/{x}/{y}` — بایت‌های gzip مستقیم از آرشیو خوانده می‌شوند (بدون decompress در PHP) با هدر `Content-Encoding: gzip` و کش مرورگر ۲۴ ساعته.
+- **اندپوینت تایل رستری (فال‌بک آنلاین):** `GET /api/map/raster-tile/{z}/{x}/{y}` — پروکسی PHP خالص روی Laravel با کش Redis (TTL ۲۴ ساعت)، User-Agent صحیح طبق سیاست OSM و fallback تایل SVG خنثی در قطعی کامل شبکه. (پروکسی قبلی Node.js در فرانت حذف و به همین اندپوینت 308 شد.)
+- **اندپوینت وضعیت:** `GET /api/map/status` — وجود فایل، حجم، نسخه اسکیما و پینگ تایل نمونه (کش ۶۰ ثانیه).
+- **فعال‌سازی روی Railway:** ۱) یک Volume حدود ۱ گیگابایتی (~$0.15/GB در ماه) به سرویس api وصل کنید با مونت‌پوینت `/data`؛ ۲) فایل mbtiles را یک‌بار داخل Volume بگذارید (Railway CLI یا کانتینر آپلود موقت)؛ ۳) متغیر محیطی `MBTILES_PATH=/data/iran-shortbread-1.0.mbtiles` را تنظیم کنید.
+- **اگر فایل نباشد:** تایل‌ها ۴۰۴ می‌دهند و `mbtiles_present=false` برمی‌گردد → فرانت‌اند خودکار به پروکسی رستری لاراول سقوط می‌کند و نقشه بدون وقفه کار می‌کند.
+- ⚠️ فایل ۶۵۰ مگابایتی **هرگز نباید در گیت کامیت شود** (در `.gitignore` ثبت شده) و روی Vercel هم قابل استقرار نیست (سقف ۲۵۰ مگابایت) — به همین دلیل تایل‌سرور حتماً سمت Railway است.
 
 ---
 
@@ -48,7 +61,7 @@ Monorepo با دو بخش مستقل:
 | `APP_KEY` | generateValue | بار اول خودکار ساخته می‌شود؛ بعداً ثابت نگه دارید |
 | `APP_URL` | `https://golestani-api.onrender.com` | در داشبورد تنظیم شود |
 | `DATABASE_URL` | اتصال دیتابیس | ⚠️ **باید PostGIS داشته باشد** |
-| `CACHE_STORE` / `SESSION_DRIVER` / `QUEUE_CONNECTION` | `database` | بدون Redis؛ بعداً قابل تغییر به `redis` |
+| `CACHE_STORE` / `SESSION_DRIVER` / `QUEUE_CONNECTION` | `redis` | سرویس Redis جدای Render (`golestani-redis` در Blueprint) + کلاینت PHP خالص predis؛ بدون Redis محلی به‌طور خودکار به `database` برمی‌گردد |
 | `OTP_DEMO_MODE` | `false` | در پروداکشن حتماً false |
 | `SMS_DRIVER` | `log` | اتصال درگاه SMS واقعی بعداً |
 | `CORS_ALLOWED_ORIGINS` | `https://<your-app>.vercel.app` | قفل‌کردن دامنه‌ی فرانت (در `config/cors.php` خوانده می‌شود ✅) |

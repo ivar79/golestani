@@ -87,7 +87,7 @@ npm run dev
 |---|---|
 | `NEXT_PUBLIC_API_URL` | **ضروری** — آدرس HTTPS بک‌اند + `/api` |
 | `NEXT_PUBLIC_AD_SLOT` | اختیاری (پیش‌فرض `taskbar`) |
-| `NEXT_PUBLIC_MAP_TILE_URL` | اختیاری |
+| `NEXT_PUBLIC_MAP_TILE_URL` | اختیاری — پیش‌فرض: پروکسی رستری Laravel (`/map/raster-tile/...` روی API) |
 | `NEXT_PUBLIC_MAP_ATTRIBUTION` | اختیاری |
 
 ### Render (Backend)
