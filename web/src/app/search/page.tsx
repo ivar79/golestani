@@ -245,7 +245,7 @@ function SearchPageContent() {
         {/* Search header form with the location chip */}
         <form
           onSubmit={submit}
-          className="mt-6 grid gap-3 rounded-2xl border border-white/10 bg-[#0c1626]/80 backdrop-blur-md p-3 sm:p-4 md:grid-cols-[1fr_auto]"
+          className="relative z-30 mt-6 grid gap-3 rounded-2xl border border-white/10 bg-[#0c1626]/80 backdrop-blur-md p-3 sm:p-4 md:grid-cols-[1fr_auto]"
         >
           <div className="flex items-center gap-2">
             <LocationChip location={locationState} />

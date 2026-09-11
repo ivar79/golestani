@@ -9,6 +9,8 @@ return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     'allowed_origins' => $origins, 'allowed_origins_patterns' => [],
-    'allowed_headers' => ['Accept', 'Authorization', 'Content-Type', 'X-Requested-With'],
+    // Range must be allowed: PMTiles clients (protomaps-leaflet) send it on
+    // cross-origin byte-range requests, which triggers a CORS preflight.
+    'allowed_headers' => ['Accept', 'Authorization', 'Content-Type', 'X-Requested-With', 'Range'],
     'exposed_headers' => [], 'max_age' => 600, 'supports_credentials' => false,
 ];

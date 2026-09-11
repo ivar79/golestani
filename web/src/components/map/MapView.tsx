@@ -7,7 +7,7 @@ import "leaflet/dist/leaflet.css";
 import { businessMarkerIcon, userLocationMarkerIcon, activeMarkerIcon } from "./leafletIcons";
 import VectorBasemapLayer from "./VectorBasemapLayer";
 import {
-  localVectorTileUrl,
+  localPmtilesUrl,
   rasterTileUrl,
   resolveMapSource,
   type MapSourceMode,
@@ -49,6 +49,16 @@ function MapController({
   userCoords?: { lat: number; lng: number } | null;
 }) {
   const map = useMap();
+
+  // The map mounts inside the list/map toggle: when hidden its container is
+  // 0x0, so Leaflet caches a wrong size and loads a single partial tile.
+  // Re-measure whenever the container actually resizes/appears.
+  useEffect(() => {
+    const el = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [map]);
 
   useEffect(() => {
     const points: [number, number][] = [];
@@ -130,9 +140,9 @@ export default function MapView({
     };
   }, [sourceMode]);
 
-  const vectorUrl = useMemo(() => localVectorTileUrl(), []);
+  const pmtilesUrl = useMemo(() => localPmtilesUrl(), []);
 
-  /** Vector tile failures downgrade this session to the raster proxy. */
+  /** PMTiles (byte-range) failures downgrade this session to the raster proxy. */
   const handleVectorUnavailable = useCallback(() => setEffective("online"), []);
 
   // Raster fallback (online mode) — the Laravel (PHP) OSM proxy, cached 7 days.
@@ -154,10 +164,10 @@ export default function MapView({
         center={defaultCenter}
         zoom={zoom ?? 12}
         scrollWheelZoom
-        className="h-full w-full rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm"
+        className="h-full w-full rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-[#0e1726] shadow-sm"
       >
         {showVector && (
-          <VectorBasemapLayer url={vectorUrl} onUnavailable={handleVectorUnavailable} />
+          <VectorBasemapLayer url={pmtilesUrl} onUnavailable={handleVectorUnavailable} />
         )}
 
         {showRaster && (

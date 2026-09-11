@@ -8,13 +8,13 @@ import { darkShortbreadPaintRules, darkShortbreadLabelRules } from "@/lib/mapSty
 import { degradeToOnline } from "@/lib/mapSource";
 
 /**
- * VectorBasemapLayer — renders the Shortbread MBTiles (vector MVT) with the
- * protomaps-leaflet canvas renderer inside the existing react-leaflet tree.
+ * VectorBasemapLayer — renders the Shortbread PMTiles archive (vector MVT)
+ * with the protomaps-leaflet canvas renderer inside the react-leaflet tree.
  *
- * protomaps-leaflet is a browser-only JS library (no Node.js anywhere):
- * tiles are fetched from the Laravel vector endpoint on Railway, decoded and
- * painted onto a canvas GridLayer, while the Leaflet marker/pane system
- * (neon pins, radar user dot, popups) stays fully intact.
+ * The URL ends in .pmtiles, so protomaps-leaflet switches to its built-in
+ * PmtilesSource: the archive is read over HTTP byte ranges (206 Partial
+ * Content) served by Laravel — no per-tile requests, no Node.js anywhere.
+ * Markers/panes/popups stay fully intact.
  *
  * Runtime resilience: repeated tile failures downgrade the session via
  * degradeToOnline() and notify the parent to switch to the raster source.
@@ -37,7 +37,7 @@ export default function VectorBasemapLayer({
         url,
         paintRules: darkShortbreadPaintRules(),
         labelRules: darkShortbreadLabelRules(),
-        backgroundColor: "#060c18",
+        backgroundColor: "#0e1726",
         maxDataZoom: 14, // Shortbread tops out at z14; overzoom is interpolated
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',

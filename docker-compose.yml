@@ -9,8 +9,20 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./api:/var/www/html
+      # Local vector tiles (offline basemap) — archives live at the repo root
+      # on the host; PMTILES_PATH / MBTILES_PATH point here inside the container.
+      - ./iran-shortbread-1.0.mbtiles:/var/www/html/storage/app/iran-shortbread-1.0.mbtiles:ro
+      - ./iran-shortbread-1.0.pmtiles:/var/www/html/storage/app/iran-shortbread-1.0.pmtiles:ro
+      # opcache for the dev CLI server: Laravel boots once per worker instead
+      # of re-parsing hundreds of files per request over the slow Windows mount
+      - ./docker/php/prod.ini:/usr/local/etc/php/conf.d/zz-prod.ini:ro
     ports:
       - "8000:8000"
+    environment:
+      # php -S is single-threaded by default: the search page fires 6+ parallel
+      # requests (search, facets, ads, tiles) that then queue behind each other
+      # and hit the 15s axios timeout. 8 workers serve them concurrently.
+      PHP_CLI_SERVER_WORKERS: 8
     env_file:
       - ./api/.env
     command: php artisan serve --host=0.0.0.0 --port=8000
@@ -32,6 +44,11 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./api:/var/www/html
+      - ./iran-shortbread-1.0.mbtiles:/var/www/html/storage/app/iran-shortbread-1.0.mbtiles:ro
+      - ./iran-shortbread-1.0.pmtiles:/var/www/html/storage/app/iran-shortbread-1.0.pmtiles:ro
+    environment:
+      # queue:work redis needs the compose service name, not the 127.0.0.1 default
+      REDIS_HOST: redis
     env_file:
       - ./api/.env
     command: php artisan queue:work redis --sleep=3 --tries=3

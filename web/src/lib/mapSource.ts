@@ -1,14 +1,16 @@
 /**
- * mapSource — resolves which tile source the map should use (task 7/12).
+ * mapSource — resolves which tile source the map should use.
  *
- * Modes:
- *  - "local":  Laravel vector endpoint reading the MBTiles archive (Railway)
- *  - "online": the existing Next.js raster proxy (OSM mirrors, always works)
- *  - "auto":   probe GET {API}/api/map/status once per session; use the
- *              vector endpoint when the archive is present, else online.
+ * Phase 1 (PMTiles):
+ *  - "local":  the single-file PMTiles archive served by Laravel at
+ *              /api/map/pmtiles with byte ranges (206). protomaps-leaflet
+ *              detects the `.pmtiles` URL and issues Range requests itself.
+ *  - "online": the Laravel raster proxy (OSM mirrors, always works).
+ *  - "auto":   HEAD /api/map/pmtiles once per session; use PMTiles when the
+ *              archive is deployed, else the raster proxy.
  *
- * Auto-mode failures at runtime (tile fetch errors) also downgrade the
- * session to online, so a broken archive never blanks the map.
+ * The former per-tile MBTiles endpoint (/api/map/tile/…) is no longer used
+ * by the frontend; its Laravel route stays temporarily for the admin tab.
  */
 
 export type MapSourceMode = "local" | "online" | "auto";
@@ -16,11 +18,11 @@ export type MapSourceMode = "local" | "online" | "auto";
 export type ResolvedSource = {
   /** The effective source after auto-resolution / fallbacks. */
   effective: "local" | "online";
-  /** True when auto-detection probed the status endpoint. */
+  /** True when auto-detection probed the archive endpoint. */
   probed: boolean;
 };
 
-const STATUS_CACHE_MS = 60_000;
+const PROBE_CACHE_MS = 60_000;
 
 let cachedProbe: { at: number; present: boolean } | null = null;
 
@@ -29,9 +31,12 @@ function apiBase(): string {
   return (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 }
 
-/** Build the vector tile URL template for the Laravel MBTiles endpoint. */
-export function localVectorTileUrl(): string {
-  return `${apiBase()}/map/tile/{z}/{x}/{y}`;
+/**
+ * URL of the single-file PMTiles archive. The path MUST end in ".pmtiles":
+ * protomaps-leaflet picks its Range-request source by pathname suffix.
+ */
+export function localPmtilesUrl(): string {
+  return `${apiBase()}/map/basemap.pmtiles`;
 }
 
 /**
@@ -43,16 +48,14 @@ export function rasterTileUrl(): string {
   return `${apiBase()}/map/raster-tile/{z}/{x}/{y}`;
 }
 
-/** Ask the backend whether the MBTiles archive is mounted and readable. */
+/** Ask the backend whether the PMTiles archive is deployed and readable. */
 export async function probeLocalArchive(force = false): Promise<boolean> {
-  if (!force && cachedProbe && Date.now() - cachedProbe.at < STATUS_CACHE_MS) {
+  if (!force && cachedProbe && Date.now() - cachedProbe.at < PROBE_CACHE_MS) {
     return cachedProbe.present;
   }
   try {
-    const res = await fetch(`${apiBase()}/map/status`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const data = (await res.json()) as { mbtiles_present?: boolean };
-    cachedProbe = { at: Date.now(), present: data.mbtiles_present === true };
+    const res = await fetch(localPmtilesUrl(), { method: "HEAD", cache: "no-store" });
+    cachedProbe = { at: Date.now(), present: res.ok };
   } catch {
     cachedProbe = { at: Date.now(), present: false };
   }
@@ -67,7 +70,7 @@ export async function resolveMapSource(mode: MapSourceMode): Promise<ResolvedSou
   return { effective: present ? "local" : "online", probed: true };
 }
 
-/** Runtime downgrade hook — MapView calls this when vector tiles fail. */
+/** Runtime downgrade hook — MapView calls this when PMTiles ranges fail. */
 export function degradeToOnline(): void {
   cachedProbe = { at: Date.now(), present: false };
 }

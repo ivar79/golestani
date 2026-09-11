@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ShowcaseController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\MapTileController;
+use App\Http\Controllers\Api\PmtilesController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -33,6 +34,15 @@ Route::get('/map/raster-tile/{z}/{x}/{y}', [MapTileController::class, 'rasterTil
     ->middleware('throttle:600,1');
 Route::get('/map/status', [MapTileController::class, 'status'])
     ->middleware('throttle:30,1');
+
+// Single-file PMTiles archive (Phase 1 of the PMTiles migration): protomaps-leaflet
+// fetches header + directory + tile chunks with HTTP byte ranges — the route
+// answers 206 Partial Content. GET/HEAD only; path comes from config, never
+// from user input. Unthrottled on purpose: a page load fires dozens of range
+// requests, each only a few KB. NOTE: the path MUST end in ".pmtiles" —
+// protomaps-leaflet dispatches to its PMTiles (Range) source based on the
+// URL pathname suffix alone.
+Route::get('/map/basemap.pmtiles', [PmtilesController::class, 'show']);
 
 // Demonstration of the CheckRole middleware (Phase 1 RBAC wiring).
 Route::get('/admin/ping', function () {
