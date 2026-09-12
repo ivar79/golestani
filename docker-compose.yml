@@ -60,6 +60,27 @@ services:
       redis:
         condition: service_healthy
 
+  martin:
+    build:
+      context: ./martin
+      dockerfile: Dockerfile
+    image: golestani-martin:latest
+    container_name: golestani-martin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Local vector tiles (PMTiles) — read-only
+      - ./iran-shortbread-1.0.pmtiles:/data/iran-v1.pmtiles:ro
+      - ./martin/config.yaml:/app/config.yaml:ro
+      - ./martin/fonts:/data/fonts:ro
+      - ./martin/sprites:/data/sprites:ro
+    networks:
+      - golestani-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgis/postgis:16-3.4
     container_name: golestani-postgres

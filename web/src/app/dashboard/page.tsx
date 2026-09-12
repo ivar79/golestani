@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -7,6 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { getQrUrl } from "@/lib/businesses";
 import { OnboardingView } from "@/components/dashboard/OnboardingView";
+import { DashboardSidebar, type DashboardTab } from "@/components/dashboard/DashboardSidebar";
+import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import MapViewLazy from "@/components/map/MapViewLazy";
 import {
   addImage,
@@ -50,6 +53,9 @@ import {
   Image as ImageIcon,
   Share2,
   Home,
+  Store,
+  Layers,
+  Menu,
 } from "lucide-react";
 
 type Form = {
@@ -120,48 +126,13 @@ export default function Dashboard() {
   const [cover, setCover] = useState<File | null>(null);
   const [deleteImage, setDeleteImage] = useState<number | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-  const [maxScroll, setMaxScroll] = useState(0);
+  
+  // Responsive sidebar & tabs
+  const [currentTab, setCurrentTab] = useState<DashboardTab>("overview");
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   const mediaForm = useRef<HTMLDivElement>(null);
-
-  // Throttled scroll tracking for the smart taskbar and progress line
-  useEffect(() => {
-    let raf = 0;
-    let lastY = -1;
-    let lastMax = -1;
-    const measure = () => {
-      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      if (max !== lastMax) {
-        lastMax = max;
-        setMaxScroll(max);
-      }
-    };
-    const onScroll = () => {
-      if (!raf) {
-        raf = window.requestAnimationFrame(() => {
-          raf = 0;
-          const y = window.scrollY;
-          if (y !== lastY) {
-            lastY = y;
-            setScrollY(y);
-          }
-          measure();
-        });
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    measure();
-    onScroll();
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
-  }, []);
-
-  const sp = maxScroll > 0 ? Math.min(1, Math.max(0, scrollY / maxScroll)) : 0;
-  const isScrolled = scrollY > 20;
 
   function choose(b: Phase2Business | null) {
     setEditing(b);
@@ -258,43 +229,37 @@ export default function Dashboard() {
     const links: Record<string, string> = Object.create(null);
     for (const row of social) {
       if (!row.url.trim()) continue;
-      if (
-        !/^[a-zA-Z0-9_-]{1,40}$/.test(row.key) ||
-        ["__proto__", "prototype", "constructor"].includes(row.key) ||
-        Object.hasOwn(links, row.key)
-      ) {
-        throw new Error("نام شبکه‌ها باید انگلیسی و غیرتکراری باشد.");
-      }
-      links[row.key] = normalizeSocial(row.key, row.url);
+      const clean = normalizeSocial(row.key, row.url);
+      if (clean) links[row.key.trim() || `link_${Date.now()}`] = clean;
     }
-    const latitude = form.latitude.trim() === "" ? null : Number(form.latitude);
-    const longitude = form.longitude.trim() === "" ? null : Number(form.longitude);
-    if (
-      (latitude === null) !== (longitude === null) ||
-      (latitude !== null && (!Number.isFinite(latitude) || Math.abs(latitude) > 90)) ||
-      (longitude !== null && (!Number.isFinite(longitude) || Math.abs(longitude) > 180))
-    ) {
-      throw new Error("طول و عرض جغرافیایی معتبر را با هم وارد کنید.");
-    }
-    const nullable = (value: string) => value.trim() || null;
+    const services = form.services
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 30);
+
     return {
       name: form.name.trim(),
-      category: nullable(form.category),
-      description: nullable(form.description),
-      phone: nullable(form.phone),
-      email: nullable(form.email),
-      city: nullable(form.city),
-      neighborhood: nullable(form.neighborhood),
-      address: nullable(form.address),
-      latitude,
-      longitude,
-      services: Array.from(new Set(form.services.split(/\n|،/).map((x) => x.trim()).filter(Boolean))),
+      category: form.category.trim() || null,
+      description: form.description.trim() || null,
+      phone: form.phone.trim() || null,
+      email: form.email.trim() || null,
+      address: form.address.trim() || null,
+      city: form.city.trim() || null,
+      neighborhood: form.neighborhood.trim() || null,
+      latitude: form.latitude === "" ? null : Number(form.latitude),
+      longitude: form.longitude === "" ? null : Number(form.longitude),
+      services,
       social_links: links,
     };
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!form.name.trim()) {
+      setMessage({ text: "لطفاً نام کسب‌وکار را وارد کنید.", error: true });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     let profileSaved = false;
@@ -408,9 +373,19 @@ export default function Dashboard() {
     Math.abs(Number(form.latitude)) <= 90 &&
     Math.abs(Number(form.longitude)) <= 180;
 
+  // Calculate completion percentage
+  let score = 0;
+  if (form.name.trim()) score += 20;
+  if (form.category.trim()) score += 15;
+  if (form.phone.trim()) score += 15;
+  if (validPoint) score += 20;
+  if (editing?.logo || logo) score += 15;
+  if (images.length > 0 || (editing?.cover_image || cover)) score += 15;
+  const completionRate = Math.min(100, score);
+
   if (authLoading || loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#090d16] text-slate-200">
+      <div className="flex min-h-screen items-center justify-center bg-[#070d18] text-slate-200">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
           <p className="text-xs sm:text-sm text-slate-400 font-medium">در حال بارگذاری پنل کسب‌وکار…</p>
@@ -433,116 +408,80 @@ export default function Dashboard() {
   }
 
   return (
-    <div dir="rtl" className="relative min-h-screen bg-[#070b14] text-slate-100 selection:bg-cyan-500/20 font-sans pb-36 sm:pb-32 overflow-x-hidden">
-      {/* Ambient background light glows to alleviate visual heaviness & bring depth */}
+    <div dir="rtl" className="relative flex min-h-screen bg-[#070b14] text-slate-100 selection:bg-cyan-500/20 font-sans overflow-x-hidden">
+      {/* Dynamic ambient lighting in background */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -top-32 right-1/4 h-[550px] w-[550px] rounded-full bg-cyan-500/[0.06] blur-[140px]" />
-        <div className="absolute top-1/3 -left-28 h-[650px] w-[650px] rounded-full bg-emerald-500/[0.05] blur-[150px]" />
-        <div className="absolute bottom-1/4 right-5 h-[500px] w-[500px] rounded-full bg-blue-600/[0.04] blur-[130px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(14,165,233,0.07),rgba(255,255,255,0))]" />
+        <div className="absolute -top-32 right-1/4 h-[500px] w-[500px] rounded-full bg-cyan-500/[0.05] blur-[140px]" />
+        <div className="absolute top-1/3 -left-28 h-[600px] w-[600px] rounded-full bg-emerald-500/[0.04] blur-[150px]" />
+        <div className="absolute bottom-1/4 right-5 h-[450px] w-[450px] rounded-full bg-blue-600/[0.03] blur-[130px]" />
       </div>
 
-      {/* Slim Neon Scroll Progress Indicator */}
-      <div aria-hidden className="fixed left-0 top-0 z-[60] h-[3px] w-full pointer-events-none">
-        <div
-          className="h-full bg-gradient-to-l from-cyan-400 via-teal-400 to-emerald-400 shadow-[0_0_14px_rgba(34,211,238,0.7)] transition-[width] duration-150 ease-out"
-          style={{ width: `${(sp * 100).toFixed(2)}%` }}
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex">
+        <DashboardSidebar
+          currentTab={currentTab}
+          onSelectTab={setCurrentTab}
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed((c) => !c)}
+          userPhone={user.phone}
+          businessName={editing?.name}
+          businessSlug={editing?.slug}
+          status={editing?.status}
+          completionRate={completionRate}
+          onLogout={() => void logout()}
         />
       </div>
 
-      {/* Top Floating Smart Taskbar */}
-      <div className="sticky top-2.5 sm:top-4 z-50 px-3 sm:px-6 transition-all duration-300">
-        <header
-          className={`mx-auto max-w-5xl rounded-2xl p-px bg-gradient-to-l from-cyan-400/35 via-purple-500/25 to-cyan-400/35 shadow-[0_10px_35px_rgba(0,0,0,0.4),0_0_35px_-8px_rgba(34,211,238,0.25)] transition-all duration-300 ${
-            isScrolled ? "scale-[0.99] shadow-[0_15px_40px_rgba(0,0,0,0.65),0_0_40px_-5px_rgba(34,211,238,0.35)]" : ""
-          }`}
-        >
+      {/* Mobile Drawer Backdrop & Sidebar */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
           <div
-            className={`flex items-center justify-between rounded-[15px] bg-[#080d1a]/85 px-3.5 sm:px-5 backdrop-blur-2xl transition-all duration-300 ${
-              isScrolled ? "h-13 sm:h-14 bg-[#050914]/92" : "h-14 sm:h-16"
-            }`}
-          >
-            {/* Right: Brand & Panel Indicator */}
-            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-              <Link href="/" className="flex items-center gap-2.5 group shrink-0" aria-label="اینکارت">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-teal-400 text-slate-950 font-black text-base shadow-[0_0_15px_rgba(34,211,238,0.4)] group-hover:scale-105 transition-transform">
-                  اَ
-                </span>
-                <span className="font-black text-base sm:text-lg text-white group-hover:text-cyan-400 transition-colors">
-                  اینکارت
-                </span>
-              </Link>
-              <div className="h-4 w-px bg-white/10 hidden sm:block shrink-0" />
-              <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                </span>
-                <span>پنل مدیریت کسب‌وکار</span>
-              </div>
-            </div>
-
-            {/* Left: Ordered Button Controls */}
-            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-              <Link
-                href="/card-maker"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-2.5 sm:px-3 text-xs font-semibold text-cyan-200 hover:border-cyan-400/60 hover:bg-cyan-500/20 hover:text-white transition-all active:scale-[0.98] shadow-[0_0_15px_rgba(6,182,212,0.12)]"
-                title="کارت‌ساز دیجیتال"
-              >
-                <CreditCard className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                <span className="hidden md:inline">کارت‌ساز دیجیتال</span>
-                <span className="md:hidden text-[11px]">کارت‌ساز</span>
-              </Link>
-
-              <Link
-                href="/"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 sm:px-3 text-xs font-medium text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white transition-all active:scale-[0.98]"
-              >
-                <Home className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                <span className="hidden sm:inline">صفحه اصلی</span>
-                <span className="sm:hidden text-[11px]">خانه</span>
-              </Link>
-
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void logout()}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 sm:px-3 text-xs font-medium text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
-                title="خروج از حساب کاربری"
-              >
-                <LogOut className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden sm:inline">خروج</span>
-              </button>
-            </div>
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <div className="relative z-10 w-72 h-full flex flex-col">
+            <DashboardSidebar
+              currentTab={currentTab}
+              onSelectTab={(tab) => {
+                setCurrentTab(tab);
+                setMobileSidebarOpen(false);
+              }}
+              collapsed={false}
+              onToggleCollapse={() => setMobileSidebarOpen(false)}
+              userPhone={user.phone}
+              businessName={editing?.name}
+              businessSlug={editing?.slug}
+              status={editing?.status}
+              completionRate={completionRate}
+              onLogout={() => void logout()}
+            />
           </div>
-        </header>
-      </div>
+        </div>
+      )}
 
-      <main className="relative z-10 mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-        {/* Page Title & Business Switcher Header */}
-        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
-          <div>
-            <span className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider">
-              مرکز مدیریت نمایه
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black text-white mt-1">
-              {editing ? editing.name : "ثبت کسب‌وکار جدید"}
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              اطلاعات، راه‌های ارتباطی، تصاویر و لوکیشن را کامل کنید تا پس از بررسی مدیر به صورت عمومی منتشر شود.
-            </p>
-          </div>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 z-10 pb-28 md:pb-24">
+        {/* Top Navbar */}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/[0.06] bg-[#070b14]/85 px-4 sm:px-6 backdrop-blur-xl">
+          <div className="flex items-center gap-3">
+            {/* Mobile menu trigger */}
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-white md:hidden cursor-pointer"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
 
-          <div className="flex flex-wrap items-center gap-2.5 sm:self-center">
-            {/* Business Dropdown Switcher */}
-            <div className="relative min-w-[200px] flex-1 sm:flex-none">
+            {/* Business Selector Dropdown */}
+            <div className="relative min-w-[190px] sm:min-w-[240px]">
               <select
                 disabled={busy}
                 value={editing?.id || ""}
                 onChange={(e) =>
                   choose(items.find((x) => x.id === Number(e.target.value)) || null)
                 }
-                className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-900 py-2.5 pl-8 pr-9 text-xs sm:text-sm font-semibold text-white outline-none transition focus:border-cyan-400 cursor-pointer"
+                className="w-full appearance-none rounded-xl border border-white/10 bg-slate-900/80 py-2 pl-8 pr-9 text-xs sm:text-sm font-semibold text-white outline-none transition focus:border-cyan-400 cursor-pointer"
               >
                 <option value="">+ ثبت کسب‌وکار جدید</option>
                 {items.map((b) => (
@@ -551,850 +490,857 @@ export default function Dashboard() {
                   </option>
                 ))}
               </select>
-              <Building2 className="absolute right-3 top-3 h-4 w-4 text-cyan-400 pointer-events-none" />
-              <ChevronDown className="absolute left-2.5 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+              <Building2 className="absolute right-3 top-2.5 h-4 w-4 text-cyan-400 pointer-events-none" />
+              <ChevronDown className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
             </div>
 
             <button
               type="button"
               disabled={busy}
-              onClick={() => choose(null)}
-              className="inline-flex min-h-[42px] items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+              onClick={() => {
+                choose(null);
+                setCurrentTab("info");
+              }}
+              className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               <span>کسب‌وکار جدید</span>
             </button>
           </div>
-        </section>
 
-        {/* Global Feedback Message */}
-        {message && (
-          <div
-            role={message.error ? "alert" : "status"}
-            className={`flex items-start gap-3 rounded-2xl border p-4 text-xs sm:text-sm animate-in fade-in ${
-              message.error
-                ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-            }`}
-          >
-            {message.error ? (
-              <AlertTriangle className="h-5 w-5 shrink-0 text-rose-400" />
-            ) : (
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+          <div className="flex items-center gap-2">
+            {publicUrl && editing?.status === "approved" && (
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 hover:text-white hover:border-white/20 transition-colors"
+              >
+                <Globe className="h-3.5 w-3.5 text-cyan-400" />
+                <span>مشاهده عمومی</span>
+              </a>
             )}
-            <div className="flex-1 font-medium leading-relaxed">{message.text}</div>
+
             <button
               type="button"
-              onClick={() => setMessage(null)}
-              className="text-slate-400 hover:text-white"
+              disabled={busy}
+              onClick={() => void logout()}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 sm:px-3 text-xs font-medium text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
+              title="خروج از حساب"
             >
-              <X className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">خروج</span>
             </button>
           </div>
-        )}
+        </header>
 
-        {/* Verification Status & Public Links Card (Polaris Banner) */}
-        {editing && (
-          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-4 transition-all hover:border-white/[0.12]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3.5">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-slate-400">وضعیت نمایه:</span>
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${
-                    editing.status === "approved"
-                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                      : editing.status === "pending"
-                        ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
-                        : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                  }`}
-                >
-                  {editing.status === "approved" && <CheckCircle2 className="h-3.5 w-3.5" />}
-                  {editing.status === "pending" && <Clock className="h-3.5 w-3.5" />}
-                  {editing.status !== "approved" && editing.status !== "pending" && (
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                  )}
-                  <span>{statusLabel[editing.status] || editing.status}</span>
-                </span>
-              </div>
-
-              {/* Badges preview */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                {(editing.badges || []).map((x) => (
-                  <span
-                    key={x}
-                    className="inline-flex items-center gap-1 rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-300"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    <span>{badgeLabel[x] || x}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {editing.moderation_note && (
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">
-                <strong className="font-bold">یادداشت مدیر بررسی: </strong>
-                <span>{editing.moderation_note}</span>
-              </div>
-            )}
-
-            {/* Public Link & QR Code row */}
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                <Globe className="h-4 w-4 text-cyan-400 shrink-0" />
-                <span className="text-slate-400">آدرس اختصاصی:</span>
-                {publicUrl ? (
-                  <a
-                    href={publicUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-cyan-300 hover:underline truncate max-w-[240px] sm:max-w-md"
-                    dir="ltr"
-                  >
-                    {publicUrl}
-                  </a>
-                ) : (
-                  <span className="text-slate-500">پس از تایید مدیر فعال خواهد شد.</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {editing.status === "approved" && publicUrl && (
-                  <a
-                    href={publicUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-xs text-slate-200 hover:text-white transition-colors"
-                  >
-                    <span>مشاهده صفحه</span>
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-                {editing.slug && (
-                  <button
-                    type="button"
-                    onClick={() => setShowQrModal(true)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-xs text-slate-200 hover:text-white cursor-pointer transition-colors"
-                  >
-                    <QrCode className="h-3 w-3 text-cyan-400" />
-                    <span>کد QR اختصاصی</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* QR Code Modal */}
-        {showQrModal && editing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in">
-            <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#0c1427]/95 backdrop-blur-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.7),0_0_30px_rgba(6,182,212,0.1)] space-y-4">
+        {/* Dynamic Page Container */}
+        <main className="mx-auto w-full max-w-6xl px-4 sm:px-8 py-6 sm:py-8 space-y-6">
+          {/* Global Alert Notification */}
+          {message && (
+            <div
+              role={message.error ? "alert" : "status"}
+              className={`flex items-start gap-3 rounded-2xl border p-4 text-xs sm:text-sm animate-in fade-in ${
+                message.error
+                  ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              }`}
+            >
+              {message.error ? (
+                <AlertTriangle className="h-5 w-5 shrink-0 text-rose-400" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+              )}
+              <div className="flex-1 font-medium leading-relaxed">{message.text}</div>
               <button
                 type="button"
-                onClick={() => setShowQrModal(false)}
-                className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-white cursor-pointer transition-colors"
+                onClick={() => setMessage(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
-
-              <h3 className="text-base font-bold text-white">بارکد QR اختصاصی کسب‌وکار</h3>
-              <p className="text-xs text-slate-400">
-                این بارکد را چاپ کرده یا در کارت ویزیت و بنرهای فروشگاه قرار دهید تا مشتریان مستقیماً به نمایه شما وارد شوند.
-              </p>
-
-              <div className="flex justify-center py-2">
-                <div className="rounded-xl border-4 border-white bg-white p-3 shadow-md">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={getQrUrl(editing.slug)}
-                    alt="QR اختصاصی"
-                    width={180}
-                    height={180}
-                    className="mx-auto"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-2 pt-2">
-                <a
-                  href={getQrUrl(editing.slug)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-500 transition-colors"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  <span>دانلود فایل بارکد</span>
-                </a>
-              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Main Edit Form */}
-        <form onSubmit={submit} className="space-y-6">
-          {/* Card 1: Visual Identity & Branding (Logo & Cover) */}
-          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]" ref={mediaForm}>
-            <div className="flex items-center gap-2.5 border-b border-white/5 pb-3.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
-                <ImageIcon className="h-4 w-4" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-white">
-                  هویت بصری (لوگو و تصویر کاور)
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  لوگو نماد برند شماست و کاور در بالای صفحه نمایه به عنوان بنر اصلی قرار می‌گیرد.
-                </p>
-              </div>
-            </div>
+          {/* TAB 1: OVERVIEW (پیش‌خوان اصلی) */}
+          {currentTab === "overview" && (
+            <DashboardOverview
+              business={editing}
+              completionRate={completionRate}
+              userPhone={user.phone}
+              hasLocation={validPoint}
+              hasImages={images.length > 0 || !!editing?.logo}
+              imagesCount={images.length}
+              publicUrl={publicUrl}
+              onNavigateTab={setCurrentTab}
+              onOpenQrModal={() => setShowQrModal(true)}
+            />
+          )}
 
-            <div className="grid gap-6 sm:grid-cols-2">
-              {/* Logo Box */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-slate-300">لوگوی کسب‌وکار</span>
-                <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-4 transition-all hover:border-white/10">
-                  <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-950/80">
-                    {mediaUrl(editing?.logo) ? (
-                      <Image
-                        src={mediaUrl(editing?.logo)!}
-                        alt="لوگوی فعلی"
-                        fill
-                        className="object-contain p-1"
-                        sizes="80px"
-                      />
-                    ) : (
-                      <Building2 className="h-8 w-8 text-slate-600" />
-                    )}
-                  </div>
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-white/20 hover:bg-white/10 hover:text-white cursor-pointer whitespace-nowrap transition-all">
-                      <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
-                      <span>{logo ? logo.name : "انتخاب لوگوی جدید"}</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        disabled={busy}
-                        onChange={(e) => setLogo(e.target.files?.[0] || null)}
-                        className="hidden"
-                      />
-                    </label>
-                    <p className="text-[10px] text-slate-400">حداکثر ۲ مگابایت (PNG، JPG یا WebP)</p>
-                    {editing?.logo && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void clearMedia("logo")}
-                        className="text-[11px] text-rose-400 hover:underline cursor-pointer block"
-                      >
-                        حذف لوگوی فعلی
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Cover Photo Box */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-slate-300">تصویر کاور و بنر</span>
-                <div className="flex flex-col gap-3 rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-4 transition-all hover:border-white/10">
-                  <div className="relative h-24 w-full overflow-hidden rounded-lg border border-white/10 bg-slate-950/80">
-                    {mediaUrl(editing?.cover_image) ? (
-                      <Image
-                        src={mediaUrl(editing?.cover_image)!}
-                        alt="کاور فعلی"
-                        fill
-                        className="object-cover"
-                        sizes="400px"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-[11px] text-slate-600">
-                        بدون تصویر کاور
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-white/20 hover:bg-white/10 hover:text-white cursor-pointer whitespace-nowrap transition-all">
-                      <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
-                      <span>{cover ? cover.name : "انتخاب کاور جدید"}</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        disabled={busy}
-                        onChange={(e) => setCover(e.target.files?.[0] || null)}
-                        className="hidden"
-                      />
-                    </label>
-                    {editing?.cover_image && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void clearMedia("cover_image")}
-                        className="text-[11px] text-rose-400 hover:underline cursor-pointer"
-                      >
-                        حذف کاور
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Card 2: Core Business Info & Contact */}
-          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
-            <div className="flex items-center gap-2.5 border-b border-white/5 pb-3.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
-                <Building2 className="h-4 w-4" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-white">اطلاعات اصلی و راه‌های ارتباطی</h3>
-                <p className="text-[11px] text-slate-400">
-                  این اطلاعات در کارت‌های جستجو و بالای نمایه عمومی شما نمایش داده می‌شوند.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300">
-                  نام کسب‌وکار یا فروشگاه <span className="text-rose-400">*</span>
-                </span>
-                <input
-                  required
-                  maxLength={120}
-                  value={form.name}
-                  onChange={(e) => change("name", e.target.value)}
-                  placeholder="مثال: کافه رستوران سپیدار"
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300">دسته‌بندی و صنف</span>
-                <input
-                  list="business-categories"
-                  maxLength={120}
-                  value={form.category}
-                  onChange={(e) => change("category", e.target.value)}
-                  placeholder="انتخاب یا تایپ صنف..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-                <datalist id="business-categories">
-                  {CATEGORIES.map((x) => (
-                    <option key={x} value={x} />
-                  ))}
-                </datalist>
-              </label>
-
-              {/* Categories quick pills */}
-              <div className="sm:col-span-2 -mt-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-slate-500">پیشنهادات صنف:</span>
-                  {CATEGORIES.slice(0, 6).map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => change("category", cat)}
-                      className={`rounded-lg px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
-                        form.category === cat
-                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                          : "bg-white/5 text-slate-400 border border-white/10 hover:text-slate-200 hover:border-white/20"
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Phone className="h-3.5 w-3.5 text-slate-400" />
-                  <span>شماره تماس پاسخگویی</span>
-                </span>
-                <input
-                  type="tel"
-                  dir="ltr"
-                  maxLength={30}
-                  value={form.phone}
-                  onChange={(e) => change("phone", e.target.value)}
-                  placeholder="0912... یا 021..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Mail className="h-3.5 w-3.5 text-slate-400" />
-                  <span>ایمیل کاری یا پشتیبانی</span>
-                </span>
-                <input
-                  type="email"
-                  dir="ltr"
-                  maxLength={255}
-                  value={form.email}
-                  onChange={(e) => change("email", e.target.value)}
-                  placeholder="contact@example.com"
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 font-mono text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300">شهر</span>
-                <input
-                  maxLength={120}
-                  value={form.city}
-                  onChange={(e) => change("city", e.target.value)}
-                  placeholder="مثال: تهران، مشهد، اصفهان..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300">محله یا منطقه</span>
-                <input
-                  maxLength={120}
-                  value={form.neighborhood}
-                  onChange={(e) => change("neighborhood", e.target.value)}
-                  placeholder="مثال: سعادت‌آباد، احمدآباد..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-
-              <label className="sm:col-span-2 space-y-1.5">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                  <span>آدرس دقیق پستی</span>
-                </span>
-                <input
-                  maxLength={1000}
-                  value={form.address}
-                  onChange={(e) => change("address", e.target.value)}
-                  placeholder="خیابان، پلاک، طبقه یا نشانی دقیق..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-            </div>
-          </section>
-
-          {/* Card 3: About & Services */}
-          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
-            <div className="flex items-center gap-2.5 border-b border-white/5 pb-3.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-white">معرفی و فهرست خدمات</h3>
-                <p className="text-[11px] text-slate-400">
-                  داستان برند، تخصص‌ها، ساعات کاری و مزیت‌های رقابتی خود را برای مشتریان توضیح دهید.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <label className="space-y-1.5 block">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-300">توضیحات و بیوگرافی کسب‌وکار</span>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {form.description.length} / 5000 کاراکتر
-                  </span>
-                </div>
-                <textarea
-                  rows={4}
-                  maxLength={5000}
-                  value={form.description}
-                  onChange={(e) => change("description", e.target.value)}
-                  placeholder="توضیح کامل درباره تاریخچه، زمینه فعالیت، خدمات ویژه و ساعات کاری..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-
-              <label className="space-y-1.5 block">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-300">
-                    لیست خدمات و محصولات ویژه (هر مورد در یک سطر)
-                  </span>
-                  <span className="text-[10px] text-slate-500">حداکثر ۳۰ خدمت</span>
-                </div>
-                <textarea
-                  rows={3}
-                  value={form.services}
-                  onChange={(e) => change("services", e.target.value)}
-                  placeholder="مثال:&#10;اینترنت رایگان&#10;پارکینگ اختصاصی&#10;سفارش بیرون‌بر&#10;مشاوره رایگان"
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2.5 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-            </div>
-          </section>
-
-          {/* Card 4: Location & Map Picker */}
-          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
-            <div className="flex items-center justify-between border-b border-white/5 pb-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
-                  <MapPin className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-white">موقعیت جغرافیایی و نقشه</h3>
-                  <p className="text-[11px] text-slate-400">
-                    روی نقشه کلیک کنید تا مکان دقیق فروشگاه یا دفتر شما ثبت شود.
+          {/* TAB 2: BUSINESS INFO & CONTACT (مشخصات و تماس) */}
+          {currentTab === "info" && (
+            <form onSubmit={submit} className="space-y-6">
+              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="border-b border-white/5 pb-4">
+                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    <Store className="h-5 w-5 text-cyan-400" />
+                    <span>مشخصات اصلی و اطلاعات تماس</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    این اطلاعات در نتایج جستجوی نقشه و صفحه اختصاصی فروشگاه نمایش داده می‌شوند.
                   </p>
                 </div>
-              </div>
-              {validPoint && (
-                <button
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, latitude: "", longitude: "" }))}
-                  className="text-xs text-rose-400 hover:underline cursor-pointer"
-                >
-                  پاک‌کردن پین
-                </button>
-              )}
-            </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-slate-300">عرض جغرافیایی (Latitude)</span>
-                <input
-                  type="number"
-                  min={-90}
-                  max={90}
-                  step="any"
-                  dir="ltr"
-                  value={form.latitude}
-                  onChange={(e) => change("latitude", e.target.value)}
-                  placeholder="35.6892..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-slate-300">طول جغرافیایی (Longitude)</span>
-                <input
-                  type="number"
-                  min={-180}
-                  max={180}
-                  step="any"
-                  dir="ltr"
-                  value={form.longitude}
-                  onChange={(e) => change("longitude", e.target.value)}
-                  placeholder="51.3890..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/50 backdrop-blur-sm px-3.5 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
-                />
-              </label>
-            </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">
+                      نام کسب‌وکار یا برند <span className="text-rose-400">*</span>
+                    </span>
+                    <input
+                      required
+                      maxLength={120}
+                      value={form.name}
+                      onChange={(e) => change("name", e.target.value)}
+                      placeholder="مثال: کافه رستوران گرگان‌مهر"
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
 
-            {/* Interactive Map */}
-            <div className="relative isolate z-10 overflow-hidden rounded-xl border border-white/10">
-              <MapViewLazy
-                className="h-[320px] w-full"
-                markers={
-                  validPoint
-                    ? [
-                        {
-                          id: "picked",
-                          title: form.name || "موقعیت کسب‌وکار",
-                          latitude: Number(form.latitude),
-                          longitude: Number(form.longitude),
-                        },
-                      ]
-                    : []
-                }
-                onPick={
-                  busy
-                    ? undefined
-                    : (lat, lng) =>
-                        setForm((f) => ({
-                          ...f,
-                          latitude: lat.toFixed(7),
-                          longitude: lng.toFixed(7),
-                        }))
-                }
-              />
-            </div>
-            <p className="text-[11px] text-slate-400 text-center">
-              برای تعیین مکان، کافیست روی نقشه در نقطه دلخواه کلیک کنید یا پین را جابجا کنید.
-            </p>
-          </section>
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">دسته‌بندی و صنف</span>
+                    <input
+                      list="categories-list"
+                      maxLength={120}
+                      value={form.category}
+                      onChange={(e) => change("category", e.target.value)}
+                      placeholder="انتخاب یا تایپ صنف..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                    <datalist id="categories-list">
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
+                  </label>
 
-          {/* Card 5: Social Media & Channels */}
-          <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
-                  <Share2 className="h-4 w-4" />
+                  {/* Categories quick pills */}
+                  <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5 -mt-2">
+                    <span className="text-[11px] text-slate-400">پیشنهادات سریع:</span>
+                    {CATEGORIES.slice(0, 6).map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => change("category", cat)}
+                        className={`rounded-lg px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                          form.category === cat
+                            ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                            : "bg-white/5 text-slate-400 border border-white/10 hover:text-white"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 text-slate-400" />
+                      <span>شماره تماس عمومی</span>
+                    </span>
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      maxLength={30}
+                      value={form.phone}
+                      onChange={(e) => change("phone", e.target.value)}
+                      placeholder="017... یا 0911..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 font-mono text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5 text-slate-400" />
+                      <span>ایمیل کاری (اختیاری)</span>
+                    </span>
+                    <input
+                      type="email"
+                      dir="ltr"
+                      maxLength={255}
+                      value={form.email}
+                      onChange={(e) => change("email", e.target.value)}
+                      placeholder="info@business.ir"
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 font-mono text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">شهر</span>
+                    <input
+                      maxLength={120}
+                      value={form.city}
+                      onChange={(e) => change("city", e.target.value)}
+                      placeholder="گرگان، گنبد کاووس، علی‌آباد..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">محله / منطقه</span>
+                    <input
+                      maxLength={120}
+                      value={form.neighborhood}
+                      onChange={(e) => change("neighborhood", e.target.value)}
+                      placeholder="مثال: ناهارخوران، ولیعصر..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="sm:col-span-2 space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                      <span>آدرس دقیق پستی</span>
+                    </span>
+                    <input
+                      maxLength={1000}
+                      value={form.address}
+                      onChange={(e) => change("address", e.target.value)}
+                      placeholder="خیابان، کوچه، پلاک، طبقه یا نشانی دقیق..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="sm:col-span-2 space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">
+                      توضیحات و بیوگرافی کسب‌وکار
+                    </span>
+                    <textarea
+                      rows={4}
+                      maxLength={5000}
+                      value={form.description}
+                      onChange={(e) => change("description", e.target.value)}
+                      placeholder="توضیح تاریخچه، ساعات کاری و زمینه فعالیت..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="sm:col-span-2 space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">
+                      فهرست خدمات و محصولات ویژه (هر کدام در یک خط)
+                    </span>
+                    <textarea
+                      rows={3}
+                      value={form.services}
+                      onChange={(e) => change("services", e.target.value)}
+                      placeholder="مثال:&#10;اینترنت رایگان&#10;فضای باز&#10;سفارش تلفنی"
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                    />
+                  </label>
                 </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-white">
-                    شبکه‌های اجتماعی و پیام‌رسان‌ها
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    مشتریان از طریق این پیوندها می‌توانند با شما در ارتباط باشند.
-                  </p>
-                </div>
-              </div>
+              </section>
 
-              {/* Quick Add Presets */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-slate-500">افزودن سریع:</span>
-                {PRESET_SOCIALS.map((p) => {
-                  const alreadyHas = social.some((s) => s.key.toLowerCase() === p.key);
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      disabled={alreadyHas || social.length >= 10}
-                      onClick={() => setSocial((xs) => [...xs, { key: p.key, url: "" }])}
-                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:border-white/20 hover:text-white disabled:opacity-40 cursor-pointer transition-colors"
+              {/* Social Channels Section */}
+              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <Share2 className="h-5 w-5 text-cyan-400" />
+                      <span>شبکه‌های اجتماعی و پیام‌رسان‌ها</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      پیوندهای ارتباطی برای دسترسی مستقیم کاربران به کانال‌ها و صفحات مجازی شما.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {PRESET_SOCIALS.map((p) => {
+                      const alreadyHas = social.some((s) => s.key.toLowerCase() === p.key);
+                      return (
+                        <button
+                          key={p.key}
+                          type="button"
+                          disabled={alreadyHas || social.length >= 10}
+                          onClick={() => setSocial((xs) => [...xs, { key: p.key, url: "" }])}
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer transition-colors"
+                        >
+                          <p.icon className="h-3 w-3 text-cyan-400" />
+                          <span>{p.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {social.map((row, i) => (
+                    <div
+                      key={i}
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-white/[0.06] bg-slate-950/40 p-3"
                     >
-                      <p.icon className="h-3 w-3 text-cyan-400" />
-                      <span>{p.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                      <input
+                        dir="ltr"
+                        maxLength={40}
+                        value={row.key}
+                        placeholder="instagram, telegram..."
+                        onChange={(e) =>
+                          setSocial((xs) =>
+                            xs.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
+                          )
+                        }
+                        className="sm:w-44 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      />
 
-            <div className="space-y-3">
-              {social.map((row, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-3 transition-all hover:border-white/10"
-                >
-                  <div className="sm:w-44 space-y-1">
-                    <span className="text-[11px] text-slate-400">نام شبکه (انگلیسی)</span>
-                    <input
-                      dir="ltr"
-                      maxLength={40}
-                      value={row.key}
-                      placeholder="instagram, telegram..."
-                      onChange={(e) =>
-                        setSocial((xs) =>
-                          xs.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
-                        )
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
-                    />
-                  </div>
+                      <input
+                        dir="ltr"
+                        maxLength={500}
+                        value={row.url}
+                        placeholder="https://... یا username"
+                        onChange={(e) =>
+                          setSocial((xs) =>
+                            xs.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)),
+                          )
+                        }
+                        className="flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      />
 
-                  <div className="flex-1 space-y-1">
-                    <span className="text-[11px] text-slate-400">لینک صفحه، نام کاربری یا شماره</span>
-                    <input
-                      dir="ltr"
-                      maxLength={500}
-                      value={row.url}
-                      placeholder="https://... یا username"
-                      onChange={(e) =>
-                        setSocial((xs) =>
-                          xs.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)),
-                        )
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400 focus:bg-slate-950/80"
-                    />
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => setSocial((xs) => xs.filter((_, j) => j !== i))}
+                        className="self-end sm:self-center inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
 
                   <button
                     type="button"
-                    onClick={() => setSocial((xs) => xs.filter((_, j) => j !== i))}
-                    className="self-end sm:self-center mt-2 sm:mt-5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
-                    title="حذف این شبکه"
+                    disabled={social.length >= 10}
+                    onClick={() => setSocial((xs) => [...xs, { key: "", url: "" }])}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer transition-colors"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>افزودن پیوند ارتباطی جدید</span>
                   </button>
                 </div>
-              ))}
+              </section>
 
-              {social.length === 0 && (
-                <p className="py-4 text-center text-xs text-slate-500">
-                  هنوز شبکه ارتباطی اضافه نکرده‌اید. از دکمه‌های «افزودن سریع» بالا یا دکمه زیر استفاده کنید.
-                </p>
-              )}
-
-              <button
-                type="button"
-                disabled={social.length >= 10}
-                onClick={() => setSocial((xs) => [...xs, { key: "", url: "" }])}
-                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-white/20 hover:text-white cursor-pointer transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>افزودن شبکه دلخواه دیگر</span>
-              </button>
-            </div>
-          </section>
-
-          {/* Full-Width Docked Action Bar */}
-          <div className="fixed bottom-0 inset-x-0 z-50 w-full border-t border-cyan-500/20 bg-[#060b14]/90 backdrop-blur-2xl shadow-[0_-10px_35px_rgba(0,0,0,0.6)]">
-            {/* Top illuminated glow line */}
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
-
-            <div className="mx-auto max-w-5xl px-4 sm:px-6 py-3 sm:py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
-              <div className="text-center sm:text-right min-w-0">
-                <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
-                  </span>
-                  <span className="text-xs sm:text-sm font-bold text-white truncate">
-                    {editing ? `در حال ویرایش: ${form.name || editing.name}` : "ثبت کسب‌وکار جدید"}
-                  </span>
-                  <span className="hidden md:inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300">
-                    {busy ? "در حال ارسال اطلاعات..." : "آماده ذخیره"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
-                  تغییرات شما در دیتابیس ثبت و برای بررسی ارسال خواهد شد.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-center sm:justify-end shrink-0">
+              <div className="flex justify-end pt-2">
                 <button
                   type="submit"
                   disabled={busy}
-                  className="flex h-11 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-6 sm:px-9 text-xs sm:text-sm font-bold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50 cursor-pointer whitespace-nowrap select-none"
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-md transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره تغییرات نمایه"}</span>
+                  <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره مشخصات کسب‌وکار"}</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </form>
+            </form>
+          )}
 
-        {/* Card 6: Showcase Gallery (Independent form section) */}
-        <section className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] space-y-5 transition-all hover:border-white/[0.12]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3.5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-400">
-                <ImageIcon className="h-4 w-4" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-white">
-                  گالری و ویترین تصاویر کسب‌وکار
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  تا ۵ تصویر از محیط، محصولات و نمونه‌کارهای خود را به صورت رایگان اضافه کنید.
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-slate-400 self-end sm:self-auto">
-              {images.length} از ۵ تصویر
-            </span>
-          </div>
-
-          {!editing ? (
-            <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 backdrop-blur-md p-6 text-center text-xs text-slate-400">
-              برای مدیریت گالری تصاویر، ابتدا فرم بالا را یک بار ذخیره کنید تا شناسه کسب‌وکار ایجاد شود.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Upload Dropzone */}
-              {images.length < 5 && (
-                <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/15 bg-slate-950/40 backdrop-blur-sm p-6 text-center cursor-pointer transition-all hover:border-cyan-400/60 hover:bg-slate-900/40">
-                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-cyan-400">
-                    <UploadCloud className="h-5 w-5" />
+          {/* TAB 3: LOCATION & MAP PICKER (موقعیت روی نقشه) */}
+          {currentTab === "location" && (
+            <form onSubmit={submit} className="space-y-6">
+              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <MapPin className="h-5 w-5 text-cyan-400" />
+                      <span>موقعیت جغرافیایی روی نقشه</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      با کلیک روی نقشه، مکان دقیق مغازه یا شرکت خود را مشخص کنید تا در مسیریابی و جستجوی کاربران دیده شود.
+                    </p>
                   </div>
-                  <span className="text-xs sm:text-sm font-semibold text-slate-200">
-                    انتخاب یا کشیدن تصاویر به این بخش
-                  </span>
-                  <span className="mt-1 text-[11px] text-slate-400">
-                    فرمت‌های JPG، PNG یا WebP تا سقف ۵ مگابایت
-                  </span>
-                  <input
-                    disabled={busy || galleryLoading || images.length >= 5}
-                    type="file"
-                    multiple
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) => {
-                      void gallery(e.target.files);
-                      e.target.value = "";
-                    }}
-                    className="hidden"
-                  />
-                </label>
-              )}
 
-              {/* Gallery Grid */}
-              {galleryLoading ? (
-                <div className="flex h-32 items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+                  {validPoint && (
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, latitude: "", longitude: "" }))}
+                      className="text-xs font-semibold text-rose-400 hover:underline cursor-pointer"
+                    >
+                      پاک‌کردن پین نقشه
+                    </button>
+                  )}
                 </div>
-              ) : images.length === 0 ? (
-                <p className="py-6 text-center text-xs text-slate-500">
-                  هنوز هیچ تصویری در گالری ثبت نشده است.
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  {images.map((image) => {
-                    const url = mediaUrl(image.path);
-                    const isDeleting = deleteImage === image.id;
 
-                    return (
-                      <div
-                        key={image.id}
-                        className="group relative flex flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-950/60 backdrop-blur-md shadow-sm transition-all hover:border-cyan-500/40"
-                      >
-                        <div className="relative aspect-square w-full">
-                          {url ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-slate-300">عرض جغرافیایی (Latitude)</span>
+                    <input
+                      type="number"
+                      min={-90}
+                      max={90}
+                      step="any"
+                      dir="ltr"
+                      value={form.latitude}
+                      onChange={(e) => change("latitude", e.target.value)}
+                      placeholder="36.8387..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-slate-300">طول جغرافیایی (Longitude)</span>
+                    <input
+                      type="number"
+                      min={-180}
+                      max={180}
+                      step="any"
+                      dir="ltr"
+                      value={form.longitude}
+                      onChange={(e) => change("longitude", e.target.value)}
+                      placeholder="54.4348..."
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
+                    />
+                  </label>
+                </div>
+
+                {/* Map Viewer */}
+                <div className="relative isolate overflow-hidden rounded-2xl border border-white/10 shadow-inner">
+                  <MapViewLazy
+                    className="h-[400px] w-full"
+                    markers={
+                      validPoint
+                        ? [
+                            {
+                              id: "picked",
+                              title: form.name || "موقعیت کسب‌وکار",
+                              latitude: Number(form.latitude),
+                              longitude: Number(form.longitude),
+                            },
+                          ]
+                        : []
+                    }
+                    onPick={
+                      busy
+                        ? undefined
+                        : (lat, lng) =>
+                            setForm((f) => ({
+                              ...f,
+                              latitude: lat.toFixed(7),
+                              longitude: lng.toFixed(7),
+                            }))
+                    }
+                  />
+                </div>
+
+                <p className="text-xs text-slate-400 text-center">
+                  روی هر نقطه‌ای از نقشه کلیک کنید، پین مکان فروشگاه شما در همان نقطه تنظیم می‌شود.
+                </p>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-md transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره موقعیت نقشه"}</span>
+                  </button>
+                </div>
+              </section>
+            </form>
+          )}
+
+          {/* TAB 4: LOGO & MEDIA GALLERY (لوگو و تصاویر گالری) */}
+          {currentTab === "media" && (
+            <div className="space-y-6">
+              {/* Branding Section (Logo & Cover) */}
+              <form onSubmit={submit}>
+                <section
+                  className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6"
+                  ref={mediaForm}
+                >
+                  <div className="border-b border-white/5 pb-4">
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <ImageIcon className="h-5 w-5 text-cyan-400" />
+                      <span>هویت بصری (لوگو و تصویر کاور)</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      لوگو و تصویر بنر اصلی فروشگاه شما در صفحه اختصاصی نمایش داده خواهند شد.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    {/* Logo */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-slate-300">لوگوی اختصاصی</span>
+                      <div className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-slate-950/40 p-4">
+                        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                          {mediaUrl(editing?.logo) ? (
                             <Image
-                              src={url}
-                              alt={image.alt || "تصویر گالری"}
+                              src={mediaUrl(editing?.logo)!}
+                              alt="لوگو"
                               fill
-                              className="object-cover transition-transform group-hover:scale-105"
-                              sizes="200px"
+                              className="object-contain p-1"
+                              sizes="80px"
                             />
                           ) : (
-                            <div className="flex h-full items-center justify-center text-slate-600">
-                              بدون تصویر
-                            </div>
+                            <Building2 className="h-8 w-8 text-slate-600" />
                           )}
                         </div>
 
-                        {/* Actions overlay */}
-                        <div className="p-2 border-t border-white/5 bg-slate-950/90">
-                          {isDeleting ? (
-                            <div className="flex flex-col gap-1">
-                              <span className="text-[10px] text-rose-300 font-bold text-center">
-                                حذف شود؟
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => void eraseImage(image.id)}
-                                  className="flex-1 rounded bg-rose-600 py-1 text-[10px] font-bold text-white hover:bg-rose-500 cursor-pointer"
-                                >
-                                  بله
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => setDeleteImage(null)}
-                                  className="flex-1 rounded bg-slate-800 py-1 text-[10px] text-slate-300 hover:bg-slate-700 cursor-pointer"
-                                >
-                                  انصراف
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
+                        <div className="space-y-2 min-w-0 flex-1">
+                          <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors">
+                            <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
+                            <span>{logo ? logo.name : "انتخاب فایل لوگو"}</span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              disabled={busy}
+                              onChange={(e) => setLogo(e.target.files?.[0] || null)}
+                              className="hidden"
+                            />
+                          </label>
+                          <p className="text-[10px] text-slate-400">حداکثر ۲ مگابایت (PNG یا JPG)</p>
+                          {editing?.logo && (
                             <button
                               type="button"
                               disabled={busy}
-                              onClick={() => setDeleteImage(image.id)}
-                              className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/5 bg-white/5 py-1 text-[11px] font-medium text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                              onClick={() => void clearMedia("logo")}
+                              className="text-[11px] text-rose-400 hover:underline cursor-pointer block"
                             >
-                              <Trash2 className="h-3 w-3" />
-                              <span>حذف</span>
+                              حذف لوگوی فعلی
                             </button>
                           )}
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    {/* Cover Banner */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-slate-300">تصویر کاور (بنر بالای صفحه)</span>
+                      <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-slate-950/40 p-4">
+                        <div className="relative h-20 w-full overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                          {mediaUrl(editing?.cover_image) ? (
+                            <Image
+                              src={mediaUrl(editing?.cover_image)!}
+                              alt="کاور"
+                              fill
+                              className="object-cover"
+                              sizes="400px"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[11px] text-slate-600">
+                              بدون بنر کاور
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors">
+                            <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
+                            <span>{cover ? cover.name : "انتخاب فایل کاور"}</span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              disabled={busy}
+                              onChange={(e) => setCover(e.target.files?.[0] || null)}
+                              className="hidden"
+                            />
+                          </label>
+
+                          {editing?.cover_image && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void clearMedia("cover_image")}
+                              className="text-[11px] text-rose-400 hover:underline cursor-pointer"
+                            >
+                              حذف کاور
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-md transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره لوگو و کاور"}</span>
+                    </button>
+                  </div>
+                </section>
+              </form>
+
+              {/* Showcase Gallery Section */}
+              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <Camera className="h-5 w-5 text-cyan-400" />
+                      <span>گالری تصاویر نمونه‌کارها و محیط کسب‌وکار</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      می‌توانید تا سقف ۵ تصویر باکیفیت برای جذب بیشتر مشتریان بارگذاری کنید.
+                    </p>
+                  </div>
+
+                  <span className="text-xs font-semibold text-slate-400">
+                    {images.length} از ۵ تصویر
+                  </span>
                 </div>
-              )}
+
+                {!editing ? (
+                  <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 p-6 text-center text-xs text-slate-400">
+                    برای فعال‌سازی گالری، ابتدا در تب مشخصات، کسب‌وکار خود را یک بار ذخیره فرمایید.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {images.length < 5 && (
+                      <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/15 bg-slate-950/40 p-6 text-center cursor-pointer transition-all hover:border-cyan-400/50">
+                        <UploadCloud className="h-6 w-6 text-cyan-400 mb-2" />
+                        <span className="text-xs sm:text-sm font-semibold text-slate-200">
+                          انتخاب یا رهاسازی تصاویر در این قسمت
+                        </span>
+                        <span className="mt-1 text-[11px] text-slate-400">
+                          فرمت‌های JPG، PNG یا WebP تا سقف ۵ مگابایت
+                        </span>
+                        <input
+                          disabled={busy || galleryLoading || images.length >= 5}
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => {
+                            void gallery(e.target.files);
+                            e.target.value = "";
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+
+                    {galleryLoading ? (
+                      <div className="flex h-32 items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+                      </div>
+                    ) : images.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-slate-500">
+                        هنوز تصویری در گالری ثبت نکرده‌اید.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                        {images.map((image) => {
+                          const url = mediaUrl(image.path);
+                          const isDeleting = deleteImage === image.id;
+
+                          return (
+                            <div
+                              key={image.id}
+                              className="group relative flex flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-950/60 shadow-sm"
+                            >
+                              <div className="relative aspect-square w-full">
+                                {url ? (
+                                  <Image
+                                    src={url}
+                                    alt="تصویر گالری"
+                                    fill
+                                    className="object-cover"
+                                    sizes="200px"
+                                  />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center text-slate-600 text-xs">
+                                    بدون تصویر
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="p-2 border-t border-white/5 bg-slate-950/90">
+                                {isDeleting ? (
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void eraseImage(image.id)}
+                                      className="flex-1 rounded bg-rose-600 py-1 text-[10px] font-bold text-white cursor-pointer"
+                                    >
+                                      حذف
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => setDeleteImage(null)}
+                                      className="flex-1 rounded bg-slate-800 py-1 text-[10px] text-slate-300 cursor-pointer"
+                                    >
+                                      انصراف
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => setDeleteImage(image.id)}
+                                    className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/5 bg-white/5 py-1 text-[11px] text-rose-300 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                    <span>حذف</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
             </div>
           )}
-        </section>
-      </main>
+
+          {/* TAB 5: PUBLIC PROFILE & QR CODE (تعهد مستقیم فاز ۲ قرارداد) */}
+          {currentTab === "qr" && (
+            <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="border-b border-white/5 pb-4">
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <QrCode className="h-5 w-5 text-cyan-400" />
+                  <span>صفحه اختصاصی عمومی و کد QR (تعهد فاز ۲ قرارداد)</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  کسب‌وکار شما یک لینک عمومی مستقل دارد که با اسکن این بارکد، مشتریان بدون واسطه وارد نمایه شما می‌شوند.
+                </p>
+              </div>
+
+              {!editing ? (
+                <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 p-6 text-center text-xs text-slate-400">
+                  برای تولید بارکد QR اختصاصی، ابتدا یک کسب‌وکار ثبت یا انتخاب فرمایید.
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-8 items-center">
+                  {/* Left: QR Display Box */}
+                  <div className="flex flex-col items-center justify-center p-6 rounded-2xl border border-white/10 bg-slate-950/70 text-center space-y-4">
+                    <div className="rounded-2xl border-4 border-white bg-white p-3 shadow-xl">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={getQrUrl(editing.slug)}
+                        alt="QR اختصاصی"
+                        width={200}
+                        height={200}
+                        className="mx-auto"
+                      />
+                    </div>
+
+                    <div>
+                      <span className="text-xs font-bold text-white">بارکد استند چاپی</span>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        مناسب برای چاپ روی استند رومیزی مغازه، فاکتور و کارت ویزیت
+                      </p>
+                    </div>
+
+                    <a
+                      href={getQrUrl(editing.slug)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 px-5 py-2 text-xs font-bold text-white transition-colors"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>دانلود مستقیم تصویر QR</span>
+                    </a>
+                  </div>
+
+                  {/* Right: Link & Details */}
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-5 space-y-2">
+                      <span className="text-xs font-semibold text-slate-400">آدرس صفحه عمومی مستقل:</span>
+                      {publicUrl ? (
+                        <div className="flex items-center justify-between gap-2 p-3 rounded-xl border border-white/10 bg-slate-900 font-mono text-xs text-cyan-300" dir="ltr">
+                          <span className="truncate">{publicUrl}</span>
+                          <a
+                            href={publicUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-400 hover:text-white shrink-0"
+                            title="باز کردن صفحه"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-300">
+                          پس از تایید اولیه مدیر، آدرس صفحه فعال می‌شود.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-5 space-y-2">
+                      <h4 className="text-xs font-bold text-white">وضعیت تاییدیه در فاز ۲:</h4>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                            editing.status === "approved"
+                              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                              : editing.status === "pending"
+                              ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                              : "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                          }`}
+                        >
+                          {statusLabel[editing.status] || editing.status}
+                        </span>
+                        {editing.moderation_note && (
+                          <span className="text-xs text-amber-200">
+                            (یادداشت مدیر: {editing.moderation_note})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+        </main>
+      </div>
+
+      {/* Standalone QR Modal */}
+      {showQrModal && editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0c1427] p-6 text-center shadow-2xl space-y-4">
+            <button
+              type="button"
+              onClick={() => setShowQrModal(false)}
+              className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <h3 className="text-base font-bold text-white">بارکد QR اختصاصی فروشگاه</h3>
+            <p className="text-xs text-slate-400">
+              این کد را پرینت کنید یا در شبکه‌های اجتماعی بگذارید تا مراجعین با دوربین گوشی مستقیماً وارد صفحه شما شوند.
+            </p>
+
+            <div className="flex justify-center py-2">
+              <div className="rounded-2xl border-4 border-white bg-white p-3 shadow-md">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getQrUrl(editing.slug)}
+                  alt="QR اختصاصی"
+                  width={180}
+                  height={180}
+                  className="mx-auto"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <a
+                href={getQrUrl(editing.slug)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 px-5 py-2.5 text-xs font-bold text-white transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>دانلود بارکد چاپی</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

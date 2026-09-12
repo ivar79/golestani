@@ -1,0 +1,40 @@
+# Martin Tile Server Configuration
+# Reference: Opus 5 Blueprint (PMTiles + Martin + Next.js)
+
+listen_addresses: '0.0.0.0:3000'
+keep_alive: 75
+worker_processes: 2          # مناسب برای استقرار کانتینری و پلن پایه
+base_path: /tiles            # هم‌راستا با Nginx، CDN و کلاینت MapLibre
+on_invalid: abort            # اگر فایل PMTiles یا منبع نامعتبر بود، کانتینر با خطا متوقف شود
+
+cache:
+  size_mb: 256
+  tile_size_mb: 96
+  tile_expiry: 24h
+
+pmtiles:
+  directory_cache:
+    size_mb: 96              # نگهداری دایرکتوری‌های داخلی PMTiles در حافظه رم
+  sources:
+    basemap:
+      path: /data/iran-v1.pmtiles
+
+fonts:
+  paths:
+    - /data/fonts            # قلم Vazirmatn جهت تولید Glyphهای باینری فارسی در سرور
+  cache:
+    size_mb: 32
+
+# sprites در تسک بعدی با افزودن آیکون‌های SVG فعال می‌شود
+# sprites:
+#   paths:
+#     - /data/sprites
+#   cache:
+#     size_mb: 32
+
+# پیکربندی پایگاه‌داده مکانی PostGIS (فعال‌سازی در فاز ۳ برای لایه POI)
+# postgres:
+#   connection_string: ${DATABASE_URL}
+#   pool_size: 10
+#   max_feature_count: 5000   # محافظت در برابر بازگشت فیچرهای بیش از حد
+#   auto_bounds: skip

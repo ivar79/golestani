@@ -25,6 +25,7 @@ iran-shortbread-1.0.mbtiles
 iran-shortbread-*.mbtiles
 iran-*.osm.pbf
 *.mbtiles
+*.pmtiles
 *.osm.pbf
 *.pbf
 
