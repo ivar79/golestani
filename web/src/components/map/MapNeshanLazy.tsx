@@ -1,13 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { MapCanvasProps } from "./MapCanvas";
+import type { MapViewProps } from "./MapView";
 
 /**
- * بارگذاری تنبل MapCanvas بدون اجرای سمت سرور (SSR: false)
- * مطابق بند ۳.۲ سند معماری جهت جلوگیری از خطاهای محیط بدون window/DOM
+ * بارگذاری تنبل موتور نشان — SDK به window/DOM دسترسی دارد و هرگز نباید روی
+ * سرور اجرا شود (ssr:false). placeholder تیره هم‌راستا با تم نقشه.
  */
-const MapCanvas = dynamic(() => import("./MapCanvas"), {
+const MapNeshan = dynamic(() => import("./MapNeshan"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-[#0e1726] text-slate-400">
@@ -19,6 +19,6 @@ const MapCanvas = dynamic(() => import("./MapCanvas"), {
   ),
 });
 
-export default function MapCanvasLazy(props: MapCanvasProps) {
-  return <MapCanvas {...props} />;
+export default function MapNeshanLazy(props: MapViewProps) {
+  return <MapNeshan {...props} />;
 }

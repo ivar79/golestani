@@ -9,15 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@mapbox/mapbox-gl-rtl-text": "^0.4.0",
+    "@neshan-maps-platform/maplibre-sdk": "^5.24.4",
     "axios": "^1.20.0",
     "html-to-image": "^1.11.11",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.41.0",
-    "maplibre-gl": "^6.9.0",
     "next": "16.3.3",
-    "pmtiles": "^4.5.0",
-    "protomaps-leaflet": "^5.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-leaflet": "^5.0.0"

@@ -9,10 +9,6 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./api:/var/www/html
-      # Local vector tiles (offline basemap) — archives live at the repo root
-      # on the host; PMTILES_PATH / MBTILES_PATH point here inside the container.
-      - ./iran-shortbread-1.0.mbtiles:/var/www/html/storage/app/iran-shortbread-1.0.mbtiles:ro
-      - ./iran-shortbread-1.0.pmtiles:/var/www/html/storage/app/iran-shortbread-1.0.pmtiles:ro
       # opcache for the dev CLI server: Laravel boots once per worker instead
       # of re-parsing hundreds of files per request over the slow Windows mount
       - ./docker/php/prod.ini:/usr/local/etc/php/conf.d/zz-prod.ini:ro
@@ -44,8 +40,6 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./api:/var/www/html
-      - ./iran-shortbread-1.0.mbtiles:/var/www/html/storage/app/iran-shortbread-1.0.mbtiles:ro
-      - ./iran-shortbread-1.0.pmtiles:/var/www/html/storage/app/iran-shortbread-1.0.pmtiles:ro
     environment:
       # queue:work redis needs the compose service name, not the 127.0.0.1 default
       REDIS_HOST: redis
@@ -58,27 +52,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  martin:
-    build:
-      context: ./martin
-      dockerfile: Dockerfile
-    image: golestani-martin:latest
-    container_name: golestani-martin
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      # Local vector tiles (PMTiles) — read-only
-      - ./iran-shortbread-1.0.pmtiles:/data/iran-v1.pmtiles:ro
-      - ./martin/config.yaml:/app/config.yaml:ro
-      - ./martin/fonts:/data/fonts:ro
-      - ./martin/sprites:/data/sprites:ro
-    networks:
-      - golestani-network
-    depends_on:
-      postgres:
         condition: service_healthy
 
   postgres:

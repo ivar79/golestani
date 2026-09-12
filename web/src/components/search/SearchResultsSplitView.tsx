@@ -2,8 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { LayoutList, Map as MapIcon } from "lucide-react";
-import MapViewLazy, { type MapMarker } from "@/components/map/MapViewLazy";
-import type { MapSourceMode } from "@/lib/mapSource";
+import MapView, { type MapMarker } from "@/components/map/MapView";
 
 /**
  * SearchResultsSplitView — task 10.
@@ -39,7 +38,6 @@ export type SearchResultsSplitViewProps = {
   center?: [number, number];
   userCoords?: { lat: number; lng: number } | null;
   onPick?: (lat: number, lng: number) => void;
-  sourceMode?: MapSourceMode;
   loading?: boolean;
   emptyState?: React.ReactNode;
 };
@@ -51,7 +49,6 @@ export default function SearchResultsSplitView({
   center,
   userCoords,
   onPick,
-  sourceMode = "auto",
   loading = false,
   emptyState,
 }: SearchResultsSplitViewProps) {
@@ -73,7 +70,7 @@ export default function SearchResultsSplitView({
 
   const mapPane = (
     <div className="h-full min-h-[420px] w-full">
-      <MapViewLazy
+      <MapView
         className="h-[420px] w-full lg:h-full lg:min-h-0"
         markers={markers}
         center={center}
@@ -81,7 +78,6 @@ export default function SearchResultsSplitView({
         onPick={onPick}
         onSelectMarker={handleSelectMarker}
         selectedId={selectedId}
-        sourceMode={sourceMode}
       />
     </div>
   );

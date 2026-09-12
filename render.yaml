@@ -70,20 +70,22 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         sync: false                # set to https://<your-app>.vercel.app in dashboard
 
-# NOTE ON THE MAP TILE ARCHIVE (MBTiles):
-# The vector basemap tiles for Iran are served directly by the Laravel API
-# (GET /api/map/tile/{z}/{x}/{y}) from the Shortbread MBTiles archive using
-# PHP's pdo_sqlite driver — no Node.js involved. To activate the offline
-# archive on Railway:
-#   1. Attach a Railway Volume (~1 GB, ≈$0.15/GB/mo) to the api service,
-#      mount point /data.
-#   2. Upload iran-shortbread-1.0.mbtiles onto the volume (one-time: Railway
-#      CLI `railway volume` + upload container, or any SFTP sidecar).
-#   3. Set env var MBTILES_PATH=/data/iran-shortbread-1.0.mbtiles.
-# Without the file the endpoint answers 404 per tile and /api/map/status
-# reports mbtiles_present=false — the frontend then falls back to the
-# online raster proxy automatically.
+# NOTE ON THE MAP:
+# Basemap tiles are no longer served by Laravel or any local tile server.
+# The frontend uses the Neshan Maps Platform SDK (hosted tiles, Persian
+# labels, API key set as NEXT_PUBLIC_NESHAN_MAP_KEY on Vercel) with a
+# public OSM raster fallback — nothing map-related to configure here.
 #
+# NOTE ON REDIS:
+# Cache, sessions and the queue run on the golestani-redis Key Value instance
+# (Laravel talks to it through predis — pure PHP, no extra PHP extension).
+# Locally without Redis, Laravel falls back gracefully: leave CACHE_STORE etc.
+# unset so the defaults (database) apply.
+#
+# NOTE ON THE DATABASE:
+# Migrations enable the PostGIS extension and add a `geom` geography column,
+# so the DB must be PostGIS-capable. Render's managed PostgreSQL does NOT
+# include PostGIS — use a Neon PostGIS database (or Render PostGIS plan) and
 # NOTE ON REDIS:
 # Cache, sessions and the queue run on the golestani-redis Key Value instance
 # (Laravel talks to it through predis — pure PHP, no extra PHP extension).

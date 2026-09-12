@@ -35,13 +35,8 @@ return [
         ],
     ],
 
-    // PMTiles archive (Phase 1 of the PMTiles migration) — served by
-    // PmtilesController at /api/map/basemap.pmtiles with byte ranges (206) so
-    // protomaps-leaflet can read header/directory/tile chunks directly over HTTP.
-    'pmtiles_path' => env('PMTILES_PATH'),
-
-    // Legacy MBTiles key: kept only until the PMTiles rollout is fully
-    // verified, then remove together with MbtilesServer/MapTileController::tile.
-    'mbtiles_path' => env('MBTILES_PATH'),
+    // NOTE: map basemap tiles are no longer served by Laravel. The frontend
+    // uses the Neshan Maps Platform SDK (hosted tiles + API key) with a public
+    // OSM raster fallback — no local PMTiles/MBTiles archives anywhere.
 
 ];

@@ -13,6 +13,7 @@ Thumbs.db
 Desktop.ini
 *.result.cache
 .freebuff/
+.devserver.log
 
 # --- local backup snapshots (never commit/push) ---
 backup/
@@ -31,3 +32,4 @@ iran-*.osm.pbf
 
 # --- local documentation drafts ---
 *.md
+!README.md

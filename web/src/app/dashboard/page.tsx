@@ -10,7 +10,7 @@ import { getQrUrl } from "@/lib/businesses";
 import { OnboardingView } from "@/components/dashboard/OnboardingView";
 import { DashboardSidebar, type DashboardTab } from "@/components/dashboard/DashboardSidebar";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
-import MapViewLazy from "@/components/map/MapViewLazy";
+import MapView from "@/components/map/MapView";
 import {
   addImage,
   badgeLabel,
@@ -571,7 +571,7 @@ export default function Dashboard() {
               hasLocation={validPoint}
               hasImages={images.length > 0 || !!editing?.logo}
               imagesCount={images.length}
-              publicUrl={publicUrl}
+              publicUrl={publicUrl ?? undefined}
               onNavigateTab={setCurrentTab}
               onOpenQrModal={() => setShowQrModal(true)}
             />
@@ -898,7 +898,7 @@ export default function Dashboard() {
 
                 {/* Map Viewer */}
                 <div className="relative isolate overflow-hidden rounded-2xl border border-white/10 shadow-inner">
-                  <MapViewLazy
+                  <MapView
                     className="h-[400px] w-full"
                     markers={
                       validPoint

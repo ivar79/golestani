@@ -9,40 +9,15 @@ use App\Http\Controllers\Api\AdvertisementController;
 use App\Http\Controllers\Api\ShowcaseController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\AdminController;
-use App\Http\Controllers\Api\MapTileController;
-use App\Http\Controllers\Api\PmtilesController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
 });
 
-// Vector basemap tiles from the local Shortbread MBTiles archive (pure PHP
-// reader) + raster fallback proxied through the Laravel HTTP client (also
-// pure PHP — the former Node.js proxy in the Next.js app was retired) +
-// diagnostics for auto source-mode detection. Public on purpose: tiles are
-// open ODbL data, responses are CDN-cacheable, and the map must work for
-// anonymous visitors. z/x/y validated and range-checked in the controller;
-// public write access is impossible by construction (GET-only).
-// NOTE: x/y allow up to 5/6 digits — z14 vector tiles need x≤16383 and
-// z19 raster tiles need x≤524287; the controller still range-checks strictly.
-Route::get('/map/tile/{z}/{x}/{y}', [MapTileController::class, 'tile'])
-    ->where(['z' => '[0-9]{1,2}', 'x' => '[0-9]{1,5}', 'y' => '[0-9]{1,5}'])
-    ->middleware('throttle:600,1');
-Route::get('/map/raster-tile/{z}/{x}/{y}', [MapTileController::class, 'rasterTile'])
-    ->where(['z' => '[0-9]{1,2}', 'x' => '[0-9]{1,6}', 'y' => '[0-9]{1,6}'])
-    ->middleware('throttle:600,1');
-Route::get('/map/status', [MapTileController::class, 'status'])
-    ->middleware('throttle:30,1');
-
-// Single-file PMTiles archive (Phase 1 of the PMTiles migration): protomaps-leaflet
-// fetches header + directory + tile chunks with HTTP byte ranges — the route
-// answers 206 Partial Content. GET/HEAD only; path comes from config, never
-// from user input. Unthrottled on purpose: a page load fires dozens of range
-// requests, each only a few KB. NOTE: the path MUST end in ".pmtiles" —
-// protomaps-leaflet dispatches to its PMTiles (Range) source based on the
-// URL pathname suffix alone.
-Route::get('/map/basemap.pmtiles', [PmtilesController::class, 'show']);
+// NOTE: map basemap tiles are no longer served by Laravel. The frontend uses
+// the Neshan Maps Platform SDK (hosted tiles + API key) with a public OSM
+// raster fallback — no local PMTiles/MBTiles archives anywhere.
 
 // Demonstration of the CheckRole middleware (Phase 1 RBAC wiring).
 Route::get('/admin/ping', function () {

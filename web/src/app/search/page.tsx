@@ -21,8 +21,7 @@ import SearchFilters, {
 import SearchResultsSplitView, {
   type SplitViewCardData,
 } from "@/components/search/SearchResultsSplitView";
-import type { MapMarker } from "@/components/map/MapViewLazy";
-import type { MapSourceMode } from "@/lib/mapSource";
+import type { MapMarker } from "@/components/map/MapView";
 import { searchIranLocations, getProvince } from "@/lib/iranGeo";
 
 /** True for axios cancellation errors — these are expected, not user-facing failures. */
@@ -57,11 +56,6 @@ function SearchPageContent() {
     searchParams.get("category") ??
     null;
   const initialQ = searchParams.get("q") ?? "";
-  // Tile source preference from the admin tab (map.tile_source CMS key is
-  // exposed to the public homepage payload; "auto" stays the safe default).
-  const sourceParam = searchParams.get("mapsource");
-  const sourceMode: MapSourceMode =
-    sourceParam === "local" || sourceParam === "online" ? sourceParam : "auto";
 
   const [q, setQ] = useState(initialQ);
   const [items, setItems] = useState<Business[]>([]);
@@ -296,7 +290,6 @@ function SearchPageContent() {
             center={mapCenter}
             userCoords={location ? { lat: location.latitude, lng: location.longitude } : null}
             onPick={setManualLocation}
-            sourceMode={sourceMode}
             loading={loading}
             emptyState={emptyState}
           />

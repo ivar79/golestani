@@ -30,6 +30,11 @@ export default function RootLayout({
   return (
     <html lang="fa" dir="rtl" data-scroll-behavior="smooth" className={`${vazirmatn.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
+        {/*
+          موتور نقشه (SDK نشان یا fallback رستر OSM) در خود کامپوننت MapView
+          با dynamic import و ssr:false بارگذاری می‌شود؛ دیگر Provider سراسری
+          و نمونهٔ ماندگار نقشه وجود ندارد.
+        */}
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
