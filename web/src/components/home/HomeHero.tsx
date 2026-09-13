@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Search } from "lucide-react";
 import { cms, useHomepageContent } from "@/lib/homepage";
 import SearchModal from "@/components/search/SearchModal";
+import HeroVideo from "./HeroVideo";
 
 /** Render the hero title with the accent word (from CMS) highlighted in emerald. */
 function Title({ content }: { content: Record<string, string> }) {
@@ -31,9 +32,9 @@ export default function HomeHero() {
   const primaryHref = cms(content, "hero.button_primary_link") || "/card-maker";
   const secondaryLabel = cms(content, "hero.button_secondary");
   const secondaryHref = cms(content, "hero.button_secondary_link") || "#showcase";
-  // Design source: hero VISUAL = 2.jpg (phone + floating cards), BACKGROUND = 1.jpg (aurora).
+  // Design source: hero VISUAL = 2.jpg (phone + floating cards), BACKGROUND =
+  // animated particle-wave video (1.mp4) — formerly the static 1.jpg aurora.
   const heroImage = cms(content, "hero.image") || "/assets/hero-2.jpg";
-  const background = cms(content, "hero.background") || "/assets/hero-1.jpg";
 
   // Global keyboard shortcut (Cmd+K / Ctrl+K) to open search modal
   useEffect(() => {
@@ -55,18 +56,11 @@ export default function HomeHero() {
   return (
     <>
       <section className="relative z-10 w-full overflow-hidden pb-24 pt-32 lg:pb-40">
-      {/* Full-bleed atmospheric background (aurora) — spans the whole viewport so
-          the desktop hero is not empty on the sides. Content stays in a 1280px box. */}
+      {/* Full-bleed atmospheric background — the animated particle-wave video
+          (looping, muted) plays where the static aurora (1.jpg) used to sit.
+          Same mix-blend-lighten treatment, same overlay stack. */}
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <Image
-          src={background}
-          alt=""
-          aria-hidden="true"
-          fill
-          sizes="100vw"
-          priority
-          className="object-cover opacity-40 mix-blend-lighten"
-        />
+        <HeroVideo />
         <div className="absolute -left-[10%] bottom-0 h-[640px] w-[640px] rounded-full bg-primary/25 blur-[120px]" />
         <div className="absolute -right-[10%] top-0 h-[520px] w-[520px] rounded-full bg-secondary/10 blur-[120px]" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-night" />

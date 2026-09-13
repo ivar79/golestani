@@ -32,7 +32,6 @@ class HomepageSeeder extends Seeder
             'homepage.hero.button_secondary' => 'مشاهده دمو',
             'homepage.hero.button_secondary_link' => '/demo',
             'homepage.hero.image' => '/assets/hero-2.jpg',
-            'homepage.hero.background' => '/assets/hero-1.jpg',
 
             'homepage.feature.1.icon' => 'contactPage',
             'homepage.feature.1.title' => 'معرفی حرفه‌ای کسب‌وکار',

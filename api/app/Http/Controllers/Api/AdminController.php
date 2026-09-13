@@ -68,7 +68,6 @@ class AdminController extends Controller
             'homepage.hero.button_primary_link',
             'homepage.hero.button_secondary_link',
             'homepage.hero.image',
-            'homepage.hero.background',
             'homepage.hero.card_title',
             'homepage.hero.card_subtitle',
             'homepage.hero.card_phone',
