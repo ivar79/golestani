@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { panelPath } from "@/lib/panelPath";
 import OtpInput from "@/components/auth/OtpInput";
+import { AuthGlass } from "../login/page";
 
 const PHONE_KEY = "golestani_login_phone";
 
@@ -79,7 +80,8 @@ export default function OtpPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <AuthGlass>
+      <div className="flex flex-col gap-6">
       <div className="text-center">
         <h1 className="text-2xl font-bold text-white tracking-tight">
           کد تأیید یک‌بار مصرف
@@ -152,6 +154,7 @@ export default function OtpPage() {
           </button>
         )}
       </div>
-    </div>
+      </div>
+    </AuthGlass>
   );
 }

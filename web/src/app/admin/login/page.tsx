@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
+import { normalizeIdentifier } from "@/lib/digits";
 import { ShieldCheck, Eye, EyeOff, ArrowRight, User as UserIcon } from "lucide-react";
 
 export default function AdminLoginPage() {
@@ -31,7 +32,9 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      await loginAdmin(identifier, password);
+      // Persian digits / stray whitespace in a pasted phone or email must not
+      // fail the lookup; normalize on the client (backend does the same).
+      await loginAdmin(normalizeIdentifier(identifier), password);
       router.push("/admin");
     } catch (err) {
       setError(extractApiError(err));

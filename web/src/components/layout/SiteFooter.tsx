@@ -9,6 +9,7 @@ export default function SiteFooter() {
           <BrandMark size="sm" />
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <Link href="/pricing" className="transition hover:text-navy-700">تعرفه‌ها</Link>
           <Link href="/about" className="transition hover:text-navy-700">درباره ما</Link>
           <Link href="/contact" className="transition hover:text-navy-700">تماس با ما</Link>
           <Link href="/privacy" className="transition hover:text-navy-700">حریم خصوصی</Link>

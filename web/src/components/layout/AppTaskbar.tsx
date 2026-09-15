@@ -23,6 +23,7 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const NAV_ITEMS = [
   { key: "nav.features", href: "#features" },
   { key: "nav.showcase", href: "#showcase" },
+  { key: "nav.pricing", href: "/pricing" },
   { key: "nav.about", href: "/about" },
   { key: "nav.contact", href: "/contact" },
 ] as const;

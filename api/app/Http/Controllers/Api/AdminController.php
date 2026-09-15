@@ -108,8 +108,27 @@ class AdminController extends Controller
             'homepage.nav.about',
             'homepage.nav.contact',
             'homepage.header.login',
+            // Nav pricing label (additive)
+            'homepage.nav.pricing',
+            // Pricing page (additive) — copy + Toman plans + SEO
+            'pricing.eyebrow',
+            'pricing.title',
+            'pricing.subtitle',
+            'pricing.features_title',
+            'pricing.features',
+            'pricing.updates.title',
+            'pricing.updates.hint',
+            'pricing.updates.label1',
+            'pricing.updates.label2',
+            'pricing.license.title',
+            'pricing.license.hint',
+            'pricing.license.label1',
+            'pricing.license.label2',
+            'pricing.plans',
+            'pricing.cta.label',
             // SEO (original key preserved)
             'seo.homepage',
+            'seo.pricing',
         ];
 
         return SiteSetting::whereIn('key', $keys)->pluck('value', 'key')->all();

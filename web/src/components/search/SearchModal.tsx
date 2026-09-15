@@ -387,6 +387,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               src="/assets/discovery-banner.jpg"
               alt="کشف کسب‌وکارهای شگفت‌انگیز در اطراف شما"
               fill
+              sizes="(max-width: 1024px) calc(100vw - 48px), 896px"
               className="object-cover object-center opacity-70 group-hover:scale-105 group-hover:opacity-85 transition-all duration-700 ease-out"
               priority={false}
             />

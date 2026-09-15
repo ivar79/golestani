@@ -2,12 +2,38 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ShieldCheck, Smartphone } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import PhoneInput from "@/components/auth/PhoneInput";
 
 const PHONE_KEY = "golestani_login_phone";
+
+/**
+ * AuthGlass — پنل شیشه‌ای مشترک /login و /otp (مرجع: تصویر طراحی).
+ *
+ * bg-[#071120]/55 + بلور متوسط + باریکهٔ نورانی cyan در بالا و رگهٔ
+ * طلایی کم‌رنگ در پایین لبه — دقیقاً حس شیشهٔ مرجع، بدون نئون و بدون
+ * افکت سه‌بعدی.
+ */
+export function AuthGlass({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#071120]/55 shadow-[0_24px_70px_-28px_rgba(2,6,23,0.8)] backdrop-blur-md">
+      {/* hairline top-light (cyan) */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-l from-transparent via-cyan-200/40 to-transparent"
+        aria-hidden="true"
+      />
+      {/* faint gold inner edge, bottom-left — per reference */}
+      <div
+        className="pointer-events-none absolute inset-y-0 start-0 w-px bg-gradient-to-b from-transparent via-[#c8a44d]/25 to-transparent"
+        aria-hidden="true"
+      />
+
+      <div className="relative p-7 sm:p-8">{children}</div>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,32 +66,40 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-white tracking-tight">
-          ورود یا ثبت‌نام
-        </h1>
-        <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-          برای دسترسی به پنل یا ساخت کارت هوشمند، شماره خود را وارد کنید.
-        </p>
+    <AuthGlass>
+      {/* Header row: brand tile on the physical LEFT, title on the RIGHT (RTL) */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/30 bg-cyan-500/10 text-xl font-black text-cyan-300">
+          اَ
+        </div>
+        <div className="text-right">
+          <p className="text-[12px] text-slate-400">به اینکارت خوش آمدید</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">
+            ورود یا <span className="text-cyan-400">ثبت‌نام</span>
+          </h1>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+      <p className="mt-5 text-[14px] leading-relaxed text-slate-300">
+        برای دسترسی به پنل یا ساخت کارت هوشمند، شماره خود را وارد کنید.
+      </p>
+
+      {/* Form — OTP logic unchanged */}
+      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label htmlFor="phone-input" className="text-[13px] font-medium text-slate-200">
-              شماره تلفن همراه
-            </label>
-            <span className="text-[11px] text-slate-400">پیش‌شماره ۰۹</span>
-          </div>
+          <label htmlFor="phone-input" className="text-[13px] font-medium text-slate-200">
+            شماره تلفن همراه
+          </label>
           <PhoneInput
             id="phone-input"
             value={phone}
             onChange={setPhone}
             autoFocus
             disabled={loading}
+            leadingIcon={<Smartphone className="h-5 w-5" />}
           />
-          <span className="text-[12px] text-slate-400">
+          <span className="flex items-center gap-1.5 text-[12px] text-slate-400">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
             کد تأیید ۵ رقمی یک‌بار مصرف به این شماره پیامک خواهد شد.
           </span>
         </div>
@@ -83,17 +117,23 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading || !isValidPhone}
-          className="btn btn-primary w-full py-3.5 rounded-xl text-[15px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="auth-cta mt-1 w-full rounded-2xl py-3.5 text-[15px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "در حال ارسال کد..." : "دریافت کد تأیید"}
+          <span>{loading ? "در حال ارسال کد..." : "دریافت کد تأیید"}</span>
+          <span className="btn-arrow text-lg leading-none" aria-hidden="true">
+            ←
+          </span>
         </button>
       </form>
 
-      <div className="pt-2 border-t border-white/[0.06] text-center">
-        <p className="text-[12px] text-slate-400 leading-relaxed">
-          با ورود یا ثبت‌نام در اینکارت، شرایط و قوانین سامانه را می‌پذیرید.
-        </p>
+      {/* Divider with centre dot — per reference */}
+      <div className="relative mt-7 border-t border-white/[0.09]">
+        <span className="absolute -top-[5px] left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 border-cyan-300/70 bg-[#071120]" />
       </div>
-    </div>
+      <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[12px] leading-relaxed text-slate-400">
+        <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+        با ورود یا ثبت‌نام در اینکارت، شرایط و قوانین سامانه را می‌پذیرید.
+      </p>
+    </AuthGlass>
   );
 }

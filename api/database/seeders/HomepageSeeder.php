@@ -21,6 +21,7 @@ class HomepageSeeder extends Seeder
             'homepage.nav.features' => 'ویژگی‌ها',
             'homepage.nav.showcase' => 'نمونه کارها',
             'homepage.nav.about' => 'درباره ما',
+            'homepage.nav.pricing' => 'تعرفه‌ها',
             'homepage.nav.contact' => 'تماس با ما',
 
             'homepage.hero.badges' => 'هوشمندترین راه برای معرفی شما',
@@ -74,6 +75,7 @@ class HomepageSeeder extends Seeder
                 ['label' => 'پشتیبانی', 'href' => '/contact'],
                 ['label' => 'قوانین و مقررات', 'href' => '/privacy'],
                 ['label' => 'سوالات متداول', 'href' => '/about'],
+                ['label' => 'تعرفه‌ها', 'href' => '/pricing'],
             ], JSON_UNESCAPED_UNICODE),
             'homepage.footer.socials_title' => 'شبکه‌های اجتماعی',
             'homepage.footer.socials' => json_encode([
@@ -86,6 +88,43 @@ class HomepageSeeder extends Seeder
             'seo.homepage' => json_encode([
                 'title' => 'اینکارت | کارت ویزیت دیجیتال و معرفی کسب‌وکارها',
                 'description' => 'با اینکارت، کسب‌وکار خود را به دنیای دیجیتال متصل کنید. لینک اختصاصی، کد QR و مدیریت هوشمند مخاطبان، همه در یک پلتفرم حرفه‌ای.',
+            ], JSON_UNESCAPED_UNICODE),
+
+            // -----------------------------------------------------------------
+            // Pricing page (/pricing) — all copy + Toman plans from the CMS.
+            // Prices are stored in THOUSANDS of Toman (هزار تومان).
+            // -----------------------------------------------------------------
+            'pricing.eyebrow' => 'زمان اقدام است',
+            'pricing.title' => 'شروع کنید',
+            'pricing.subtitle' => 'با اینکارت کسب‌وکارتان را معرفی کنید؛ زمان و هزینه کمتر، دیده‌شدن بیشتر.',
+            'pricing.features_title' => 'چه چیزهایی دریافت می‌کنید؟',
+            'pricing.features' => json_encode([
+                'صفحه اختصاصی کسب‌وکار با لینک یکتا',
+                'کارت ویزیت دیجیتال هوشمند با کد QR',
+                'نمونه‌کارها و گالری تصاویر نامحدود',
+                'دیده‌شدن در جست‌وجوی نقشه و دسته‌بندی‌ها',
+                'آمار بازدید و مدیریت مخاطبان',
+                'پشتیبانی پاسخ‌گو',
+            ], JSON_UNESCAPED_UNICODE),
+            'pricing.updates.title' => 'مدت اشتراک',
+            'pricing.updates.hint' => 'پرداخت یک‌باره؛ تمدید خودکار انجام نمی‌شود.',
+            'pricing.updates.label1' => '۳ ماهه',
+            'pricing.updates.label2' => 'همیشگی',
+            'pricing.license.title' => 'نوع حساب',
+            'pricing.license.hint' => 'برای تیم‌ها و سازمان‌ها گزینه سازمانی را انتخاب کنید.',
+            'pricing.license.label1' => 'شخصی',
+            'pricing.license.label2' => 'سازمانی',
+            // plans (هزار تومان): [شخصی/سازمانی] × [۳ماهه/همیشگی]
+            'pricing.plans' => json_encode([
+                'personal3m' => 98,
+                'personalForever' => 400,
+                'corporate3m' => 159,
+                'corporateForever' => 650,
+            ], JSON_UNESCAPED_UNICODE),
+            'pricing.cta.label' => 'خرید اشتراک',
+            'seo.pricing' => json_encode([
+                'title' => 'تعرفه‌های اینکارت | اشتراک کارت ویزیت دیجیتال',
+                'description' => 'پلن‌های اشتراک اینکارت: شخصی و سازمانی، ماهانه یا همیشگی — قیمت تومانی و شفاف.',
             ], JSON_UNESCAPED_UNICODE),
         ];
 

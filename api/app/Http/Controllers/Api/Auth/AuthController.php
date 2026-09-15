@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\VerifyOtpRequest;
 use App\Models\User;
 use App\Services\Auth\OtpService;
 use App\Services\Sms\Contracts\SmsServiceInterface;
+use App\Support\Digits;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -121,6 +122,10 @@ class AuthController extends Controller
             'identifier' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
+
+        // Accept Persian/Arabic digits and stray whitespace in the identifier
+        // (pasted phone numbers) before the exact-match lookup.
+        $data['identifier'] = trim(Digits::toEnglish($data['identifier']));
 
         $user = User::where('phone', $data['identifier'])
                     ->orWhere('email', $data['identifier'])
