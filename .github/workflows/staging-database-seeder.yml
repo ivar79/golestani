@@ -1,0 +1,196 @@
+name: Staging Database Seeder
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - staging
+      confirmation:
+        description: Type RUN_DATABASE_SEED to confirm the staging database write
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-database-seeder
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed staging database
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+    env:
+      IMAGE: staging-database-seeder:${{ github.run_id }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate branch and manual confirmation
+        env:
+          TARGET: ${{ inputs.target }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "This workflow may run only from the main branch."
+            exit 1
+          fi
+
+          if [[ "$TARGET" != "staging" ]]; then
+            echo "The target must be staging."
+            exit 1
+          fi
+
+          if [[ "$CONFIRMATION" != "RUN_DATABASE_SEED" ]]; then
+            echo "Confirmation must exactly equal RUN_DATABASE_SEED."
+            exit 1
+          fi
+
+      - name: Build disposable seeder image
+        run: |
+          set -euo pipefail
+          docker build --file api/Dockerfile --tag "$IMAGE" api
+
+      - name: Read-only preflight and seed
+        env:
+          DB_URL: ${{ secrets.NEON_STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DB_URL:-}" ]]; then
+            echo "NEON_STAGING_DATABASE_URL is empty."
+            exit 1
+          fi
+
+          cleanup() {
+            docker image rm "$IMAGE" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          read -r -d '' PREFLIGHT <<'PHP' || true
+          $url = getenv('DB_URL');
+          if ($url === false || $url === '') {
+              fwrite(STDERR, "DB_URL is empty.\n");
+              exit(1);
+          }
+
+          $parts = parse_url($url);
+          if ($parts === false || empty($parts['host']) || empty($parts['path'])) {
+              fwrite(STDERR, "DB_URL is not a valid PostgreSQL URL.\n");
+              exit(1);
+          }
+
+          $host = strtolower($parts['host']);
+          $blocked = $host === 'localhost'
+              || $host === '127.0.0.1'
+              || $host === 'postgres'
+              || $host === 'render.com'
+              || str_ends_with($host, '.render.com')
+              || $host === 'onrender.com'
+              || str_ends_with($host, '.onrender.com');
+          if ($blocked) {
+              fwrite(STDERR, "The database destination is blocked by workflow guardrails.\n");
+              exit(1);
+          }
+
+          if ($host !== 'neon.tech' && ! str_ends_with($host, '.neon.tech')) {
+              fwrite(STDERR, "The database hostname is not a Neon hostname.\n");
+              exit(1);
+          }
+
+          $expectedDatabase = rawurldecode(ltrim($parts['path'], '/'));
+          if ($expectedDatabase === '') {
+              fwrite(STDERR, "DB_URL does not identify a database.\n");
+              exit(1);
+          }
+
+          $port = $parts['port'] ?? 5432;
+          $dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $expectedDatabase . ';sslmode=require';
+          try {
+              $pdo = new PDO(
+                  $dsn,
+                  rawurldecode($parts['user'] ?? ''),
+                  rawurldecode($parts['pass'] ?? ''),
+                  [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+              );
+
+              $identity = $pdo->query(
+                  'SELECT current_database() AS database_name, current_schema() AS schema_name'
+              )->fetch(PDO::FETCH_ASSOC);
+              if (($identity['database_name'] ?? null) !== $expectedDatabase) {
+                  fwrite(STDERR, "The connected database identity does not match DB_URL.\n");
+                  exit(1);
+              }
+              if (($identity['schema_name'] ?? null) !== 'public') {
+                  fwrite(STDERR, "The current schema is not public.\n");
+                  exit(1);
+              }
+
+              $requiredTables = ['roles', 'permissions', 'permission_role', 'site_settings'];
+              $statement = $pdo->prepare(
+                  "SELECT table_name FROM information_schema.tables
+                   WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                     AND table_name = ANY (CAST(:tables AS text[]))"
+              );
+              $statement->execute(['tables' => '{' . implode(',', $requiredTables) . '}']);
+              $foundTables = array_column($statement->fetchAll(PDO::FETCH_ASSOC), 'table_name');
+              $missingTables = array_diff($requiredTables, $foundTables);
+              if ($missingTables !== []) {
+                  fwrite(STDERR, "Required staging tables are missing.\n");
+                  exit(1);
+              }
+          } catch (Throwable $exception) {
+              fwrite(STDERR, "Read-only database preflight failed.\n");
+              exit(1);
+          }
+
+          echo "Read-only preflight passed: connection, database identity, public schema, and required tables verified.\n";
+          PHP
+
+          # The preflight above is read-only. It does not run migrations or any schema-changing command.
+          docker run --rm \
+            --env APP_ENV=staging \
+            --env APP_DEBUG=false \
+            --env DB_CONNECTION=pgsql \
+            --env DB_URL \
+            "$IMAGE" php -r "$PREFLIGHT"
+
+          echo "WARNING: This operation modifies staging roles, permissions, permission_role, and site_settings."
+          echo "WARNING: It does not run migrations and does not create an admin user."
+          docker run --rm \
+            --env APP_ENV=staging \
+            --env APP_DEBUG=false \
+            --env DB_CONNECTION=pgsql \
+            --env DB_URL \
+            "$IMAGE" php artisan db:seed --class='Database\Seeders\DatabaseSeeder' --force
+
+      - name: Verify public homepage
+        run: |
+          set -euo pipefail
+
+          homepage="$(curl --fail --silent --show-error --max-time 30 \
+            'https://one-ns2s.onrender.com/api/public/homepage')"
+
+          if [[ -z "$homepage" ]]; then
+            echo "The public homepage response was empty."
+            exit 1
+          fi
+
+          if ! printf '%s' "$homepage" | jq -e \
+            '((type == "object" or type == "array") and length > 0)' >/dev/null; then
+            echo "The public homepage response was not non-empty JSON content."
+            exit 1
+          fi
+
+          echo "Public homepage verification passed with a successful, non-empty JSON response."
