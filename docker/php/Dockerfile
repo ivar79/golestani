@@ -5,6 +5,8 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
     zip \
@@ -15,7 +17,8 @@ RUN apt-get update && apt-get install -y \
 
 # Install and configure PHP extensions
 RUN docker-php-ext-configure intl \
-    && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath intl opcache
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath intl opcache gd
 
 # Install Redis extension via PECL
 RUN pecl install redis && docker-php-ext-enable redis
