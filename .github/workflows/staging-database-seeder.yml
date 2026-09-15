@@ -10,7 +10,7 @@ on:
         options:
           - staging
       confirmation:
-        description: Type RUN_DATABASE_SEED to confirm the staging database write
+        description: Enter exactly RUN_DATABASE_SEED
         required: true
         type: string
 
