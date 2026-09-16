@@ -10,7 +10,7 @@ on:
         options:
           - staging
       confirmation:
-        description: Enter exactly RUN_DATABASE_SEED
+        description: Enter exactly RUN_DATABASE_SEED (surrounding spaces are ignored)
         required: true
         type: string
       provision_admin:
@@ -47,17 +47,31 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Manual workflow_dispatch inputs are easy to paste with a stray
+          # leading/trailing space (one run failed on ' RUN_DATABASE_SEED').
+          # Trim surrounding whitespace before the exact-match guards; the
+          # comparison itself stays strict (case-sensitive, no internal spaces).
+          trim() {
+            local value="$1"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+
+          target="$(trim "$TARGET")"
+          confirmation="$(trim "$CONFIRMATION")"
+
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "This workflow may run only from the main branch."
             exit 1
           fi
 
-          if [[ "$TARGET" != "staging" ]]; then
+          if [[ "$target" != "staging" ]]; then
             echo "The target must be staging."
             exit 1
           fi
 
-          if [[ "$CONFIRMATION" != "RUN_DATABASE_SEED" ]]; then
+          if [[ "$confirmation" != "RUN_DATABASE_SEED" ]]; then
             echo "Confirmation must exactly equal RUN_DATABASE_SEED."
             exit 1
           fi
@@ -219,6 +233,17 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
+
+          # A stray space in the phone secret would pass provisioning (the
+          # command trims internally) but then miss the DB row and the login
+          # probe — trim it here too. The password is intentionally NOT trimmed.
+          trim() {
+            local value="$1"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+          ADMIN_PHONE="$(trim "$ADMIN_PHONE")"
 
           # 1) Read-only database check: user exists, is active, has the admin role.
           read -r -d '' VERIFY <<'PHP' || true
