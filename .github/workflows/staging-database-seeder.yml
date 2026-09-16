@@ -214,6 +214,10 @@ jobs:
           echo "provisioned=true" >> "$GITHUB_OUTPUT"
           echo "WARNING: This creates or rotates the staging admin user for ADMIN_PHONE and deletes its existing tokens."
 
+          # The seed step's EXIT trap already removed the disposable image, so
+          # rebuild it here — the runner's Docker layer cache makes this fast.
+          docker build --file api/Dockerfile --tag "$IMAGE" api
+
           docker run --rm \
             --env APP_ENV=staging \
             --env APP_DEBUG=false \
@@ -244,6 +248,10 @@ jobs:
             printf '%s' "$value"
           }
           ADMIN_PHONE="$(trim "$ADMIN_PHONE")"
+
+          # The seed step's EXIT trap already removed the disposable image, so
+          # rebuild it here — the runner's Docker layer cache makes this fast.
+          docker build --file api/Dockerfile --tag "$IMAGE" api
 
           # 1) Read-only database check: user exists, is active, has the admin role.
           read -r -d '' VERIFY <<'PHP' || true
