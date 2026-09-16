@@ -13,6 +13,11 @@ on:
         description: Enter exactly RUN_DATABASE_SEED
         required: true
         type: string
+      provision_admin:
+        description: Also create/rotate the staging admin (from STAGING_ADMIN_* secrets)
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -174,6 +179,105 @@ jobs:
             --env DB_CONNECTION=pgsql \
             --env DB_URL \
             "$IMAGE" php artisan db:seed --class='Database\Seeders\DatabaseSeeder' --force
+
+      - name: Provision staging admin (optional)
+        id: provision
+        if: ${{ inputs.provision_admin }}
+        env:
+          DB_URL: ${{ secrets.NEON_STAGING_DATABASE_URL }}
+          ADMIN_PHONE: ${{ secrets.STAGING_ADMIN_PHONE }}
+          ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL || 'admin@golestani.ir' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ADMIN_PHONE:-}" || -z "${ADMIN_PASSWORD:-}" ]]; then
+            echo "Skipping admin provisioning: STAGING_ADMIN_PHONE or STAGING_ADMIN_PASSWORD secret is not set."
+            echo "provisioned=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "provisioned=true" >> "$GITHUB_OUTPUT"
+          echo "WARNING: This creates or rotates the staging admin user for ADMIN_PHONE and deletes its existing tokens."
+
+          docker run --rm \
+            --env APP_ENV=staging \
+            --env APP_DEBUG=false \
+            --env DB_CONNECTION=pgsql \
+            --env DB_URL \
+            --env ADMIN_PHONE \
+            --env ADMIN_PASSWORD \
+            --env ADMIN_EMAIL \
+            "$IMAGE" php artisan admin:provision-from-env
+
+      - name: Verify staging admin
+        id: verify_admin
+        if: ${{ inputs.provision_admin && steps.provision.outputs.provisioned == 'true' }}
+        env:
+          DB_URL: ${{ secrets.NEON_STAGING_DATABASE_URL }}
+          ADMIN_PHONE: ${{ secrets.STAGING_ADMIN_PHONE }}
+          ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # 1) Read-only database check: user exists, is active, has the admin role.
+          read -r -d '' VERIFY <<'PHP' || true
+          $url = getenv('DB_URL');
+          $parts = parse_url($url);
+          $dsn = 'pgsql:host=' . strtolower($parts['host']) . ';port=' . ($parts['port'] ?? 5432)
+              . ';dbname=' . rawurldecode(ltrim($parts['path'], '/')) . ';sslmode=require';
+          $pdo = new PDO($dsn, rawurldecode($parts['user'] ?? ''), rawurldecode($parts['pass'] ?? ''),
+              [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+
+          $statement = $pdo->prepare(
+              "SELECT u.id, u.is_active,
+                      EXISTS (SELECT 1 FROM role_user ru JOIN roles r ON r.id = ru.role_id
+                              WHERE ru.user_id = u.id AND r.name = 'admin') AS is_admin
+                 FROM users u WHERE u.phone = :phone"
+          );
+          $statement->execute([':phone' => getenv('ADMIN_PHONE')]);
+          $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+          if ($row === false) {
+              fwrite(STDERR, "Verification failed: no user found for the ADMIN_PHONE.\n");
+              exit(1);
+          }
+          $isActive = in_array($row['is_active'], [true, 't', 'true', 1, '1'], true);
+          $isAdmin = in_array($row['is_admin'], [true, 't', 'true', 1, '1'], true);
+          if (! $isActive || ! $isAdmin) {
+              fwrite(STDERR, "Verification failed: user #{$row['id']} is_active=" . var_export($row['is_active'], true)
+                  . " is_admin=" . var_export($row['is_admin'], true) . "\n");
+              exit(1);
+          }
+
+          echo "Database verification passed: user #{$row['id']} exists, is active, and has the admin role.\n";
+          PHP
+
+          docker run --rm \
+            --env APP_ENV=staging \
+            --env APP_DEBUG=false \
+            --env DB_CONNECTION=pgsql \
+            --env DB_URL \
+            --env ADMIN_PHONE \
+            "$IMAGE" php -r "$VERIFY"
+
+          # 2) Real login probe against the Render API: only the HTTP status is
+          # printed — the response body (which contains the token) is discarded.
+          # jq builds the JSON body so special characters in the password secret
+          # cannot break the payload.
+          login_payload="$(jq -n --arg identifier "$ADMIN_PHONE" --arg password "$ADMIN_PASSWORD" \
+            '{identifier: $identifier, password: $password}')"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            --data "$login_payload" \
+            'https://one-ns2s.onrender.com/api/auth/admin/login')"
+
+          echo "Admin login probe returned HTTP ${status}."
+          if [[ "$status" != "200" ]]; then
+            echo "Verification failed: expected HTTP 200 from the admin login endpoint."
+            exit 1
+          fi
 
       - name: Verify public homepage
         run: |
