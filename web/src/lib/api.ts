@@ -2,7 +2,11 @@ import axios from "axios";
 import { TOKEN_KEY, clearSession } from "@/lib/session";
 // Backwards-compatible re-export: existing imports of TOKEN_KEY keep working.
 export { TOKEN_KEY } from "@/lib/session";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://golestani-api-production.up.railway.app/api";
+// Host URLs must come from NEXT_PUBLIC_API_URL only (Vercel now, Liara later).
+// No hardcoded host fallback: the dead Railway fallback used to swallow
+// misconfiguration and send user traffic to a 404.
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+if (!API_URL) throw new Error("NEXT_PUBLIC_API_URL is not set — configure it in the Vercel/hosting environment (e.g. https://<api-host>/api).");
 const api = axios.create({
   baseURL: API_URL.replace(/\/$/, ""),
   headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },

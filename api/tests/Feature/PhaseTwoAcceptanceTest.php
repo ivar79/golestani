@@ -103,6 +103,26 @@ class PhaseTwoAcceptanceTest extends TestCase
         $this->assertSame($expected,$response->getContent());
         $this->assertStringContainsString('.svg',$response->headers->get('Content-Disposition'));
     }
+
+    public function test_qr_falls_back_to_allowed_browser_origin_when_frontend_url_unset(): void
+    {
+        // No FRONTEND_URL: the QR must read the site it is viewed from, but
+        // ONLY for origins already allow-listed by CORS (anti-phishing).
+        config(['business.frontend_url'=>'','cors.allowed_origins'=>['https://golestani.vercel.app']]);
+        $b=$this->business($this->account(),'approved');
+        $expectedUrl='https://golestani.vercel.app/b/'.$b->slug;
+        $this->assertSame($expectedUrl,BusinessUrl::public($b,
+            \Illuminate\Http\Request::create('https://golestani.vercel.app/dashboard', 'GET', [], [], [], ['HTTP_ORIGIN'=>'https://golestani.vercel.app'])));
+        $expected=(new Builder(data:$expectedUrl,writer:new SvgWriter(),size:400,margin:10))->build()->getString();
+        $response=$this->get('/api/public/businesses/'.$b->slug.'/qr',['Origin'=>'https://golestani.vercel.app'])
+            ->assertOk()->assertHeader('Content-Type','image/svg+xml');
+        $this->assertSame($expected,$response->getContent());
+        // Unknown origin must NOT be minted into a QR; in non-production the
+        // env fallback (APP_URL) applies instead — assert it never points at evil.
+        $evil=BusinessUrl::public($b,
+            \Illuminate\Http\Request::create('https://evil.example.test/x', 'GET', [], [], [], ['HTTP_ORIGIN'=>'https://evil.example.test']));
+        $this->assertStringStartsNotWith('https://evil.example.test',$evil);
+    }
     public function test_audit_is_transactional_and_has_no_private_values(): void
     {
         $u=$this->account();$this->actingAs($u);

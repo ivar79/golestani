@@ -22,9 +22,12 @@ export async function GET(
 
   const base = (
     process.env.NEXT_PUBLIC_API_URL ??
-    "https://golestani-api-production.up.railway.app/api"
+    ""
   ).replace(/\/$/, "");
 
+  // No API host configured: fail loudly (502) instead of redirecting to a
+  // relative garbage URL that would 404 against the frontend origin.
+  if (!base) return new NextResponse("NEXT_PUBLIC_API_URL is not configured", { status: 502 });
   return NextResponse.redirect(
     new URL(`${base}/map/raster-tile/${z}/${x}/${y}${query ? `?${query}` : ""}`),
     308,
