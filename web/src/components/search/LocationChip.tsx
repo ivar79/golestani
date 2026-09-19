@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair, MapPin, Navigation, X } from "lucide-react";
+import { AlertTriangle, Crosshair, MapPin, Navigation, Search, X } from "lucide-react";
 import { getAllProvinces, searchIranLocations, type ProvinceData } from "@/lib/iranGeo";
 import type { LocationState } from "@/hooks/useLocationPick";
+import {
+  neshanSearchAvailable,
+  placeLabel,
+  searchNeshanAddress,
+  type NeshanPlace,
+} from "@/lib/neshanSearch";
+import MapView from "@/components/map/MapView";
 
 /**
  * LocationChip — Phase 3 location chip (task 6).
@@ -22,6 +29,11 @@ export default function LocationChip({ location }: { location: LocationState }) 
   const [open, setOpen] = useState(false);
   const [selectedProvince, setSelectedProvince] = useState<ProvinceData | null>(null);
   const [cityQuery, setCityQuery] = useState("");
+  // Address search (Neshan geocoding) state — optional, offline-safe.
+  const [addressQuery, setAddressQuery] = useState("");
+  const [addressResults, setAddressResults] = useState<NeshanPlace[] | null>(null);
+  const [addressSearching, setAddressSearching] = useState(false);
+  const [addressUnavailable, setAddressUnavailable] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click / Escape.
@@ -56,6 +68,23 @@ export default function LocationChip({ location }: { location: LocationState }) 
     "همه ایران";
 
   const busy = status === "locating";
+  const lowAccuracy =
+    typeof point?.accuracy === "number" && point.accuracy > 500;
+
+  const runAddressSearch = async () => {
+    if (!addressQuery.trim()) return;
+    setAddressSearching(true);
+    const results = await searchNeshanAddress(addressQuery);
+    setAddressSearching(false);
+    if (results === null) {
+      // Network failure / timeout — fall back to the offline pick flow.
+      setAddressUnavailable(true);
+      setAddressResults(null);
+      return;
+    }
+    setAddressUnavailable(false);
+    setAddressResults(results);
+  };
 
   return (
     <div ref={rootRef} className="relative">
@@ -91,6 +120,9 @@ export default function LocationChip({ location }: { location: LocationState }) 
               {point && (
                 <p className="mt-0.5 font-mono text-[10px] text-slate-500" dir="ltr">
                   {point.latitude.toFixed(4)}, {point.longitude.toFixed(4)}
+                  {typeof point.accuracy === "number" && (
+                    <span className="text-slate-400"> (±{Math.round(point.accuracy)}m)</span>
+                  )}
                 </p>
               )}
             </div>
@@ -130,6 +162,96 @@ export default function LocationChip({ location }: { location: LocationState }) 
             <p className="border-b border-white/[0.08] bg-rose-500/10 px-4 py-2 text-[11px] text-rose-300">
               {error}
             </p>
+          )}
+
+          {/* Low-accuracy hint: nudge the user toward manual fine-tuning. */}
+          {lowAccuracy && (
+            <p className="flex items-center gap-1.5 border-b border-white/[0.08] bg-amber-500/10 px-4 py-2 text-[11px] text-amber-200">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>دقت موقعیت پایین است — برای نتیجهٔ دقیق‌تر، پین را روی نقشه جابه‌جا کنید.</span>
+            </p>
+          )}
+
+          {/* Address search (Neshan geocoding) — hidden entirely when the key is missing. */}
+          {neshanSearchAvailable() && (
+            <div className="border-b border-white/[0.08] p-3">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void runAddressSearch();
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  value={addressQuery}
+                  onChange={(e) => setAddressQuery(e.target.value)}
+                  placeholder="آدرس دقیق یا نام مکان… (مثلاً ونک، رستوران)"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-400/40"
+                />
+                <button
+                  type="submit"
+                  disabled={addressSearching}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 text-cyan-300 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
+                  title="جست‌وجوی آدرس"
+                  aria-label="جست‌وجوی آدرس"
+                >
+                  <Search className={`h-4 w-4 ${addressSearching ? "animate-pulse" : ""}`} />
+                </button>
+              </form>
+
+              {addressUnavailable && (
+                <p className="mt-2 text-[11px] text-amber-200">
+                  سرویس آدرس‌یاب در دسترس نیست (آفلاین؟) — از جست‌وجوی شهر/محله یا انتخاب دستی روی نقشه استفاده کنید.
+                </p>
+              )}
+
+              {addressResults && addressResults.length === 0 && (
+                <p className="mt-2 px-1 py-1 text-xs text-slate-500">موردی پیدا نشد.</p>
+              )}
+
+              {addressResults && addressResults.length > 0 && (
+                <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                  {addressResults.map((p) => (
+                    <button
+                      key={`${p.lat}-${p.lng}-${p.title}`}
+                      type="button"
+                      onClick={() => {
+                        setManualLocation(p.lat, p.lng, placeLabel(p));
+                        setOpen(false);
+                      }}
+                      className="flex w-full flex-col rounded-lg px-2.5 py-1.5 text-right transition-colors hover:bg-white/5"
+                    >
+                      <span className="text-xs font-medium text-white">{p.title}</span>
+                      {(p.neighbourhood || p.city || p.province) && (
+                        <span className="text-[10px] text-slate-500">
+                          {[p.neighbourhood, p.city, p.province].filter(Boolean).join("، ")}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Fine-tuning on the map (Snap-style) — only when a location exists. */}
+          {point && (
+            <div className="border-b border-white/[0.08] p-3">
+              <p className="mb-2 text-[11px] font-semibold text-slate-300">
+                دقیق‌سازی روی نقشه — پین را به مکان دقیق بکشید:
+              </p>
+              <div className="overflow-hidden rounded-xl border border-white/10">
+                <MapView
+                  className="h-[220px] w-full"
+                  markers={[]}
+                  zoom={16}
+                  autoFit={false}
+                  center={[point.latitude, point.longitude]}
+                  userCoords={{ lat: point.latitude, lng: point.longitude }}
+                  onPick={(lat, lng) => setManualLocation(lat, lng, point.label ?? undefined)}
+                />
+              </div>
+            </div>
           )}
 
           {/* Free-text nationwide city search */}

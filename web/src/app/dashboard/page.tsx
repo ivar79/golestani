@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Crosshair } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
@@ -117,6 +118,9 @@ function DashboardInner() {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
   const { theme } = useTheme();
+  // GPS assist for the business location tab: prefill coordinates from the
+  // device position, then let the owner fine-tune the pin on the existing map.
+  const [gpsBusy, setGpsBusy] = useState(false);
   const [items, setItems] = useState<Phase2Business[]>([]);
   const [editing, setEditing] = useState<Phase2Business | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
@@ -873,15 +877,48 @@ function DashboardInner() {
                     </p>
                   </div>
 
-                  {validPoint && (
+                  <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setForm((f) => ({ ...f, latitude: "", longitude: "" }))}
-                      className="text-xs font-semibold text-ik-danger hover:underline cursor-pointer"
+                      disabled={gpsBusy || busy}
+                      onClick={() => {
+                        if (typeof window === "undefined" || !("geolocation" in navigator)) {
+                          setMessage({ text: "مرورگر شما از موقعیت‌یاب پشتیبانی نمی‌کند.", error: true });
+                          return;
+                        }
+                        setGpsBusy(true);
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            setForm((f) => ({
+                              ...f,
+                              latitude: pos.coords.latitude.toFixed(7),
+                              longitude: pos.coords.longitude.toFixed(7),
+                            }));
+                            setGpsBusy(false);
+                            setMessage({ text: "موقعیت از GPS ثبت شد — پین را روی نقشه با دقت بیشتری تنظیم کنید." });
+                          },
+                          () => {
+                            setGpsBusy(false);
+                            setMessage({ text: "دریافت موقعیت ناموفق بود — پین را دستی روی نقشه کلیک کنید.", error: true });
+                          },
+                          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+                        );
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-ik-accent/30 bg-ik-accent/10 px-3 py-2 text-xs font-semibold text-ik-accent hover:bg-ik-accent/20 transition-colors cursor-pointer disabled:opacity-50"
                     >
-                      پاک‌کردن پین نقشه
+                      <Crosshair className={`h-3.5 w-3.5 ${gpsBusy ? "animate-spin" : ""}`} />
+                      <span>{gpsBusy ? "در حال یافتن موقعیت…" : "یافتن با GPS"}</span>
                     </button>
-                  )}
+                    {validPoint && (
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, latitude: "", longitude: "" }))}
+                        className="text-xs font-semibold text-ik-danger hover:underline cursor-pointer"
+                      >
+                        پاک‌کردن پین نقشه
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">

@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api, { TOKEN_KEY } from "@/lib/api";
 
-export type GeoPoint = { latitude: number; longitude: number; label?: string | null };
+export type GeoPoint = {
+  latitude: number;
+  longitude: number;
+  label?: string | null;
+  /** GPS/Wi-Fi accuracy in meters (browser geolocation); undefined when unknown. */
+  accuracy?: number | null;
+};
 
 export type LocationSource = "saved" | "browser" | "manual" | null;
 
@@ -29,6 +35,8 @@ const MAX_LAT = 90;
 const MIN_LNG = -180;
 const MAX_LNG = 180;
 const STORAGE_KEY = "golestani_location";
+/** Set when the user declines the browser permission prompt — never auto-ask again. */
+const GPS_DECLINED_KEY = "golestani_gps_declined";
 
 function isValid(lat: unknown, lng: unknown): boolean {
   return (
@@ -100,6 +108,19 @@ export function useLocationPick(): LocationState {
     manualActive.current = stored.source === "manual";
   }, []);
 
+  // Auto GPS request, once, Snap-style: only when the user has no location at
+  // all and has not previously declined the browser permission prompt. The
+  // declined flag keeps the experience non-intrusive across visits. The
+  // request function lives in a ref because it is declared below.
+  const requestBrowserRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(GPS_DECLINED_KEY) === "1") return;
+    if (readStored()) return; // a saved location exists — respect it
+    const timer = window.setTimeout(() => requestBrowserRef.current(), 800);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const persist = useCallback((point: GeoPoint | null, src: LocationSource) => {
     if (typeof window === "undefined") return;
     if (point) {
@@ -109,6 +130,15 @@ export function useLocationPick(): LocationState {
       );
     } else {
       window.localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  /** Remember a manual re-ask is allowed to clear the declined flag. */
+  const clearDeclinedFlag = useCallback(() => {
+    try {
+      window.localStorage.removeItem(GPS_DECLINED_KEY);
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -138,35 +168,51 @@ export function useLocationPick(): LocationState {
       setStatus("error");
       return;
     }
+    // An explicit user action re-opens the permission path: clear any earlier
+    // refusal so this attempt can prompt the browser again.
+    clearDeclinedFlag();
     if (manualActive.current) return; // manual pick wins until the user changes/clears it
     setStatus("locating");
     setError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!mounted.current) return;
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         if (!isValid(latitude, longitude)) {
           setError("موقعیت دریافتی نامعتبر است.");
           setStatus("error");
           return;
         }
-        commit({ latitude, longitude, label: null }, "browser");
+        commit({ latitude, longitude, label: null, accuracy: accuracy ?? null }, "browser");
         setStatus("idle");
       },
       (err) => {
         if (!mounted.current) return;
-        setError(
-          err.code === err.PERMISSION_DENIED
-            ? "دسترسی به موقعیت رد شد. می‌توانید موقعیت را دستی روی نقشه انتخاب کنید."
-            : err.code === err.TIMEOUT
+        if (err.code === err.PERMISSION_DENIED) {
+          // Remember the refusal: no more automatic prompts, only manual requests.
+          try {
+            window.localStorage.setItem(GPS_DECLINED_KEY, "1");
+          } catch {
+            /* Private mode: the in-memory behaviour is still fine. */
+          }
+          setError("دسترسی به موقعیت رد شد. می‌توانید موقعیت را دستی روی نقشه انتخاب کنید.");
+        } else {
+          setError(
+            err.code === err.TIMEOUT
               ? "دریافت موقعیت بیش از حد طول کشید."
               : "دریافت موقعیت ناموفق بود.",
-        );
+          );
+        }
         setStatus("error");
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
     );
-  }, [commit]);
+  }, [commit, clearDeclinedFlag]);
+
+  // Keep the stable ref in sync for the auto-prompt effect declared above.
+  useEffect(() => {
+    requestBrowserRef.current = requestBrowserLocation;
+  }, [requestBrowserLocation]);
 
   const setManualLocation = useCallback((lat: number, lng: number, label?: string) => {
     if (!isValid(lat, lng)) {
@@ -177,7 +223,7 @@ export function useLocationPick(): LocationState {
     manualActive.current = true;
     setError(null);
     setStatus("idle");
-    commit({ latitude: lat, longitude: lng, label: label ?? null }, "manual");
+    commit({ latitude: lat, longitude: lng, label: label ?? null, accuracy: null }, "manual");
   }, [commit]);
 
   const clearLocation = useCallback(() => {
