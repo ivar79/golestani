@@ -12,7 +12,9 @@ class BusinessRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required','string','max:120'],
+            // A name of only question marks / replacement chars means the text was
+            // mangled by a non-UTF8 client (seen in staging QR bug); reject it.
+            'name' => ['required','string','max:120','regex:/^(?!.*\?{3}).+/u'],
             'category' => ['nullable','string','max:120'],
             'services' => ['nullable','array','max:30'],
             'services.*' => ['required','string','max:120','distinct'],
@@ -40,6 +42,9 @@ class BusinessRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v): void {
+            if (preg_match('/^\?+\s*$/', (string) $this->input('name')) || preg_match('/(?:\?{3,})/', (string) $this->input('name'))) {
+                $v->errors()->add('name', 'نام کسب‌وکار شامل کاراکترهای نامعتبر است. با پشتیبانی تماس بگیرید اگر مشکل تکرار شد.');
+            }
             $business = $this->route('business');
             $lat = $this->exists('latitude') ? $this->input('latitude') : $business?->latitude;
             $lng = $this->exists('longitude') ? $this->input('longitude') : $business?->longitude;
