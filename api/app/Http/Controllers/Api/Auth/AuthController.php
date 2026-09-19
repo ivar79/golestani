@@ -12,6 +12,8 @@ use App\Support\Digits;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
@@ -106,10 +108,103 @@ class AuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'phone' => $user->phone,
+                'username' => $user->username,
+                'avatar' => $user->avatar,
                 'roles' => $user->roles->pluck('name'),
                 'permissions' => $user->permissionList(),
             ],
         ]);
+    }
+
+    /**
+     * POST /api/auth/username  [auth:sanctum]
+     *
+     * Let a logged-in user choose their unique public handle. Returns 409 with
+     * three suggestions when the requested handle is already taken — the UI
+     * surfaces them directly so the user never hits a dead end.
+     */
+    public function setUsername(Request $request): JsonResponse
+    {
+        // Normalize BEFORE validating: casing and stray whitespace must not
+        // fail the format rule ('UPPER ' is valid intent, stored as 'upper').
+        $request->merge(['username' => strtolower(trim((string) $request->input('username')))]);
+
+        $data = $request->validate([
+            // Regex mirrors the DB CHECK (users_username_format_chk). Must start
+            // with a letter/digit (no leading underscore).
+            'username' => ['required', 'string', 'min:3', 'max:30',
+                'regex:/^[a-z0-9][a-z0-9_]{2,29}$/'],
+        ]);
+
+        $username = $data['username'];
+        $user = $request->user();
+
+        $taken = User::where('username', $username)
+            ->where('id', '!=', $user->id)
+            ->exists();
+
+        if ($taken) {
+            return response()->json([
+                'message' => 'این نام کاربری قبلاً گرفته شده است.',
+                'suggestions' => $this->usernameSuggestions($username),
+            ], 409);
+        }
+
+        $user->username = $username;
+        $user->save();
+
+        return response()->json([
+            'message' => 'نام کاربری با موفقیت ذخیره شد.',
+            'username' => $user->username,
+        ]);
+    }
+
+    /**
+     * GET /api/auth/username/check?u=  [auth:sanctum]
+     * Live availability probe for the picker UI. Throttled + cheap on purpose.
+     */
+    public function checkUsername(Request $request): JsonResponse
+    {
+        $request->merge(['u' => strtolower(trim((string) $request->input('u')))]);
+
+        $data = $request->validate([
+            // Must start with a letter/digit (no leading underscore) — same rule
+            // as setUsername and the DB CHECK.
+            'u' => ['required', 'string', 'min:3', 'max:30',
+                'regex:/^[a-z0-9][a-z0-9_]{2,29}$/'],
+        ]);
+
+        $username = $data['u'];
+        $takenByOther = User::where('username', $username)
+            ->where('id', '!=', $request->user()->id)
+            ->exists();
+
+        return response()->json([
+            'available' => ! $takenByOther,
+            'suggestions' => $takenByOther ? $this->usernameSuggestions($username) : [],
+        ]);
+    }
+
+    /**
+     * Three takeable alternatives derived from the requested handle.
+     * Suffix digits are probed until unique; capped to keep the query count
+     * bounded even under adversarial input.
+     */
+    private function usernameSuggestions(string $username): array
+    {
+        $out = [];
+        foreach ([1, 2, 7, 9, 21, 88] as $suffix) {
+            if (count($out) >= 3) {
+                break;
+            }
+            $candidate = substr($username, 0, 26).$suffix;
+            $clash = User::where('username', $candidate)->exists();
+            if (! $clash) {
+                $out[] = $candidate;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -268,10 +363,59 @@ class AuthController extends Controller
         return response()->json([
             'id' => $user->id,
             'phone' => $user->phone,
+            'username' => $user->username,
+            'avatar' => $user->avatar,
             'roles' => $user->roles->pluck('name'),
             'permissions' => $user->permissionList(),
             'location' => $user->only('latitude', 'longitude', 'location_label'),
             'created_at' => $user->created_at?->toIso8601String(),
         ]);
+    }
+
+    /**
+     * POST /api/auth/avatar  [auth:sanctum]
+     *
+     * Profile photo upload: one image per user, stored on the public disk.
+     * Replacing an existing photo deletes the old file first so storage does
+     * not accumulate orphaned images.
+     */
+    public function uploadAvatar(Request $request): JsonResponse
+    {
+        $request->validate([
+            // mimes (not image:) so the extension is also checked — image:
+            // alone would trust only the guessed mime type of the content.
+            'avatar' => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $user = $request->user();
+
+        $path = $request->file('avatar')->store('avatars', 'public');
+
+        if ($user->avatar && $user->avatar !== $path) {
+            Storage::disk('public')->delete($user->avatar);
+        }
+
+        $user->update(['avatar' => $path]);
+
+        // Cache-busting query param: avatars are displayed app-wide.
+        return response()->json([
+            'message' => 'تصویر پروفایل به‌روزرسانی شد.',
+            'avatar_url' => Storage::disk('public')->url($path).'?v='.time(),
+        ]);
+    }
+
+    /**
+     * DELETE /api/auth/avatar  [auth:sanctum]
+     */
+    public function deleteAvatar(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->avatar) {
+            Storage::disk('public')->delete($user->avatar);
+            $user->update(['avatar' => null]);
+        }
+
+        return response()->json(['message' => 'تصویر پروفایل حذف شد.']);
     }
 }

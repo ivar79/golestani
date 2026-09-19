@@ -44,6 +44,12 @@ Route::prefix('auth')->group(function (): void {
         Route::get('/me', [AuthController::class, 'me']);
         // M1 (Phase 3): persist the chosen map location until changed.
         Route::put('/location', [AuthController::class, 'updateLocation']);
+        // Unique public handle chosen after OTP login (Phase 2 UX, 2026-09-18).
+        Route::post('/username', [AuthController::class, 'setUsername'])->middleware('throttle:10,1');
+        Route::get('/username/check', [AuthController::class, 'checkUsername'])->middleware('throttle:60,1');
+        // Profile photo (2026-09-19): upload replaces, DELETE clears.
+        Route::post('/avatar', [AuthController::class, 'uploadAvatar'])->middleware('throttle:10,1');
+        Route::delete('/avatar', [AuthController::class, 'deleteAvatar']);
     });
 });
 

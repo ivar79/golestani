@@ -2,7 +2,7 @@
 import { createContext,useCallback,useContext,useEffect,useMemo,useState,type ReactNode } from "react";
 import { clearSession, readStoredToken, setAuthCookie } from "@/lib/session";
 import { TOKEN_KEY } from "@/lib/session";
-import { getMe,logout as logoutApi,sendOtp as sendOtpApi,verifyOtp as verifyOtpApi,loginAdmin as loginAdminApi } from "@/lib/auth";
+import { getMe,logout as logoutApi,sendOtp as sendOtpApi,verifyOtp as verifyOtpApi,loginAdmin as loginAdminApi,uploadAvatar as uploadAvatarApi,deleteAvatar as deleteAvatarApi } from "@/lib/auth";
 import type { UserInfo, VerifyOtpResponse } from "@/types/auth";
 interface AuthContextValue {
   token:string|null; user:UserInfo|null; loading:boolean;
@@ -10,6 +10,12 @@ interface AuthContextValue {
   verifyOtp:(phone:string,code:string)=>Promise<UserInfo>;
   loginAdmin:(identifier:string,password:string)=>Promise<UserInfo>;
   logout:()=>Promise<void>;
+  /** Re-fetch /auth/me — used after the user claims a username. */
+  refreshUser:()=>Promise<void>;
+  /** Upload (or replace) the profile photo then re-fetch the user. */
+  uploadAvatar:(file:File)=>Promise<void>;
+  /** Remove the profile photo then re-fetch the user. */
+  removeAvatar:()=>Promise<void>;
 }
 // Context value kept out of render dependency churn via useMemo below.
 const Context=createContext<AuthContextValue|null>(null);
@@ -38,7 +44,12 @@ export function AuthProvider({children}:{children:ReactNode}) {
   const logout=useCallback(async()=>{
     try{await logoutApi();}catch{/* Local cleanup still works if the token is expired. */}finally{clearSession();setToken(null);setUser(null);}
   },[]);
-  const value=useMemo(()=>({token,user,loading,sendOtp,verifyOtp,loginAdmin,logout}),[token,user,loading,sendOtp,verifyOtp,loginAdmin,logout]);
+  const refreshUser=useCallback(async()=>{
+    try{const me=await getMe();setUser(me);}catch{/* Keep the stale user; the next full reload fixes it. */}
+  },[]);
+  const uploadAvatar=useCallback(async(file:File)=>{await uploadAvatarApi(file);await refreshUser();},[refreshUser]);
+  const removeAvatar=useCallback(async()=>{await deleteAvatarApi();await refreshUser();},[refreshUser]);
+  const value=useMemo(()=>({token,user,loading,sendOtp,verifyOtp,loginAdmin,logout,refreshUser,uploadAvatar,removeAvatar}),[token,user,loading,sendOtp,verifyOtp,loginAdmin,logout,refreshUser,uploadAvatar,removeAvatar]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useAuth():AuthContextValue {const ctx=useContext(Context);if(!ctx)throw new Error("useAuth must be used within AuthProvider");return ctx;}
