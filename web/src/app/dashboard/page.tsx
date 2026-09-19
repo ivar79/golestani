@@ -14,6 +14,7 @@ import UsernamePicker from "@/components/dashboard/UsernamePicker";
 import { DashboardFab } from "@/components/dashboard/DashboardFab";
 import { DashboardSidebar, type DashboardTab } from "@/components/dashboard/DashboardSidebar";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import LocationSearch, { type LocationSearchResult } from "@/components/dashboard/LocationSearch";
 import { ThemeProvider, useTheme } from "@/components/dashboard/ThemeProvider";
 import MapView from "@/components/map/MapView";
 import {
@@ -873,7 +874,7 @@ function DashboardInner() {
                       <span>موقعیت جغرافیایی روی نقشه</span>
                     </h2>
                     <p className="text-xs text-ik-muted mt-1">
-                      با کلیک روی نقشه، مکان دقیق مغازه یا شرکت خود را مشخص کنید تا در مسیریابی و جستجوی کاربران دیده شود.
+                      با جست‌وجوی شهر/آدرس، GPS یا کلیک روی نقشه، مکان دقیق مغازه یا شرکت خود را مشخص کنید تا در مسیریابی و جستجوی کاربران دیده شود.
                     </p>
                   </div>
 
@@ -919,6 +920,31 @@ function DashboardInner() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* Address/city search — jumps the map to the picked point,
+                    then the user fine-tunes with a map click (GPS button above
+                    and manual pin picking stay untouched). */}
+                <div className="space-y-1">
+                  <LocationSearch
+                    disabled={busy}
+                    onSelect={(r: LocationSearchResult) => {
+                      setForm((f) => ({
+                        ...f,
+                        latitude: r.lat.toFixed(7),
+                        longitude: r.lng.toFixed(7),
+                        // Auto-fill the city field when the result identifies one
+                        // (never overwrite a non-empty city the user typed).
+                        city: f.city ? f.city : r.city || "",
+                      }));
+                      setMessage({
+                        text: `موقعیت روی «${r.label}» تنظیم شد — پین را روی نقشه با دقت بیشتری تنظیم کنید.`,
+                      });
+                    }}
+                  />
+                  <p className="text-[11px] text-ik-muted">
+                    نام شهر یا آدرس را بنویسید و از نتایج انتخاب کنید تا نقشه به همان نقطه پرش کند.
+                  </p>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">

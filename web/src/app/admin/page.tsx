@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   LayoutDashboard,
   Building2,
@@ -307,8 +308,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-between border-b border-white/[0.08] px-6 py-5">
             <Link href="/" className="flex items-center gap-3 group">
               <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.4)] group-hover:scale-105 transition-transform">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+                <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={40} height={40} className="h-full w-full object-cover" />
               </div>
               <div>
                 <h1 className="text-base font-bold tracking-tight text-white group-hover:text-cyan-400 transition-colors">

@@ -146,6 +146,8 @@ export const getSearchFacets = (config?: { signal?: AbortSignal }) =>
 
 /** Public QR code (SVG) pointing at the canonical /b/{slug} page. */
 export const getQrUrl = (slug: string) =>
-  `${api.getUri()}/public/businesses/${slug}/qr`;
+  // Cached Next.js proxy — edge-cached (the QR for a slug is deterministic);
+  // keeps dashboard/public-page QR renders off the origin API.
+  `/api/qr/${encodeURIComponent(slug)}`;
 
 export const getHomepageContent = () => api.get<Record<string, string>>("/public/homepage").then((r) => r.data);

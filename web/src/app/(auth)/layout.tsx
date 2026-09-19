@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import LoginVideo from "@/components/auth/LoginVideo";
 
 /**
@@ -42,8 +43,7 @@ export default function AuthLayout({
       <div className="absolute left-5 top-5 z-20 sm:left-8 sm:top-6 lg:left-10 lg:top-8">
         <Link href="/" dir="ltr" className="flex items-center gap-3" aria-label="صفحه اصلی اینکارت">
           <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-cyan-400/30">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+            <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={36} height={36} className="h-full w-full object-cover" />
           </span>
           <span className="text-lg font-bold tracking-tight text-white">اینکارت</span>
         </Link>

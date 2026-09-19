@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { AlertCircle, ShieldCheck, Smartphone } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
@@ -70,8 +71,7 @@ export default function LoginPage() {
       {/* Header row: brand tile on the physical LEFT, title on the RIGHT (RTL) */}
       <div className="flex items-start justify-between gap-4">
         <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-400/30">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+          <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={48} height={48} className="h-full w-full object-cover" />
         </div>
         <div className="text-right">
           <p className="text-[12px] text-slate-400">به اینکارت خوش آمدید</p>

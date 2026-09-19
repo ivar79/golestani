@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   LayoutDashboard,
   Store,
@@ -90,8 +91,7 @@ export function DashboardSidebar({
         {!collapsed && (
           <Link href="/" className="flex items-center gap-2.5 min-w-0 group" aria-label="اینکارت">
             <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.35)] group-hover:scale-105 transition-transform">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+              <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={36} height={36} className="h-full w-full object-cover" />
             </span>
             <div className="flex flex-col min-w-0">
               <span className="font-black text-sm text-ik-text tracking-tight group-hover:text-ik-accent transition-colors">
@@ -106,8 +106,7 @@ export function DashboardSidebar({
 
         {collapsed && (
           <Link href="/" className="relative mx-auto flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.35)]" aria-label="اینکارت">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+            <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={36} height={36} className="h-full w-full object-cover" />
           </Link>
         )}
 

@@ -6,7 +6,8 @@ import "./globals.css";
 // Self-hosted Vazirmatn (وزیر) — loaded locally, no CDN dependency.
 const vazirmatn = localFont({
   src: [
-    { path: "../../public/fonts/Vazirmatn-Thin.woff2", weight: "100", style: "normal" },
+    // No Thin (100): no `font-thin` usage anywhere in the app — loading that
+    // face only wasted bytes in every page's font preload.
     { path: "../../public/fonts/Vazirmatn-Regular.woff2", weight: "400", style: "normal" },
     { path: "../../public/fonts/Vazirmatn-Medium.woff2", weight: "500", style: "normal" },
     { path: "../../public/fonts/Vazirmatn-SemiBold.woff2", weight: "600", style: "normal" },

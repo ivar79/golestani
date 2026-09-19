@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,8 +8,15 @@ import { cms, useHomepageContent } from "@/lib/homepage";
 import { getPublicAds, type Advertisement } from "@/lib/ads";
 import { panelPath } from "@/lib/panelPath";
 import { avatarUrl } from "@/lib/auth";
-import SearchModal from "@/components/search/SearchModal";
 import { Camera, CreditCard, LayoutDashboard, LogOut, Trash2 } from "lucide-react";
+
+// SearchModal is only rendered while the search UI is open; lazy-loading it
+// keeps its JS out of every page's initial bundle (P1 size fix). The loading
+// fallback stays visually aligned with the modal's dark glass look.
+const SearchModal = dynamic(
+  () => import("@/components/search/SearchModal"),
+  { ssr: false, loading: () => null },
+);
 
 // Site-wide smart taskbar (LeadFresh pattern tuned to the emerald/navy RTL
 // theme). A floating pill header crossfades with a slim emerald scroll-progress
