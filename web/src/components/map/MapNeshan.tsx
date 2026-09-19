@@ -36,10 +36,13 @@ export default function MapNeshan({
   const [mapInstance, setMapInstance] = useState<MLMap | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const mlMarkersRef = useRef<MLMarker[]>([]);
+  const mlPopupRef = useRef<InstanceType<typeof maplibregl.Popup> | null>(null);
 
   // هندلرها در ref پایدار نگه داشته می‌شوند تا listeners به هویت تابع صفحه وابسته نباشند.
   const onSelectRef = useRef(onSelectMarker);
   const onPickRef = useRef(onPick);
+  /** openBusinessPopup lives in a ref because marker listeners close over it. */
+  const openPopupRef = useRef<(map: MLMap, item: MapMarker) => void>(() => {});
   useEffect(() => {
     onSelectRef.current = onSelectMarker;
   }, [onSelectMarker]);
@@ -115,6 +118,8 @@ export default function MapNeshan({
 
     return () => {
       cancelled = true;
+      mlPopupRef.current?.remove();
+      mlPopupRef.current = null;
       map?.remove();
       map = null;
       mlMarkersRef.current = [];
@@ -196,6 +201,7 @@ export default function MapNeshan({
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           onSelectRef.current?.(item.id);
+          openPopupRef.current(map, item);
         });
         add(item, el);
       });
@@ -234,6 +240,44 @@ export default function MapNeshan({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapInstance, markers, autoFit]);
+
+  /** Lightweight RTL popup for a business marker — title + subtitle + link, mirroring the Leaflet fallback. */
+  const openBusinessPopup = useCallback(
+    (map: MLMap, item: MapMarker) => {
+      void (async () => {
+        const maplibregl = (await import("@neshan-maps-platform/maplibre-sdk")).default;
+        mlPopupRef.current?.remove();
+        const html = document.createElement("div");
+        html.dir = "rtl";
+        html.className = "space-y-1 p-1 text-right";
+        html.innerHTML = `
+          <p class="text-sm font-bold text-slate-900">${item.title}</p>
+          ${item.subtitle ? `<p class="text-xs text-slate-600">${item.subtitle}</p>` : ""}
+          ${item.href ? `<a href="${item.href}" class="mt-1 inline-block text-xs font-semibold text-cyan-700 hover:underline">مشاهده صفحهٔ کسب‌وکار ←</a>` : ""}
+        `;
+        const popup = new maplibregl.Popup({ offset: 28, closeButton: true, maxWidth: "240px" })
+          .setLngLat([item.longitude, item.latitude])
+          .setDOMContent(html)
+          .addTo(map);
+        mlPopupRef.current = popup;
+      })();
+    },
+    [],
+  );
+
+  // Keep the stable ref pointing at the latest implementation.
+  useEffect(() => {
+    openPopupRef.current = openBusinessPopup;
+  }, [openBusinessPopup]);
+
+  // Re-open the popup when selection changes from the list side too.
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map || !selectedId || selectedId === "__user__") return;
+    const item = markers.find((m) => m.id === selectedId);
+    if (item) openBusinessPopup(map, item);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapInstance, selectedId, openBusinessPopup]);
 
   const handleRetry = useCallback(() => window.location.reload(), []);
   const error = runtimeError ?? (neshanKeyPresent ? null : "کلید دسترسی نقشهٔ نشان تنظیم نشده است (NEXT_PUBLIC_NESHAN_MAP_KEY در web/.env.local).");

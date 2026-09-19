@@ -13,7 +13,7 @@ import { extractApiError } from "@/lib/api";
 import AppTaskbar from "@/components/layout/AppTaskbar";
 import { useLocationPick } from "@/hooks/useLocationPick";
 import LocationChip from "@/components/search/LocationChip";
-import MiniCard from "@/components/search/MiniCard";
+import MiniCard, { formatDistance } from "@/components/search/MiniCard";
 import SearchFilters, {
   DEFAULT_FILTERS,
   type SearchFiltersState,
@@ -190,9 +190,8 @@ function SearchPageContent() {
       title: b.name,
       subtitle: [
         b.category,
-        typeof b.distance === "number"
-          ? `${Math.round(b.distance).toLocaleString("fa-IR")} متر`
-          : null,
+        // Same human format as the MiniCard: متر under 1km, کیلومتر above.
+        typeof b.distance === "number" ? formatDistance(b.distance) : null,
       ]
         .filter(Boolean)
         .join(" — "),
