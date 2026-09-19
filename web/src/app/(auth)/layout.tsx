@@ -41,8 +41,9 @@ export default function AuthLayout({
       {/* Brand header, top-left (physical), per reference — same project texts */}
       <div className="absolute left-5 top-5 z-20 sm:left-8 sm:top-6 lg:left-10 lg:top-8">
         <Link href="/" dir="ltr" className="flex items-center gap-3" aria-label="صفحه اصلی اینکارت">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 text-sm font-black text-cyan-300">
-            اَ
+          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-cyan-400/30">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
           </span>
           <span className="text-lg font-bold tracking-tight text-white">اینکارت</span>
         </Link>

@@ -19,7 +19,10 @@ export default function HomeFooter() {
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 items-start">
           <div className="col-span-1 md:col-span-6">
             <div className="mb-3.5 flex items-center gap-3">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-sm font-black text-white">اَ</span>
+              <span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+              </span>
               <span className="text-xl font-bold text-white">{cms(content, "brand")}</span>
             </div>
             <p className="max-w-md text-sm leading-6 text-surface-variant">{about}</p>

@@ -69,8 +69,9 @@ export default function LoginPage() {
     <AuthGlass>
       {/* Header row: brand tile on the physical LEFT, title on the RIGHT (RTL) */}
       <div className="flex items-start justify-between gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/30 bg-cyan-500/10 text-xl font-black text-cyan-300">
-          اَ
+        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-400/30">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
         </div>
         <div className="text-right">
           <p className="text-[12px] text-slate-400">به اینکارت خوش آمدید</p>
