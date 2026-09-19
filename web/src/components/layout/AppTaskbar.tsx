@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cms, useHomepageContent } from "@/lib/homepage";
 import { getPublicAds, type Advertisement } from "@/lib/ads";
 import { panelPath } from "@/lib/panelPath";
+import { avatarUrl } from "@/lib/auth";
 import SearchModal from "@/components/search/SearchModal";
-import { CreditCard, LayoutDashboard, LogOut } from "lucide-react";
+import { Camera, CreditCard, LayoutDashboard, LogOut, Trash2 } from "lucide-react";
 
 // Site-wide smart taskbar (LeadFresh pattern tuned to the emerald/navy RTL
 // theme). A floating pill header crossfades with a slim emerald scroll-progress
@@ -56,7 +57,8 @@ function Burger() {
 
 export default function AppTaskbar() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, uploadAvatar, removeAvatar } = useAuth();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const content = useHomepageContent();
   const brand = cms(content, "brand") || "اینکارت";
   const logo = cms(content, "logo");
@@ -66,6 +68,28 @@ export default function AppTaskbar() {
   const panel = panelPath(user?.roles);
 
   const closeUserMenu = useCallback(() => setUserMenuOpen(false), []);
+
+  const resolvedAvatar = avatarUrl(user?.avatar);
+
+  const handleAvatarPicked = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      try {
+        await uploadAvatar(file);
+      } catch {
+        /* The API surfaces validation errors via axios defaults; keep UI silent-fail safe. */
+      }
+    },
+    [uploadAvatar],
+  );
+
+  const handleAvatarRemoved = useCallback(async () => {
+    try {
+      await removeAvatar();
+    } catch {
+      /* Nothing to clean up locally if the server delete fails. */
+    }
+  }, [removeAvatar]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -188,7 +212,10 @@ export default function AppTaskbar() {
         /* eslint-disable-next-line @next/next/no-img-element */
         <img src={logo} alt="" className="h-10 w-auto object-contain" />
       ) : (
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-lg font-black text-white shadow-lg shadow-secondary/20">{"اَ"}</span>
+        <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-lg shadow-secondary/20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+        </span>
       )}
       <span className="text-xl font-bold text-white lg:text-2xl">{brand}</span>
     </Link>
@@ -222,19 +249,33 @@ export default function AppTaskbar() {
             : "border-white/10 bg-white/[0.04] hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] text-slate-200 hover:text-white"
         }`}
       >
-        {/* Smart Card / Identity Avatar with Active Neon Status Dot */}
-        <div className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400/25 to-teal-500/35 border border-emerald-400/30 text-emerald-300 shadow-inner">
-          <CreditCard className="h-3.5 w-3.5" />
+        {/* Identity avatar: profile photo when present, else the card glyph — with active neon status dot */}
+        <div className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-400/25 to-teal-500/35 border border-emerald-400/30 text-emerald-300 shadow-inner">
+          {resolvedAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={resolvedAvatar} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <CreditCard className="h-3.5 w-3.5" />
+          )}
           <span className="absolute -bottom-0.5 -right-0.5 flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 border border-slate-900" />
           </span>
         </div>
 
-        {/* Clean Phone Number */}
-        <span dir="ltr" className="font-mono text-xs font-semibold tracking-wide">
-          {user.phone}
-        </span>
+        {/* Handle first: @username badge once claimed, otherwise the phone number */}
+        {user.username ? (
+          <span
+            dir="ltr"
+            className="max-w-[140px] truncate rounded-lg bg-gradient-to-l from-emerald-500/20 to-teal-500/15 border border-emerald-400/25 px-2 py-0.5 text-xs font-black tracking-wide text-emerald-200"
+          >
+            @{user.username}
+          </span>
+        ) : (
+          <span dir="ltr" className="font-mono text-xs font-semibold tracking-wide">
+            {user.phone}
+          </span>
+        )}
 
         {/* Smooth Animated Chevron */}
         <svg
@@ -257,16 +298,54 @@ export default function AppTaskbar() {
         <div className="drawer-panel absolute left-0 top-[calc(100%+10px)] z-[70] w-60 rounded-2xl border border-white/10 bg-[#070e1c]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.65),0_0_30px_rgba(16,185,129,0.1)] backdrop-blur-2xl">
           {/* Header Info inside Dropdown */}
           <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-white/5 mb-1">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
-              <CreditCard className="h-4 w-4" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+              {resolvedAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={resolvedAvatar} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <CreditCard className="h-4 w-4" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] text-slate-400">حساب کاربری اینکارت</div>
-              <div dir="ltr" className="truncate font-mono text-xs font-bold text-white">
-                {user.phone}
+              <div
+                dir="ltr"
+                className={`truncate text-xs font-bold text-white ${user.username ? "" : "font-mono"}`}
+              >
+                {user.username ? `@${user.username}` : user.phone}
               </div>
             </div>
           </div>
+
+          {/* Profile photo actions */}
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              void handleAvatarPicked(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => avatarInputRef.current?.click()}
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-right text-xs font-semibold text-slate-200 transition hover:bg-emerald-500/15 hover:text-white group cursor-pointer"
+          >
+            <Camera className="h-4 w-4 text-slate-400 group-hover:text-emerald-300 transition-colors" />
+            <span>{resolvedAvatar ? "تغییر تصویر پروفایل" : "افزودن تصویر پروفایل"}</span>
+          </button>
+          {resolvedAvatar && (
+            <button
+              type="button"
+              onClick={() => void handleAvatarRemoved()}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-right text-xs font-medium text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300 group cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4 text-slate-500 group-hover:text-rose-300 transition-colors" />
+              <span>حذف تصویر پروفایل</span>
+            </button>
+          )}
 
           {panel && (
             <Link
@@ -448,8 +527,13 @@ export default function AppTaskbar() {
             {user ? (
               <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-2.5">
                 <div className="flex items-center gap-2.5 pb-2.5 border-b border-white/5">
-                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400/20 to-teal-500/30 border border-emerald-400/30 text-emerald-300">
-                    <CreditCard className="h-4 w-4" />
+                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-400/20 to-teal-500/30 border border-emerald-400/30 text-emerald-300">
+                    {resolvedAvatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={resolvedAvatar} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <CreditCard className="h-4 w-4" />
+                    )}
                     <span className="absolute -bottom-0.5 -right-0.5 flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 border border-slate-900" />
@@ -457,8 +541,11 @@ export default function AppTaskbar() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[11px] text-slate-400">حساب کاربری اینکارت</div>
-                    <div dir="ltr" className="font-mono text-xs font-bold text-white">
-                      {user.phone}
+                    <div
+                      dir="ltr"
+                      className={`truncate text-xs font-bold text-white ${user.username ? "" : "font-mono"}`}
+                    >
+                      {user.username ? `@${user.username}` : user.phone}
                     </div>
                   </div>
                 </div>

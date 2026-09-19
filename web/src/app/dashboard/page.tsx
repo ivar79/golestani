@@ -6,10 +6,14 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
+import { avatarUrl } from "@/lib/auth";
 import { getQrUrl } from "@/lib/businesses";
 import { OnboardingView } from "@/components/dashboard/OnboardingView";
+import UsernamePicker from "@/components/dashboard/UsernamePicker";
+import { DashboardFab } from "@/components/dashboard/DashboardFab";
 import { DashboardSidebar, type DashboardTab } from "@/components/dashboard/DashboardSidebar";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { ThemeProvider, useTheme } from "@/components/dashboard/ThemeProvider";
 import MapView from "@/components/map/MapView";
 import {
   addImage,
@@ -109,9 +113,10 @@ const PRESET_SOCIALS = [
   { key: "website", label: "وب‌سایت", placeholder: "https://example.com", icon: Globe },
 ];
 
-export default function Dashboard() {
+function DashboardInner() {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
+  const { theme } = useTheme();
   const [items, setItems] = useState<Phase2Business[]>([]);
   const [editing, setEditing] = useState<Phase2Business | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
@@ -126,7 +131,7 @@ export default function Dashboard() {
   const [cover, setCover] = useState<File | null>(null);
   const [deleteImage, setDeleteImage] = useState<number | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
-  
+
   // Responsive sidebar & tabs
   const [currentTab, setCurrentTab] = useState<DashboardTab>("overview");
   const [collapsed, setCollapsed] = useState(false);
@@ -385,10 +390,14 @@ export default function Dashboard() {
 
   if (authLoading || loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#070d18] text-slate-200">
+      <div
+        dir="rtl"
+        data-theme={theme}
+        className="dashboard-shell flex min-h-screen items-center justify-center bg-ik-bg text-ik-text"
+      >
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-          <p className="text-xs sm:text-sm text-slate-400 font-medium">در حال بارگذاری پنل کسب‌وکار…</p>
+          <Loader2 className="h-8 w-8 animate-spin text-ik-accent" />
+          <p className="text-xs sm:text-sm text-ik-muted font-medium">در حال بارگذاری پنل کسب‌وکار…</p>
         </div>
       </div>
     );
@@ -396,24 +405,30 @@ export default function Dashboard() {
 
   if (onboarding) {
     return (
-      <OnboardingView
-        onSkip={() => setOnboarding(false)}
-        onSelect={(path) => {
-          setOnboarding(false);
-          if (path === 2) router.push("/card-maker");
-          if (path === 3) router.push("/designer");
-        }}
-      />
+      <div dir="rtl" data-theme={theme} className="dashboard-shell min-h-screen">
+        <OnboardingView
+          onSkip={() => setOnboarding(false)}
+          onSelect={(path) => {
+            setOnboarding(false);
+            if (path === 2) router.push("/card-maker");
+            if (path === 3) router.push("/designer");
+          }}
+        />
+      </div>
     );
   }
 
   return (
-    <div dir="rtl" className="relative flex min-h-screen bg-[#070b14] text-slate-100 selection:bg-cyan-500/20 font-sans overflow-x-hidden">
-      {/* Dynamic ambient lighting in background */}
+    <div
+      dir="rtl"
+      data-theme={theme}
+      className="dashboard-shell relative flex min-h-screen bg-ik-bg text-ik-text selection:bg-ik-accent/20 font-sans overflow-x-hidden"
+    >
+      {/* Dynamic ambient lighting in background — theme-aware via ik tokens */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -top-32 right-1/4 h-[500px] w-[500px] rounded-full bg-cyan-500/[0.05] blur-[140px]" />
-        <div className="absolute top-1/3 -left-28 h-[600px] w-[600px] rounded-full bg-emerald-500/[0.04] blur-[150px]" />
-        <div className="absolute bottom-1/4 right-5 h-[450px] w-[450px] rounded-full bg-blue-600/[0.03] blur-[130px]" />
+        <div className="absolute -top-32 right-1/4 h-[500px] w-[500px] rounded-full bg-ik-accent/[0.05] blur-[140px]" />
+        <div className="absolute top-1/3 -left-28 h-[600px] w-[600px] rounded-full bg-ik-success/[0.04] blur-[150px]" />
+        <div className="absolute bottom-1/4 right-5 h-[450px] w-[450px] rounded-full bg-ik-accent/[0.03] blur-[130px]" />
       </div>
 
       {/* Desktop Sidebar */}
@@ -424,7 +439,8 @@ export default function Dashboard() {
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((c) => !c)}
           userPhone={user.phone}
-          businessName={editing?.name}
+          username={user.username}
+          userAvatar={user.avatar ? avatarUrl(user.avatar) : null}
           businessSlug={editing?.slug}
           status={editing?.status}
           completionRate={completionRate}
@@ -449,7 +465,8 @@ export default function Dashboard() {
               collapsed={false}
               onToggleCollapse={() => setMobileSidebarOpen(false)}
               userPhone={user.phone}
-              businessName={editing?.name}
+              username={user.username}
+              userAvatar={user.avatar ? avatarUrl(user.avatar) : null}
               businessSlug={editing?.slug}
               status={editing?.status}
               completionRate={completionRate}
@@ -462,13 +479,13 @@ export default function Dashboard() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 z-10 pb-28 md:pb-24">
         {/* Top Navbar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/[0.06] bg-[#070b14]/85 px-4 sm:px-6 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-ik-border bg-ik-bg/85 px-4 sm:px-6 backdrop-blur-xl">
           <div className="flex items-center gap-3">
             {/* Mobile menu trigger */}
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-white md:hidden cursor-pointer"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-ik-border bg-ik-wash text-ik-muted hover:text-ik-text md:hidden cursor-pointer"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -481,7 +498,7 @@ export default function Dashboard() {
                 onChange={(e) =>
                   choose(items.find((x) => x.id === Number(e.target.value)) || null)
                 }
-                className="w-full appearance-none rounded-xl border border-white/10 bg-slate-900/80 py-2 pl-8 pr-9 text-xs sm:text-sm font-semibold text-white outline-none transition focus:border-cyan-400 cursor-pointer"
+                className="w-full appearance-none rounded-xl border border-ik-border bg-ik-panel/80 py-2 pl-8 pr-9 text-xs sm:text-sm font-semibold text-ik-text outline-none transition focus:border-ik-accent cursor-pointer"
               >
                 <option value="">+ ثبت کسب‌وکار جدید</option>
                 {items.map((b) => (
@@ -490,8 +507,8 @@ export default function Dashboard() {
                   </option>
                 ))}
               </select>
-              <Building2 className="absolute right-3 top-2.5 h-4 w-4 text-cyan-400 pointer-events-none" />
-              <ChevronDown className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+              <Building2 className="absolute right-3 top-2.5 h-4 w-4 text-ik-accent pointer-events-none" />
+              <ChevronDown className="absolute left-2.5 top-2.5 h-4 w-4 text-ik-muted pointer-events-none" />
             </div>
 
             <button
@@ -501,7 +518,7 @@ export default function Dashboard() {
                 choose(null);
                 setCurrentTab("info");
               }}
-              className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 transition-colors cursor-pointer whitespace-nowrap"
+              className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-ik-accent/30 bg-ik-accent/10 px-3 py-2 text-xs font-semibold text-ik-accent hover:bg-ik-accent/20 transition-colors cursor-pointer whitespace-nowrap"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>کسب‌وکار جدید</span>
@@ -514,9 +531,9 @@ export default function Dashboard() {
                 href={publicUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 hover:text-white hover:border-white/20 transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-ik-border bg-ik-wash px-3 py-2 text-xs font-medium text-ik-muted hover:text-ik-text hover:border-ik-accent/30 transition-colors"
               >
-                <Globe className="h-3.5 w-3.5 text-cyan-400" />
+                <Globe className="h-3.5 w-3.5 text-ik-accent" />
                 <span>مشاهده عمومی</span>
               </a>
             )}
@@ -525,7 +542,7 @@ export default function Dashboard() {
               type="button"
               disabled={busy}
               onClick={() => void logout()}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 sm:px-3 text-xs font-medium text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-ik-border bg-ik-wash px-2.5 sm:px-3 text-xs font-semibold text-ik-muted hover:border-ik-danger/40 hover:bg-ik-danger/10 hover:text-ik-danger cursor-pointer transition-colors"
               title="خروج از حساب"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -536,26 +553,29 @@ export default function Dashboard() {
 
         {/* Dynamic Page Container */}
         <main className="mx-auto w-full max-w-6xl px-4 sm:px-8 py-6 sm:py-8 space-y-6">
+          {/* One-time unique username claim (hidden once claimed). */}
+          <UsernamePicker />
+
           {/* Global Alert Notification */}
           {message && (
             <div
               role={message.error ? "alert" : "status"}
               className={`flex items-start gap-3 rounded-2xl border p-4 text-xs sm:text-sm animate-in fade-in ${
                 message.error
-                  ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  ? "border-ik-danger/30 bg-ik-danger/10 text-ik-danger"
+                  : "border-ik-success/30 bg-ik-success/10 text-ik-success"
               }`}
             >
               {message.error ? (
-                <AlertTriangle className="h-5 w-5 shrink-0 text-rose-400" />
+                <AlertTriangle className="h-5 w-5 shrink-0 text-ik-danger" />
               ) : (
-                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-ik-success" />
               )}
               <div className="flex-1 font-medium leading-relaxed">{message.text}</div>
               <button
                 type="button"
                 onClick={() => setMessage(null)}
-                className="text-slate-400 hover:text-white cursor-pointer"
+                className="text-ik-muted hover:text-ik-text cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -580,21 +600,21 @@ export default function Dashboard() {
           {/* TAB 2: BUSINESS INFO & CONTACT (مشخصات و تماس) */}
           {currentTab === "info" && (
             <form onSubmit={submit} className="space-y-6">
-              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
-                <div className="border-b border-white/5 pb-4">
-                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                    <Store className="h-5 w-5 text-cyan-400" />
+              <section className="rounded-3xl border border-ik-border bg-ik-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="border-b border-ik-border pb-4">
+                  <h2 className="text-base sm:text-lg font-bold text-ik-text flex items-center gap-2">
+                    <Store className="h-5 w-5 text-ik-accent" />
                     <span>مشخصات اصلی و اطلاعات تماس</span>
                   </h2>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-ik-muted mt-1">
                     این اطلاعات در نتایج جستجوی نقشه و صفحه اختصاصی فروشگاه نمایش داده می‌شوند.
                   </p>
                 </div>
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300">
-                      نام کسب‌وکار یا برند <span className="text-rose-400">*</span>
+                    <span className="text-xs font-semibold text-ik-muted">
+                      نام کسب‌وکار یا برند <span className="text-ik-danger">*</span>
                     </span>
                     <input
                       required
@@ -602,19 +622,19 @@ export default function Dashboard() {
                       value={form.name}
                       onChange={(e) => change("name", e.target.value)}
                       placeholder="مثال: کافه رستوران گرگان‌مهر"
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300">دسته‌بندی و صنف</span>
+                    <span className="text-xs font-semibold text-ik-muted">دسته‌بندی و صنف</span>
                     <input
                       list="categories-list"
                       maxLength={120}
                       value={form.category}
                       onChange={(e) => change("category", e.target.value)}
                       placeholder="انتخاب یا تایپ صنف..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                     <datalist id="categories-list">
                       {CATEGORIES.map((c) => (
@@ -625,7 +645,7 @@ export default function Dashboard() {
 
                   {/* Categories quick pills */}
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5 -mt-2">
-                    <span className="text-[11px] text-slate-400">پیشنهادات سریع:</span>
+                    <span className="text-[11px] text-ik-muted">پیشنهادات سریع:</span>
                     {CATEGORIES.slice(0, 6).map((cat) => (
                       <button
                         key={cat}
@@ -633,8 +653,8 @@ export default function Dashboard() {
                         onClick={() => change("category", cat)}
                         className={`rounded-lg px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
                           form.category === cat
-                            ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                            : "bg-white/5 text-slate-400 border border-white/10 hover:text-white"
+                            ? "bg-ik-accent/20 text-ik-accent border border-ik-accent/40"
+                            : "bg-ik-wash text-ik-muted border border-ik-border hover:text-ik-text"
                         }`}
                       >
                         {cat}
@@ -643,8 +663,8 @@ export default function Dashboard() {
                   </div>
 
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-ik-muted flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 text-ik-muted" />
                       <span>شماره تماس عمومی</span>
                     </span>
                     <input
@@ -654,13 +674,13 @@ export default function Dashboard() {
                       value={form.phone}
                       onChange={(e) => change("phone", e.target.value)}
                       placeholder="017... یا 0911..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 font-mono text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 font-mono text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                      <Mail className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-ik-muted flex items-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5 text-ik-muted" />
                       <span>ایمیل کاری (اختیاری)</span>
                     </span>
                     <input
@@ -670,35 +690,35 @@ export default function Dashboard() {
                       value={form.email}
                       onChange={(e) => change("email", e.target.value)}
                       placeholder="info@business.ir"
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 font-mono text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 font-mono text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300">شهر</span>
+                    <span className="text-xs font-semibold text-ik-muted">شهر</span>
                     <input
                       maxLength={120}
                       value={form.city}
                       onChange={(e) => change("city", e.target.value)}
                       placeholder="گرگان، گنبد کاووس، علی‌آباد..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300">محله / منطقه</span>
+                    <span className="text-xs font-semibold text-ik-muted">محله / منطقه</span>
                     <input
                       maxLength={120}
                       value={form.neighborhood}
                       onChange={(e) => change("neighborhood", e.target.value)}
                       placeholder="مثال: ناهارخوران، ولیعصر..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="sm:col-span-2 space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-ik-muted flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-ik-muted" />
                       <span>آدرس دقیق پستی</span>
                     </span>
                     <input
@@ -706,12 +726,12 @@ export default function Dashboard() {
                       value={form.address}
                       onChange={(e) => change("address", e.target.value)}
                       placeholder="خیابان، کوچه، پلاک، طبقه یا نشانی دقیق..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="sm:col-span-2 space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300">
+                    <span className="text-xs font-semibold text-ik-muted">
                       توضیحات و بیوگرافی کسب‌وکار
                     </span>
                     <textarea
@@ -720,12 +740,12 @@ export default function Dashboard() {
                       value={form.description}
                       onChange={(e) => change("description", e.target.value)}
                       placeholder="توضیح تاریخچه، ساعات کاری و زمینه فعالیت..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="sm:col-span-2 space-y-1.5">
-                    <span className="text-xs font-semibold text-slate-300">
+                    <span className="text-xs font-semibold text-ik-muted">
                       فهرست خدمات و محصولات ویژه (هر کدام در یک خط)
                     </span>
                     <textarea
@@ -733,21 +753,21 @@ export default function Dashboard() {
                       value={form.services}
                       onChange={(e) => change("services", e.target.value)}
                       placeholder="مثال:&#10;اینترنت رایگان&#10;فضای باز&#10;سفارش تلفنی"
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                   </label>
                 </div>
               </section>
 
               {/* Social Channels Section */}
-              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+              <section className="rounded-3xl border border-ik-border bg-ik-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-ik-border pb-4">
                   <div>
-                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                      <Share2 className="h-5 w-5 text-cyan-400" />
+                    <h2 className="text-base sm:text-lg font-bold text-ik-text flex items-center gap-2">
+                      <Share2 className="h-5 w-5 text-ik-accent" />
                       <span>شبکه‌های اجتماعی و پیام‌رسان‌ها</span>
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-ik-muted mt-1">
                       پیوندهای ارتباطی برای دسترسی مستقیم کاربران به کانال‌ها و صفحات مجازی شما.
                     </p>
                   </div>
@@ -761,9 +781,9 @@ export default function Dashboard() {
                           type="button"
                           disabled={alreadyHas || social.length >= 10}
                           onClick={() => setSocial((xs) => [...xs, { key: p.key, url: "" }])}
-                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer transition-colors"
+                          className="inline-flex items-center gap-1 rounded-lg border border-ik-border bg-ik-wash px-2.5 py-1 text-[11px] text-ik-muted hover:text-ik-text disabled:opacity-40 cursor-pointer transition-colors"
                         >
-                          <p.icon className="h-3 w-3 text-cyan-400" />
+                          <p.icon className="h-3 w-3 text-ik-accent" />
                           <span>{p.label}</span>
                         </button>
                       );
@@ -775,7 +795,7 @@ export default function Dashboard() {
                   {social.map((row, i) => (
                     <div
                       key={i}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-white/[0.06] bg-slate-950/40 p-3"
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-ik-border bg-ik-panel-soft/40 p-3"
                     >
                       <input
                         dir="ltr"
@@ -787,7 +807,7 @@ export default function Dashboard() {
                             xs.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
                           )
                         }
-                        className="sm:w-44 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                        className="ik-field sm:w-44 rounded-lg border border-ik-border bg-ik-wash px-3 py-1.5 font-mono text-xs text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                       />
 
                       <input
@@ -800,13 +820,13 @@ export default function Dashboard() {
                             xs.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)),
                           )
                         }
-                        className="flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 font-mono text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                        className="ik-field flex-1 rounded-lg border border-ik-border bg-ik-wash px-3 py-1.5 font-mono text-xs text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                       />
 
                       <button
                         type="button"
                         onClick={() => setSocial((xs) => xs.filter((_, j) => j !== i))}
-                        className="self-end sm:self-center inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
+                        className="self-end sm:self-center inline-flex h-8 w-8 items-center justify-center rounded-lg border border-ik-danger/20 bg-ik-danger/10 text-ik-danger hover:bg-ik-danger/20 cursor-pointer transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -817,7 +837,7 @@ export default function Dashboard() {
                     type="button"
                     disabled={social.length >= 10}
                     onClick={() => setSocial((xs) => [...xs, { key: "", url: "" }])}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-ik-border bg-ik-wash px-3.5 py-2 text-xs font-semibold text-ik-muted hover:text-ik-text cursor-pointer transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>افزودن پیوند ارتباطی جدید</span>
@@ -829,7 +849,7 @@ export default function Dashboard() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-md transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl bg-ik-accent px-8 text-xs sm:text-sm font-bold text-ik-accent-contrast shadow-md transition-all hover:bg-ik-accent-hover active:scale-98 disabled:opacity-50 cursor-pointer"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره مشخصات کسب‌وکار"}</span>
@@ -841,14 +861,14 @@ export default function Dashboard() {
           {/* TAB 3: LOCATION & MAP PICKER (موقعیت روی نقشه) */}
           {currentTab === "location" && (
             <form onSubmit={submit} className="space-y-6">
-              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+              <section className="rounded-3xl border border-ik-border bg-ik-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-ik-border pb-4">
                   <div>
-                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                      <MapPin className="h-5 w-5 text-cyan-400" />
+                    <h2 className="text-base sm:text-lg font-bold text-ik-text flex items-center gap-2">
+                      <MapPin className="h-5 w-5 text-ik-accent" />
                       <span>موقعیت جغرافیایی روی نقشه</span>
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-ik-muted mt-1">
                       با کلیک روی نقشه، مکان دقیق مغازه یا شرکت خود را مشخص کنید تا در مسیریابی و جستجوی کاربران دیده شود.
                     </p>
                   </div>
@@ -857,7 +877,7 @@ export default function Dashboard() {
                     <button
                       type="button"
                       onClick={() => setForm((f) => ({ ...f, latitude: "", longitude: "" }))}
-                      className="text-xs font-semibold text-rose-400 hover:underline cursor-pointer"
+                      className="text-xs font-semibold text-ik-danger hover:underline cursor-pointer"
                     >
                       پاک‌کردن پین نقشه
                     </button>
@@ -866,7 +886,7 @@ export default function Dashboard() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="space-y-1">
-                    <span className="text-xs font-semibold text-slate-300">عرض جغرافیایی (Latitude)</span>
+                    <span className="text-xs font-semibold text-ik-muted">عرض جغرافیایی (Latitude)</span>
                     <input
                       type="number"
                       min={-90}
@@ -876,12 +896,12 @@ export default function Dashboard() {
                       value={form.latitude}
                       onChange={(e) => change("latitude", e.target.value)}
                       placeholder="36.8387..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-3.5 py-2 font-mono text-sm text-ik-text outline-none focus:border-ik-accent"
                     />
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-xs font-semibold text-slate-300">طول جغرافیایی (Longitude)</span>
+                    <span className="text-xs font-semibold text-ik-muted">طول جغرافیایی (Longitude)</span>
                     <input
                       type="number"
                       min={-180}
@@ -891,13 +911,13 @@ export default function Dashboard() {
                       value={form.longitude}
                       onChange={(e) => change("longitude", e.target.value)}
                       placeholder="54.4348..."
-                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-3.5 py-2 font-mono text-sm text-ik-text outline-none focus:border-ik-accent"
                     />
                   </label>
                 </div>
 
                 {/* Map Viewer */}
-                <div className="relative isolate overflow-hidden rounded-2xl border border-white/10 shadow-inner">
+                <div className="relative isolate overflow-hidden rounded-2xl border border-ik-border shadow-inner">
                   <MapView
                     className="h-[400px] w-full"
                     markers={
@@ -925,7 +945,7 @@ export default function Dashboard() {
                   />
                 </div>
 
-                <p className="text-xs text-slate-400 text-center">
+                <p className="text-xs text-ik-muted text-center">
                   روی هر نقطه‌ای از نقشه کلیک کنید، پین مکان فروشگاه شما در همان نقطه تنظیم می‌شود.
                 </p>
 
@@ -933,7 +953,7 @@ export default function Dashboard() {
                   <button
                     type="submit"
                     disabled={busy}
-                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-md transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-ik-accent px-8 text-xs sm:text-sm font-bold text-ik-accent-contrast shadow-md transition-all hover:bg-ik-accent-hover active:scale-98 disabled:opacity-50 cursor-pointer"
                   >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره موقعیت نقشه"}</span>
@@ -949,15 +969,15 @@ export default function Dashboard() {
               {/* Branding Section (Logo & Cover) */}
               <form onSubmit={submit}>
                 <section
-                  className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6"
+                  className="rounded-3xl border border-ik-border bg-ik-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6"
                   ref={mediaForm}
                 >
-                  <div className="border-b border-white/5 pb-4">
-                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                      <ImageIcon className="h-5 w-5 text-cyan-400" />
+                  <div className="border-b border-ik-border pb-4">
+                    <h2 className="text-base sm:text-lg font-bold text-ik-text flex items-center gap-2">
+                      <ImageIcon className="h-5 w-5 text-ik-accent" />
                       <span>هویت بصری (لوگو و تصویر کاور)</span>
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-ik-muted mt-1">
                       لوگو و تصویر بنر اصلی فروشگاه شما در صفحه اختصاصی نمایش داده خواهند شد.
                     </p>
                   </div>
@@ -965,9 +985,9 @@ export default function Dashboard() {
                   <div className="grid gap-6 sm:grid-cols-2">
                     {/* Logo */}
                     <div className="space-y-2">
-                      <span className="text-xs font-semibold text-slate-300">لوگوی اختصاصی</span>
-                      <div className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-slate-950/40 p-4">
-                        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                      <span className="text-xs font-semibold text-ik-muted">لوگوی اختصاصی</span>
+                      <div className="flex items-center gap-4 rounded-2xl border border-ik-border bg-ik-panel-soft/40 p-4">
+                        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-ik-border bg-ik-bg">
                           {mediaUrl(editing?.logo) ? (
                             <Image
                               src={mediaUrl(editing?.logo)!}
@@ -977,13 +997,13 @@ export default function Dashboard() {
                               sizes="80px"
                             />
                           ) : (
-                            <Building2 className="h-8 w-8 text-slate-600" />
+                            <Building2 className="h-8 w-8 text-ik-muted" />
                           )}
                         </div>
 
                         <div className="space-y-2 min-w-0 flex-1">
-                          <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors">
-                            <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
+                          <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-ik-border bg-ik-wash px-3 py-1.5 text-xs font-semibold text-ik-text hover:bg-ik-wash-hover cursor-pointer transition-colors">
+                            <UploadCloud className="h-3.5 w-3.5 text-ik-accent" />
                             <span>{logo ? logo.name : "انتخاب فایل لوگو"}</span>
                             <input
                               type="file"
@@ -993,13 +1013,13 @@ export default function Dashboard() {
                               className="hidden"
                             />
                           </label>
-                          <p className="text-[10px] text-slate-400">حداکثر ۲ مگابایت (PNG یا JPG)</p>
+                          <p className="text-[10px] text-ik-muted">حداکثر ۲ مگابایت (PNG یا JPG)</p>
                           {editing?.logo && (
                             <button
                               type="button"
                               disabled={busy}
                               onClick={() => void clearMedia("logo")}
-                              className="text-[11px] text-rose-400 hover:underline cursor-pointer block"
+                              className="text-[11px] text-ik-danger hover:underline cursor-pointer block"
                             >
                               حذف لوگوی فعلی
                             </button>
@@ -1010,9 +1030,9 @@ export default function Dashboard() {
 
                     {/* Cover Banner */}
                     <div className="space-y-2">
-                      <span className="text-xs font-semibold text-slate-300">تصویر کاور (بنر بالای صفحه)</span>
-                      <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-slate-950/40 p-4">
-                        <div className="relative h-20 w-full overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                      <span className="text-xs font-semibold text-ik-muted">تصویر کاور (بنر بالای صفحه)</span>
+                      <div className="flex flex-col gap-3 rounded-2xl border border-ik-border bg-ik-panel-soft/40 p-4">
+                        <div className="relative h-20 w-full overflow-hidden rounded-xl border border-ik-border bg-ik-bg">
                           {mediaUrl(editing?.cover_image) ? (
                             <Image
                               src={mediaUrl(editing?.cover_image)!}
@@ -1022,15 +1042,15 @@ export default function Dashboard() {
                               sizes="400px"
                             />
                           ) : (
-                            <div className="flex h-full items-center justify-center text-[11px] text-slate-600">
+                            <div className="flex h-full items-center justify-center text-[11px] text-ik-muted">
                               بدون بنر کاور
                             </div>
                           )}
                         </div>
 
                         <div className="flex items-center justify-between gap-2">
-                          <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors">
-                            <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
+                          <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-ik-border bg-ik-wash px-3 py-1.5 text-xs font-semibold text-ik-text hover:bg-ik-wash-hover cursor-pointer transition-colors">
+                            <UploadCloud className="h-3.5 w-3.5 text-ik-accent" />
                             <span>{cover ? cover.name : "انتخاب فایل کاور"}</span>
                             <input
                               type="file"
@@ -1046,7 +1066,7 @@ export default function Dashboard() {
                               type="button"
                               disabled={busy}
                               onClick={() => void clearMedia("cover_image")}
-                              className="text-[11px] text-rose-400 hover:underline cursor-pointer"
+                              className="text-[11px] text-ik-danger hover:underline cursor-pointer"
                             >
                               حذف کاور
                             </button>
@@ -1060,7 +1080,7 @@ export default function Dashboard() {
                     <button
                       type="submit"
                       disabled={busy}
-                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 px-8 text-xs sm:text-sm font-bold text-slate-950 shadow-md transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-ik-accent px-8 text-xs sm:text-sm font-bold text-ik-accent-contrast shadow-md transition-all hover:bg-ik-accent-hover active:scale-98 disabled:opacity-50 cursor-pointer"
                     >
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       <span>{busy ? "در حال ذخیره‌سازی..." : "ذخیره لوگو و کاور"}</span>
@@ -1070,36 +1090,36 @@ export default function Dashboard() {
               </form>
 
               {/* Showcase Gallery Section */}
-              <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-4">
+              <section className="rounded-3xl border border-ik-border bg-ik-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ik-border pb-4">
                   <div>
-                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                      <Camera className="h-5 w-5 text-cyan-400" />
+                    <h2 className="text-base sm:text-lg font-bold text-ik-text flex items-center gap-2">
+                      <Camera className="h-5 w-5 text-ik-accent" />
                       <span>گالری تصاویر نمونه‌کارها و محیط کسب‌وکار</span>
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-ik-muted mt-1">
                       می‌توانید تا سقف ۵ تصویر باکیفیت برای جذب بیشتر مشتریان بارگذاری کنید.
                     </p>
                   </div>
 
-                  <span className="text-xs font-semibold text-slate-400">
+                  <span className="text-xs font-semibold text-ik-muted">
                     {images.length} از ۵ تصویر
                   </span>
                 </div>
 
                 {!editing ? (
-                  <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 p-6 text-center text-xs text-slate-400">
+                  <div className="rounded-xl border border-ik-border bg-ik-panel-soft/40 p-6 text-center text-xs text-ik-muted">
                     برای فعال‌سازی گالری، ابتدا در تب مشخصات، کسب‌وکار خود را یک بار ذخیره فرمایید.
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {images.length < 5 && (
-                      <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/15 bg-slate-950/40 p-6 text-center cursor-pointer transition-all hover:border-cyan-400/50">
-                        <UploadCloud className="h-6 w-6 text-cyan-400 mb-2" />
-                        <span className="text-xs sm:text-sm font-semibold text-slate-200">
+                      <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-ik-border bg-ik-panel-soft/40 p-6 text-center cursor-pointer transition-all hover:border-ik-accent/50">
+                        <UploadCloud className="h-6 w-6 text-ik-accent mb-2" />
+                        <span className="text-xs sm:text-sm font-semibold text-ik-text">
                           انتخاب یا رهاسازی تصاویر در این قسمت
                         </span>
-                        <span className="mt-1 text-[11px] text-slate-400">
+                        <span className="mt-1 text-[11px] text-ik-muted">
                           فرمت‌های JPG، PNG یا WebP تا سقف ۵ مگابایت
                         </span>
                         <input
@@ -1118,10 +1138,10 @@ export default function Dashboard() {
 
                     {galleryLoading ? (
                       <div className="flex h-32 items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+                        <Loader2 className="h-6 w-6 animate-spin text-ik-accent" />
                       </div>
                     ) : images.length === 0 ? (
-                      <p className="py-6 text-center text-xs text-slate-500">
+                      <p className="py-6 text-center text-xs text-ik-muted">
                         هنوز تصویری در گالری ثبت نکرده‌اید.
                       </p>
                     ) : (
@@ -1133,7 +1153,7 @@ export default function Dashboard() {
                           return (
                             <div
                               key={image.id}
-                              className="group relative flex flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-950/60 shadow-sm"
+                              className="group relative flex flex-col overflow-hidden rounded-xl border border-ik-border bg-ik-bg shadow-sm"
                             >
                               <div className="relative aspect-square w-full">
                                 {url ? (
@@ -1145,20 +1165,20 @@ export default function Dashboard() {
                                     sizes="200px"
                                   />
                                 ) : (
-                                  <div className="flex h-full items-center justify-center text-slate-600 text-xs">
+                                  <div className="flex h-full items-center justify-center text-ik-muted text-xs">
                                     بدون تصویر
                                   </div>
                                 )}
                               </div>
 
-                              <div className="p-2 border-t border-white/5 bg-slate-950/90">
+                              <div className="p-2 border-t border-ik-border bg-ik-panel/90">
                                 {isDeleting ? (
                                   <div className="flex items-center gap-1">
                                     <button
                                       type="button"
                                       disabled={busy}
                                       onClick={() => void eraseImage(image.id)}
-                                      className="flex-1 rounded bg-rose-600 py-1 text-[10px] font-bold text-white cursor-pointer"
+                                      className="flex-1 rounded bg-ik-danger py-1 text-[10px] font-bold text-ik-accent-contrast cursor-pointer"
                                     >
                                       حذف
                                     </button>
@@ -1166,7 +1186,7 @@ export default function Dashboard() {
                                       type="button"
                                       disabled={busy}
                                       onClick={() => setDeleteImage(null)}
-                                      className="flex-1 rounded bg-slate-800 py-1 text-[10px] text-slate-300 cursor-pointer"
+                                      className="flex-1 rounded bg-ik-panel-hover py-1 text-[10px] text-ik-muted cursor-pointer"
                                     >
                                       انصراف
                                     </button>
@@ -1176,7 +1196,7 @@ export default function Dashboard() {
                                     type="button"
                                     disabled={busy}
                                     onClick={() => setDeleteImage(image.id)}
-                                    className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/5 bg-white/5 py-1 text-[11px] text-rose-300 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                                    className="flex w-full items-center justify-center gap-1 rounded-lg border border-ik-border bg-ik-wash py-1 text-[11px] text-ik-danger hover:bg-ik-danger/10 cursor-pointer transition-colors"
                                   >
                                     <Trash2 className="h-3 w-3" />
                                     <span>حذف</span>
@@ -1196,25 +1216,25 @@ export default function Dashboard() {
 
           {/* TAB 5: PUBLIC PROFILE & QR CODE (تعهد مستقیم فاز ۲ قرارداد) */}
           {currentTab === "qr" && (
-            <section className="rounded-3xl border border-white/[0.08] bg-[#0c1424]/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
-              <div className="border-b border-white/5 pb-4">
-                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                  <QrCode className="h-5 w-5 text-cyan-400" />
+            <section className="rounded-3xl border border-ik-border bg-ik-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="border-b border-ik-border pb-4">
+                <h2 className="text-base sm:text-lg font-bold text-ik-text flex items-center gap-2">
+                  <QrCode className="h-5 w-5 text-ik-accent" />
                   <span>صفحه اختصاصی عمومی و کد QR (تعهد فاز ۲ قرارداد)</span>
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-ik-muted mt-1">
                   کسب‌وکار شما یک لینک عمومی مستقل دارد که با اسکن این بارکد، مشتریان بدون واسطه وارد نمایه شما می‌شوند.
                 </p>
               </div>
 
               {!editing ? (
-                <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 p-6 text-center text-xs text-slate-400">
+                <div className="rounded-xl border border-ik-border bg-ik-panel-soft/40 p-6 text-center text-xs text-ik-muted">
                   برای تولید بارکد QR اختصاصی، ابتدا یک کسب‌وکار ثبت یا انتخاب فرمایید.
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 gap-8 items-center">
                   {/* Left: QR Display Box */}
-                  <div className="flex flex-col items-center justify-center p-6 rounded-2xl border border-white/10 bg-slate-950/70 text-center space-y-4">
+                  <div className="flex flex-col items-center justify-center p-6 rounded-2xl border border-ik-border bg-ik-bg/70 text-center space-y-4">
                     <div className="rounded-2xl border-4 border-white bg-white p-3 shadow-xl">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -1227,8 +1247,8 @@ export default function Dashboard() {
                     </div>
 
                     <div>
-                      <span className="text-xs font-bold text-white">بارکد استند چاپی</span>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
+                      <span className="text-xs font-bold text-ik-text">بارکد استند چاپی</span>
+                      <p className="text-[11px] text-ik-muted mt-0.5">
                         مناسب برای چاپ روی استند رومیزی مغازه، فاکتور و کارت ویزیت
                       </p>
                     </div>
@@ -1237,7 +1257,7 @@ export default function Dashboard() {
                       href={getQrUrl(editing.slug)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 px-5 py-2 text-xs font-bold text-white transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-ik-accent hover:bg-ik-accent-hover px-5 py-2 text-xs font-bold text-ik-accent-contrast transition-colors"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       <span>دانلود مستقیم تصویر QR</span>
@@ -1246,44 +1266,44 @@ export default function Dashboard() {
 
                   {/* Right: Link & Details */}
                   <div className="space-y-4">
-                    <div className="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-5 space-y-2">
-                      <span className="text-xs font-semibold text-slate-400">آدرس صفحه عمومی مستقل:</span>
+                    <div className="rounded-2xl border border-ik-border bg-ik-panel-soft/40 p-5 space-y-2">
+                      <span className="text-xs font-semibold text-ik-muted">آدرس صفحه عمومی مستقل:</span>
                       {publicUrl ? (
-                        <div className="flex items-center justify-between gap-2 p-3 rounded-xl border border-white/10 bg-slate-900 font-mono text-xs text-cyan-300" dir="ltr">
+                        <div className="flex items-center justify-between gap-2 p-3 rounded-xl border border-ik-border bg-ik-panel font-mono text-xs text-ik-accent" dir="ltr">
                           <span className="truncate">{publicUrl}</span>
                           <a
                             href={publicUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-slate-400 hover:text-white shrink-0"
+                            className="text-ik-muted hover:text-ik-text shrink-0"
                             title="باز کردن صفحه"
                           >
                             <ExternalLink className="h-4 w-4" />
                           </a>
                         </div>
                       ) : (
-                        <p className="text-xs text-amber-300">
+                        <p className="text-xs text-ik-warning">
                           پس از تایید اولیه مدیر، آدرس صفحه فعال می‌شود.
                         </p>
                       )}
                     </div>
 
-                    <div className="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-5 space-y-2">
-                      <h4 className="text-xs font-bold text-white">وضعیت تاییدیه در فاز ۲:</h4>
+                    <div className="rounded-2xl border border-ik-border bg-ik-panel-soft/40 p-5 space-y-2">
+                      <h4 className="text-xs font-bold text-ik-text">وضعیت تاییدیه در فاز ۲:</h4>
                       <div className="flex items-center gap-2">
                         <span
                           className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
                             editing.status === "approved"
-                              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                              ? "bg-ik-success/15 text-ik-success border-ik-success/30"
                               : editing.status === "pending"
-                              ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                              : "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                              ? "bg-ik-warning/15 text-ik-warning border-ik-warning/30"
+                              : "bg-ik-danger/15 text-ik-danger border-ik-danger/30"
                           }`}
                         >
                           {statusLabel[editing.status] || editing.status}
                         </span>
                         {editing.moderation_note && (
-                          <span className="text-xs text-amber-200">
+                          <span className="text-xs text-ik-warning">
                             (یادداشت مدیر: {editing.moderation_note})
                           </span>
                         )}
@@ -1297,20 +1317,23 @@ export default function Dashboard() {
         </main>
       </div>
 
+      {/* Floating quick actions (accent-colored) */}
+      <DashboardFab hasBusiness={!!editing} />
+
       {/* Standalone QR Modal */}
       {showQrModal && editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in">
-          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0c1427] p-6 text-center shadow-2xl space-y-4">
+          <div className="relative w-full max-w-sm rounded-3xl border border-ik-border bg-ik-panel p-6 text-center shadow-2xl space-y-4">
             <button
               type="button"
               onClick={() => setShowQrModal(false)}
-              className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-white cursor-pointer"
+              className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-ik-border bg-ik-wash text-ik-muted hover:text-ik-text cursor-pointer"
             >
               <X className="h-4 w-4" />
             </button>
 
-            <h3 className="text-base font-bold text-white">بارکد QR اختصاصی فروشگاه</h3>
-            <p className="text-xs text-slate-400">
+            <h3 className="text-base font-bold text-ik-text">بارکد QR اختصاصی فروشگاه</h3>
+            <p className="text-xs text-ik-muted">
               این کد را پرینت کنید یا در شبکه‌های اجتماعی بگذارید تا مراجعین با دوربین گوشی مستقیماً وارد صفحه شما شوند.
             </p>
 
@@ -1332,7 +1355,7 @@ export default function Dashboard() {
                 href={getQrUrl(editing.slug)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 px-5 py-2.5 text-xs font-bold text-white transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-ik-accent hover:bg-ik-accent-hover px-5 py-2.5 text-xs font-bold text-ik-accent-contrast transition-colors"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 <span>دانلود بارکد چاپی</span>
@@ -1342,5 +1365,18 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Dashboard — theme is scoped to this page via the ThemeProvider above the
+ * shell div. Pages outside /dashboard never receive the provider, so their
+ * visuals are untouched.
+ */
+export default function Dashboard() {
+  return (
+    <ThemeProvider>
+      <DashboardInner />
+    </ThemeProvider>
   );
 }

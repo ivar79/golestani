@@ -67,6 +67,120 @@ body {
   background: rgba(16, 185, 129, 0.22);
 }
 
+/* ============================================================
+   Dashboard-only theme system — «تیره» (پیش‌فرض) / «گرم» (Warm Editorial)
+
+   Scoped by `.dashboard-shell[data-theme]` on the dashboard root div;
+   nothing here touches <html> or any other page. Semantic tokens feed
+   real Tailwind utilities via @theme inline (bg-ik-panel, text-ik-muted,
+   border-ik-accent/30, …) — no per-class CSS overrides anywhere.
+
+   Dark values mirror the dashboard's existing hardcoded palette, so the
+   default («تیره») look is pixel-identical to before. Warm values are
+   the approved reference palette:
+   bg #F5EFE7 · secondary #EDE4D7 · surface #FBF8F2 · hover #E6DCC9 ·
+   border #D8CCBD · text #2A211B · muted #6F6256 · accent #A85F3F ·
+   accent-hover #8F4F35 · success #66705A
+   ============================================================ */
+
+:root {
+  /* Theme «تیره» — Deep Tech (current dashboard palette) */
+  --ik-bg: #070b14;
+  --ik-panel: #0c1424;
+  --ik-panel-soft: #0f1d32;
+  --ik-panel-hover: #12203a;
+  --ik-text: #f1f5f9;
+  --ik-muted: #94a3b8;
+  --ik-border: rgba(255, 255, 255, 0.08);
+  --ik-accent: #22d3ee;
+  --ik-accent-hover: #06b6d4;
+  --ik-accent-contrast: #041018;
+  --ik-success: #10b981;
+  --ik-danger: #f43f5e;
+  --ik-warning: #fbbf24;
+  --ik-wash: rgba(255, 255, 255, 0.05);
+  --ik-wash-hover: rgba(255, 255, 255, 0.12);
+  --ik-glow: rgba(6, 182, 212, 0.15);
+  color-scheme: dark;
+}
+
+/* Theme «گرم» — Warm / Premium / Editorial (reference palette) */
+.dashboard-shell[data-theme="warm"],
+.dashboard-shell[data-theme="light"] /* legacy key from an old iteration */ {
+  --ik-bg: #f5efe7;
+  --ik-panel: #fbf8f2;
+  --ik-panel-soft: #ede4d7;
+  --ik-panel-hover: #e6dcc9;
+  --ik-text: #2a211b;
+  --ik-muted: #6f6256;
+  --ik-border: #d8ccbd;
+  --ik-accent: #a85f3f;
+  --ik-accent-hover: #8f4f35;
+  --ik-accent-contrast: #fdf9f3;
+  --ik-success: #66705a;
+  --ik-danger: #9c3d32;
+  --ik-warning: #8a6a2f;
+  --ik-wash: rgba(168, 95, 63, 0.07);
+  --ik-wash-hover: rgba(168, 95, 63, 0.12);
+  --ik-glow: rgba(168, 95, 63, 0.16);
+  color-scheme: light;
+}
+
+/* Map tokens to real Tailwind utilities. `inline` keeps the var()
+   reference, so opacity modifiers (bg-ik-panel/80) resolve against the
+   value scoped by the nearest .dashboard-shell ancestor. */
+@theme inline {
+  --color-ik-bg: var(--ik-bg);
+  --color-ik-panel: var(--ik-panel);
+  --color-ik-panel-soft: var(--ik-panel-soft);
+  --color-ik-panel-hover: var(--ik-panel-hover);
+  --color-ik-text: var(--ik-text);
+  --color-ik-muted: var(--ik-muted);
+  --color-ik-border: var(--ik-border);
+  --color-ik-accent: var(--ik-accent);
+  --color-ik-accent-hover: var(--ik-accent-hover);
+  --color-ik-accent-contrast: var(--ik-accent-contrast);
+  --color-ik-success: var(--ik-success);
+  --color-ik-danger: var(--ik-danger);
+  --color-ik-warning: var(--ik-warning);
+  --color-ik-wash: var(--ik-wash);
+  --color-ik-wash-hover: var(--ik-wash-hover);
+}
+
+/* Smooth identity switch, applied only while the ThemeProvider flags a
+   change (.theme-transitioning) so everyday hover states stay snappy.
+   Colors & shadows only — never layout. Skipped for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .dashboard-shell.theme-transitioning,
+  .dashboard-shell.theme-transitioning
+    *:not(svg):not(canvas):not(video):not(iframe):not(img) {
+    transition-property: background-color, background-image, border-color,
+      color, fill, stroke, box-shadow, outline-color;
+    transition-duration: 500ms;
+    transition-timing-function: ease;
+  }
+}
+
+/* Dashboard selection & scrollbar follow the active theme */
+.dashboard-shell ::selection {
+  background: color-mix(in srgb, var(--ik-accent) 25%, transparent);
+}
+.dashboard-shell ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.dashboard-shell ::-webkit-scrollbar-track {
+  background: var(--ik-bg);
+}
+.dashboard-shell ::-webkit-scrollbar-thumb {
+  background: var(--ik-panel-soft);
+  border-radius: 8px;
+  border: 2px solid var(--ik-bg);
+}
+.dashboard-shell ::-webkit-scrollbar-thumb:hover {
+  background: var(--ik-border);
+}
+
 @keyframes float-soft {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-0.5rem); }

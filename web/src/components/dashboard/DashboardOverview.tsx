@@ -61,24 +61,24 @@ export function DashboardOverview({
 
   return (
     <div className="space-y-6">
-      {/* 1. Header Banner inspired by Finance Assistant & 21st.dev */}
-      <section className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-[#0c1527] via-[#09101f] to-[#070b14] p-6 sm:p-8 shadow-[0_12px_40px_rgba(0,0,0,0.3)]">
-        {/* Subtle decorative glow */}
-        <div className="pointer-events-none absolute -top-24 left-1/4 h-64 w-64 rounded-full bg-cyan-500/15 blur-[90px]" />
-        <div className="pointer-events-none absolute -bottom-24 right-1/4 h-64 w-64 rounded-full bg-emerald-500/10 blur-[90px]" />
+      {/* 1. Header Banner */}
+      <section className="relative overflow-hidden rounded-3xl border border-ik-border bg-ik-panel p-6 sm:p-8 shadow-xl">
+        {/* Subtle decorative glow — theme-aware via --ik-glow */}
+        <div className="pointer-events-none absolute -top-24 left-1/4 h-64 w-64 rounded-full bg-ik-accent/15 blur-[90px]" />
+        <div className="pointer-events-none absolute -bottom-24 right-1/4 h-64 w-64 rounded-full bg-ik-success/10 blur-[90px]" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-300">
-              <Sparkles className="h-3.5 w-3.5 text-cyan-400 animate-pulse" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-ik-accent/20 bg-ik-accent/10 px-3 py-1 text-xs font-semibold text-ik-accent">
+              <Sparkles className="h-3.5 w-3.5 animate-pulse" />
               <span>پیش‌خوان هوشمند کسب‌وکار</span>
             </div>
 
-            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-3xl font-black text-ik-text tracking-tight">
               {greeting}، {business ? business.name : "کاربر گرامی"} 👋
             </h1>
 
-            <p className="text-xs sm:text-sm text-slate-400 max-w-xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-ik-muted max-w-xl leading-relaxed">
               {business
                 ? "به مرکز مدیریت نمایه خود خوش آمدید. از این بخش می‌توانید وضعیت انتشار، لوکیشن نقشه و بارکد اختصاصی مغازه خود را مدیریت کنید."
                 : "برای نمایش در سامانه کشف مشاغل و نقشه گلستان، لطفاً اطلاعات اولیه کسب‌وکار خود را تکمیل فرمایید."}
@@ -91,7 +91,7 @@ export function DashboardOverview({
               {business.badges.map((b) => (
                 <span
                   key={b}
-                  className="inline-flex items-center gap-1 rounded-xl bg-cyan-500/15 border border-cyan-500/30 px-3 py-1.5 text-xs font-semibold text-cyan-300 shadow-sm"
+                  className="inline-flex items-center gap-1 rounded-xl bg-ik-accent/15 border border-ik-accent/30 px-3 py-1.5 text-xs font-semibold text-ik-accent shadow-sm"
                 >
                   <Sparkles className="h-3 w-3" />
                   <span>{badgeLabel[b] || b}</span>
@@ -102,12 +102,12 @@ export function DashboardOverview({
         </div>
       </section>
 
-      {/* 2. 3 Bento Cards (The exact pattern user showed in screenshot 1 + inspired metrics) */}
+      {/* 2. 3 Bento Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Card 1: Verification & Status */}
-        <div className="relative flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-[#0c1424]/90 p-5 sm:p-6 backdrop-blur-xl shadow-lg transition-all hover:border-white/[0.15] hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
+        <div className="relative flex flex-col justify-between rounded-2xl border border-ik-border bg-ik-panel p-5 sm:p-6 shadow-lg transition-all hover:border-ik-accent/25 hover:shadow-xl">
           <div className="flex items-center justify-between gap-3 mb-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-purple-500/20">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ik-success text-ik-accent-contrast shadow-md">
               {status === "approved" ? (
                 <CheckCircle2 className="h-5 w-5" />
               ) : status === "pending" ? (
@@ -120,10 +120,10 @@ export function DashboardOverview({
             <span
               className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
                 status === "approved"
-                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                  ? "bg-ik-success/15 text-ik-success border-ik-success/30"
                   : status === "pending"
-                  ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                  : "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30"
+                  : "bg-ik-danger/15 text-ik-danger border-ik-danger/30"
               }`}
             >
               {statusLabel[status as keyof typeof statusLabel] || status}
@@ -131,8 +131,8 @@ export function DashboardOverview({
           </div>
 
           <div>
-            <h3 className="text-sm font-bold text-white mb-1">وضعیت انتشار کسب‌وکار</h3>
-            <p className="text-xs text-slate-400 leading-relaxed min-h-[36px]">
+            <h3 className="text-sm font-bold text-ik-text mb-1">وضعیت انتشار کسب‌وکار</h3>
+            <p className="text-xs text-ik-muted leading-relaxed min-h-[36px]">
               {status === "approved"
                 ? "کسب‌وکار شما تایید شده و در نقشه عمومی برای همگان قابل جستجو است."
                 : status === "pending"
@@ -141,18 +141,18 @@ export function DashboardOverview({
             </p>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
-            <span className="text-slate-500">مرحله قرارداد:</span>
-            <span className="font-semibold text-cyan-400">تعهد فاز ۱ و ۲</span>
+          <div className="mt-4 pt-3 border-t border-ik-border flex items-center justify-between text-xs">
+            <span className="text-ik-muted">مرحله قرارداد:</span>
+            <span className="font-semibold text-ik-accent">تاییدشده توسط سامانه</span>
           </div>
         </div>
 
-        {/* Card 2: Circular Completion & Checklist (from Finance template) */}
-        <div className="relative flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-[#0c1424]/90 p-5 sm:p-6 backdrop-blur-xl shadow-lg transition-all hover:border-white/[0.15] hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
+        {/* Card 2: Circular Completion & Checklist */}
+        <div className="relative flex flex-col justify-between rounded-2xl border border-ik-border bg-ik-panel p-5 sm:p-6 shadow-lg transition-all hover:border-ik-accent/25 hover:shadow-xl">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <span className="text-[11px] font-semibold text-cyan-400">پیشرفت نمایه</span>
-              <h3 className="text-sm font-bold text-white mt-0.5">درصد تکمیل پروفایل</h3>
+              <span className="text-[11px] font-semibold text-ik-accent">پیشرفت نمایه</span>
+              <h3 className="text-sm font-bold text-ik-text mt-0.5">درصد تکمیل پروفایل</h3>
             </div>
 
             {/* Circular Progress Widget */}
@@ -162,21 +162,21 @@ export function DashboardOverview({
                   cx="45"
                   cy="45"
                   r={radius}
-                  className="stroke-slate-800 fill-none"
+                  className="stroke-ik-border fill-none"
                   strokeWidth="8"
                 />
                 <circle
                   cx="45"
                   cy="45"
                   r={radius}
-                  className="stroke-cyan-400 fill-none transition-all duration-1000 ease-out"
+                  className="stroke-ik-accent fill-none transition-all duration-1000 ease-out"
                   strokeWidth="8"
                   strokeDasharray={circumference}
                   strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round"
                 />
               </svg>
-              <span className="absolute font-mono text-xs font-black text-white">
+              <span className="absolute font-mono text-xs font-black text-ik-text">
                 {completionRate}%
               </span>
             </div>
@@ -185,28 +185,28 @@ export function DashboardOverview({
           {/* Checklist mini bars */}
           <div className="space-y-1.5 text-[11px] my-1">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400 flex items-center gap-1">
-                <span className={`h-1.5 w-1.5 rounded-full ${hasLocation ? "bg-emerald-400" : "bg-slate-600"}`} />
+              <span className="text-ik-muted flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 rounded-full ${hasLocation ? "bg-ik-success" : "bg-ik-panel-hover"}`} />
                 <span>موقعیت نقشه</span>
               </span>
-              <span className={hasLocation ? "text-emerald-400 font-semibold" : "text-slate-500"}>
+              <span className={hasLocation ? "text-ik-success font-semibold" : "text-ik-muted"}>
                 {hasLocation ? "ثبت‌شده" : "ثبت‌نشده"}
               </span>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-slate-400 flex items-center gap-1">
-                <span className={`h-1.5 w-1.5 rounded-full ${hasImages ? "bg-emerald-400" : "bg-slate-600"}`} />
+              <span className="text-ik-muted flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 rounded-full ${hasImages ? "bg-ik-success" : "bg-ik-panel-hover"}`} />
                 <span>تصاویر و گالری</span>
               </span>
-              <span className="font-mono text-slate-300">{imagesCount}/۵ تصویر</span>
+              <span className="font-mono text-ik-muted">{imagesCount}/۵ تصویر</span>
             </div>
           </div>
 
           <button
             type="button"
             onClick={() => onNavigateTab("info")}
-            className="mt-3 flex items-center justify-between w-full pt-2.5 border-t border-white/5 text-xs font-semibold text-cyan-300 hover:text-cyan-200 cursor-pointer"
+            className="mt-3 flex items-center justify-between w-full pt-2.5 border-t border-ik-border text-xs font-semibold text-ik-accent hover:text-ik-accent-hover cursor-pointer"
           >
             <span>تکمیل اطلاعات کسب‌وکار</span>
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -214,9 +214,9 @@ export function DashboardOverview({
         </div>
 
         {/* Card 3: Public Link & QR Code (Contract Phase 2 mandate) */}
-        <div className="relative flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-[#0c1424]/90 p-5 sm:p-6 backdrop-blur-xl shadow-lg transition-all hover:border-white/[0.15] hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
+        <div className="relative flex flex-col justify-between rounded-2xl border border-ik-border bg-ik-panel p-5 sm:p-6 shadow-lg transition-all hover:border-ik-accent/25 hover:shadow-xl">
           <div className="flex items-center justify-between gap-3 mb-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ik-accent text-ik-accent-contrast font-bold shadow-md">
               <QrCode className="h-5 w-5" />
             </div>
 
@@ -224,7 +224,7 @@ export function DashboardOverview({
               <button
                 type="button"
                 onClick={onOpenQrModal}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-1 rounded-lg border border-cyan-500/30 cursor-pointer transition-colors"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-ik-accent bg-ik-accent/10 hover:bg-ik-accent/20 px-2 py-1 rounded-lg border border-ik-accent/30 cursor-pointer transition-colors"
               >
                 <span>دانلود QR</span>
                 <ArrowUpRight className="h-3 w-3" />
@@ -233,10 +233,10 @@ export function DashboardOverview({
           </div>
 
           <div>
-            <h3 className="text-sm font-bold text-white mb-1">صفحه مستقل و کد QR</h3>
-            <p className="text-xs text-slate-400 leading-relaxed min-h-[36px]">
+            <h3 className="text-sm font-bold text-ik-text mb-1">صفحه مستقل و کد QR</h3>
+            <p className="text-xs text-ik-muted leading-relaxed min-h-[36px]">
               {publicUrl ? (
-                <span className="truncate block font-mono text-cyan-300" dir="ltr">
+                <span className="truncate block font-mono text-ik-accent" dir="ltr">
                   {publicUrl}
                 </span>
               ) : (
@@ -245,25 +245,25 @@ export function DashboardOverview({
             </p>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-ik-border flex items-center justify-between text-xs">
             {publicUrl ? (
               <a
                 href={publicUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-cyan-300 hover:text-white font-medium"
+                className="inline-flex items-center gap-1 text-ik-accent hover:text-ik-accent-hover font-medium"
               >
                 <span>مشاهده صفحه عمومی</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
             ) : (
-              <span className="text-slate-500">غیرفعال در حالت پیش‌نویس</span>
+              <span className="text-ik-muted">غیرفعال در حالت پیش‌نویس</span>
             )}
 
             <button
               type="button"
               onClick={() => onNavigateTab("qr")}
-              className="text-slate-400 hover:text-white font-medium cursor-pointer"
+              className="text-ik-muted hover:text-ik-text font-medium cursor-pointer"
             >
               تنظیمات پیوند
             </button>
@@ -272,9 +272,9 @@ export function DashboardOverview({
       </div>
 
       {/* 3. Quick Action Navigation Row */}
-      <section className="rounded-2xl border border-white/[0.06] bg-[#09101d]/60 p-5 backdrop-blur-md">
-        <h3 className="text-xs font-bold text-slate-300 mb-3 flex items-center gap-2">
-          <Layers className="h-4 w-4 text-cyan-400" />
+      <section className="rounded-2xl border border-ik-border bg-ik-panel-soft/60 p-5">
+        <h3 className="text-xs font-bold text-ik-muted mb-3 flex items-center gap-2">
+          <Layers className="h-4 w-4 text-ik-accent" />
           <span>دسترسی‌های سریع به بخش‌های مدیریت:</span>
         </h3>
 
@@ -282,45 +282,45 @@ export function DashboardOverview({
           <button
             type="button"
             onClick={() => onNavigateTab("info")}
-            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.07] hover:border-cyan-500/30 transition-all cursor-pointer group text-center"
+            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-ik-border bg-ik-wash hover:bg-ik-wash-hover hover:border-ik-accent/30 transition-all cursor-pointer group text-center"
           >
-            <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+            <span className="text-xs font-bold text-ik-text group-hover:text-ik-accent transition-colors">
               مشخصات و تلفن
             </span>
-            <span className="text-[10px] text-slate-400 mt-0.5">نام، صنف و بیوگرافی</span>
+            <span className="text-[10px] text-ik-muted mt-0.5">نام، صنف و بیوگرافی</span>
           </button>
 
           <button
             type="button"
             onClick={() => onNavigateTab("location")}
-            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.07] hover:border-cyan-500/30 transition-all cursor-pointer group text-center"
+            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-ik-border bg-ik-wash hover:bg-ik-wash-hover hover:border-ik-accent/30 transition-all cursor-pointer group text-center"
           >
-            <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+            <span className="text-xs font-bold text-ik-text group-hover:text-ik-accent transition-colors">
               موقعیت روی نقشه
             </span>
-            <span className="text-[10px] text-slate-400 mt-0.5">ثبت دقیق پین فروشگاه</span>
+            <span className="text-[10px] text-ik-muted mt-0.5">ثبت دقیق پین فروشگاه</span>
           </button>
 
           <button
             type="button"
             onClick={() => onNavigateTab("media")}
-            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.07] hover:border-cyan-500/30 transition-all cursor-pointer group text-center"
+            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-ik-border bg-ik-wash hover:bg-ik-wash-hover hover:border-ik-accent/30 transition-all cursor-pointer group text-center"
           >
-            <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+            <span className="text-xs font-bold text-ik-text group-hover:text-ik-accent transition-colors">
               لوگو و تصاویر
             </span>
-            <span className="text-[10px] text-slate-400 mt-0.5">آپلود گالری و بنر</span>
+            <span className="text-[10px] text-ik-muted mt-0.5">آپلود گالری و بنر</span>
           </button>
 
           <button
             type="button"
             onClick={() => onNavigateTab("qr")}
-            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.07] hover:border-cyan-500/30 transition-all cursor-pointer group text-center"
+            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-ik-border bg-ik-wash hover:bg-ik-wash-hover hover:border-ik-accent/30 transition-all cursor-pointer group text-center"
           >
-            <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+            <span className="text-xs font-bold text-ik-text group-hover:text-ik-accent transition-colors">
               لینک و QR کد
             </span>
-            <span className="text-[10px] text-slate-400 mt-0.5">دریافت بارکد چاپی</span>
+            <span className="text-[10px] text-ik-muted mt-0.5">دریافت بارکد چاپی</span>
           </button>
         </div>
       </section>
