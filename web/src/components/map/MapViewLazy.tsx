@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { MapMarker, MapViewProps } from "./MapViewLeaflet";
+import type { MapViewPropsWithEvents } from "./MapView";
 
 export type { MapMarker, MapViewProps };
 
@@ -19,6 +20,6 @@ const MapViewLeafletClient = dynamic(() => import("./MapViewLeaflet"), {
   ),
 });
 
-export default function MapViewLazy(props: MapViewProps) {
+export default function MapViewLazy(props: MapViewPropsWithEvents) {
   return <MapViewLeafletClient {...props} />;
 }

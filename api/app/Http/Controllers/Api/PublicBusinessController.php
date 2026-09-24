@@ -20,7 +20,13 @@ class PublicBusinessController extends Controller
     }
     public function qr(Request $request, string $slug): Response
     {
-        $b = Business::where('slug', $slug)->where('status', 'approved')->firstOrFail();
+        $b = Business::where('slug', $slug)->firstOrFail();
+        if ($b->status !== 'approved') {
+            $user = $request->user('sanctum');
+            if (!$user || (int)$b->user_id !== (int)$user->id) {
+                abort(404);
+            }
+        }
         $qr = (new Builder(data: BusinessUrl::public($b, $request), writer: new SvgWriter(), size: 400, margin: 10))->build();
         return response($qr->getString(), 200, [
             'Content-Type' => 'image/svg+xml',

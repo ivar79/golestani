@@ -7,7 +7,7 @@ use App\Models\Business;
 use App\Services\BusinessAudit;
 use App\Services\BusinessMedia;
 use App\Services\BusinessPublication;
-use App\Services\SearchRankingService;
+
 use App\Support\BusinessUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,11 +19,11 @@ class BusinessController extends Controller
 {
     private function ownerData(Business $b): array
     {
-        return $b->toArray() + ['public_url' => BusinessUrl::public($b)];
+        return $b->loadMissing(['cards', 'designer:id,display_name,referral_code'])->toArray() + ['public_url' => BusinessUrl::public($b)];
     }
     public function index(Request $r): JsonResponse
     {
-        return response()->json($r->user()->businesses()->latest()->get()->map(fn(Business $b) => $this->ownerData($b)));
+        return response()->json($r->user()->businesses()->with(['cards', 'designer:id,display_name,referral_code'])->latest()->get()->map(fn(Business $b) => $this->ownerData($b)));
     }
     public function store(BusinessRequest $r): JsonResponse
     {
@@ -32,6 +32,7 @@ class BusinessController extends Controller
             $user = $r->user()->newQuery()->lockForUpdate()->findOrFail($r->user()->id);
             if ($user->hasRole('user') && !$user->hasRole('business_owner')) $user->assignRole('business_owner');
             $data = $r->validated();
+            $this->resolveDesignerAttribution($data);
             $data['slug'] = (Str::slug($data['name']) ?: 'business').'-'.Str::lower((string) Str::ulid());
             $data['status'] = 'pending';
             $b = $user->businesses()->create($data);
@@ -44,7 +45,7 @@ class BusinessController extends Controller
     public function show(Request $r, Business $business): JsonResponse
     {
         $this->authorizeOwner($r, $business);
-        return response()->json($this->ownerData($business->load('images')));
+        return response()->json($this->ownerData($business->load(['images', 'cards', 'designer:id,display_name,referral_code'])));
     }
     public function update(BusinessRequest $r, Business $business): JsonResponse
     {
@@ -52,7 +53,9 @@ class BusinessController extends Controller
             $b = Business::lockForUpdate()->findOrFail($business->id);
             $this->authorizeOwner($r, $b);
             $before = $b->status;
-            $b->fill($r->validated());
+            $data = $r->validated();
+            $this->resolveDesignerAttribution($data);
+            $b->fill($data);
             $fields = array_keys($b->getDirty());
             if ($fields !== []) {
                 BusinessPublication::invalidate($b);
@@ -138,7 +141,7 @@ class BusinessController extends Controller
         Cache::forget('search_facets_v1');
         return response()->json($this->ownerData($b));
     }
-    public function search(SearchBusinessRequest $r, SearchRankingService $ranking): JsonResponse
+    public function search(SearchBusinessRequest $r): JsonResponse
     {
         $data = $r->validated();
         $pgsql = DB::connection()->getDriverName() === 'pgsql';
@@ -161,17 +164,29 @@ class BusinessController extends Controller
         $hasPoint = isset($data['latitude'], $data['longitude']);
         if ($hasPoint && isset($data['radius']) && $pgsql) $query->whereRaw('ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)', [$data['longitude'], $data['latitude'], $data['radius']]);
         if ($hasPoint && $pgsql) {
-            $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderBy('distance_meters')->orderBy('id');
-        } else $query->latest()->orderByDesc('id');
+            // Phase 3 approved ordering: promoted first, then nearest, then id.
+            $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderByDesc('is_promoted')->orderBy('distance_meters')->orderBy('id');
+        } else $query->orderByDesc('is_promoted')->latest()->orderByDesc('id');
         $p = $query->paginate((int) ($data['limit'] ?? 20));
+        // Phase 3: cold-start rows (unclaimed) ride the same payload for the
+        // map but never belong to the visible list — subtract them from the
+        // paginated total so the front-end counter matches the card list,
+        // and report their count separately for observability.
+        $unclaimedTotal = (clone $query)->where('is_claimed', false)->toBase()->count();
         $items = $p->getCollection()->map(fn(Business $b) => [
             'id'=>$b->id,'slug'=>$b->slug,'name'=>$b->name,'category'=>$b->category,'city'=>$b->city,'neighborhood'=>$b->neighborhood,'address'=>$b->address,
             'coordinates'=>['latitude'=>$b->latitude,'longitude'=>$b->longitude],'distance'=>$b->distance_meters ?? null,
-            'verification_badge'=>in_array('verified',(array)$b->badges,true),'badges'=>$b->badges,'rating'=>null,
+            'verification_badge'=>in_array('verified',(array)$b->badges,true),'badges'=>$b->badges,
+            'is_promoted'=>(bool) $b->is_promoted,'is_claimed'=>(bool) $b->is_claimed,
+            'license_verified'=>filled($b->license_tracking_code),
+            // Phase 3: the raw code feeds the front-end license-track deep link
+            // (qr.mojavez.ir). Null for businesses without a license code.
+            'license_tracking_code'=>$b->license_tracking_code,
+            // Phase 3: map popups show the logo when one was uploaded.
+            'logo'=>$b->logo,
             'phone'=>$b->phone,'services'=>$b->services,'description'=>$b->description,
-            'navigation_url'=>$b->latitude === null || $b->longitude === null ? null : 'https://www.google.com/maps/dir/?api=1&destination='.$b->latitude.','.$b->longitude,
         ]);
-        return response()->json(['data'=>$items,'pagination'=>['page'=>$p->currentPage(),'limit'=>$p->perPage(),'total'=>$p->total(),'last_page'=>$p->lastPage(),'next_page'=>$p->nextPageUrl()]]);
+        return response()->json(['data'=>$items,'pagination'=>['page'=>$p->currentPage(),'limit'=>$p->perPage(),'total'=>max(0, $p->total() - $unclaimedTotal),'last_page'=>$p->lastPage(),'next_page'=>$p->nextPageUrl(),'unclaimed_total'=>$unclaimedTotal]]);
     }
     public function facets(): JsonResponse
     {
@@ -183,6 +198,27 @@ class BusinessController extends Controller
             return $result;
         }));
     }
+    /**
+     * Phase 4: attribution is resolved SERVER-SIDE from the referral code —
+     * designer_id is never accepted from the client. An explicitly empty
+     * code clears the attribution (owner removed the designer); an absent
+     * key on update keeps the current attribution untouched.
+     */
+    private function resolveDesignerAttribution(array &$data): void
+    {
+        $present = array_key_exists('designer_referral_code', $data) || array_key_exists('referral_code', $data);
+        $refCode = trim((string) ($data['designer_referral_code'] ?? $data['referral_code'] ?? ''));
+
+        if ($refCode !== '') {
+            $designer = \App\Models\Designer::where('referral_code', $refCode)->first();
+            $data['designer_id'] = $designer?->id;
+        } elseif ($present) {
+            $data['designer_id'] = null; // explicit clear
+        }
+
+        unset($data['designer_referral_code'], $data['referral_code']);
+    }
+
     private function syncGeometry(Business $b): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') return;

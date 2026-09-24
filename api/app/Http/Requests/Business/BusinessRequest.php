@@ -31,6 +31,8 @@ class BusinessRequest extends FormRequest
             // Paths cannot be assigned directly by owners. Use validated uploads.
             'logo' => ['prohibited'], 'cover_image' => ['prohibited'],
             'onboarding_path' => ['nullable','integer','in:1,2,3'],
+            'designer_referral_code' => ['nullable','string','max:32'],
+            'referral_code' => ['nullable','string','max:32'],
         ];
     }
     protected function prepareForValidation(): void

@@ -15,6 +15,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { getAllProvinces, type ProvinceData } from "@/lib/iranGeo";
+import { getPublicTaxonomies } from "@/lib/taxonomies";
 
 /**
  * تب‌های ۳گانه با حفظ کامل هویت بصری دارک آورورا
@@ -29,7 +30,7 @@ const POPULAR_SEARCHES = [
   "دندانپزشک نزدیک من",
 ];
 
-const CATEGORIES = [
+const FALLBACK_CATEGORIES = [
   { name: "خودرو", icon: Car },
   { name: "زیبایی و سلامت", icon: Heart },
   { name: "آموزش", icon: BookOpen },
@@ -37,7 +38,7 @@ const CATEGORIES = [
   { name: "خدمات منزل", icon: Wrench },
 ];
 
-const FEATURED_CITIES = ["تهران", "کرج", "مشهد", "اصفهان", "شیراز", "تبریز", "گرگان", "رشت", "اهواز"];
+const FALLBACK_FEATURED_CITIES = ["تهران", "کرج", "مشهد", "اصفهان", "شیراز", "تبریز", "گرگان", "رشت", "اهواز"];
 
 const TOP_5_PROVINCES = ["تهران", "خوزستان", "فارس", "اصفهان", "خراسان رضوی"];
 
@@ -58,8 +59,30 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [selectedProvince, setSelectedProvince] = useState<ProvinceData | null>(null);
   const [showAllProvinces, setShowAllProvinces] = useState(false);
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
+  const [featuredCities, setFeaturedCities] = useState(FALLBACK_FEATURED_CITIES);
   const inputRef = useRef<HTMLInputElement>(null);
   const isNavigatingRef = useRef(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void getPublicTaxonomies("category")
+        .then((rows) => {
+          if (rows.length) setCategories(rows.map((row, index) => ({ name: row.name, icon: FALLBACK_CATEGORIES[index % FALLBACK_CATEGORIES.length].icon })));
+        })
+        .catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void getPublicTaxonomies("city").then((rows) => {
+        if (rows.length) setFeaturedCities(rows.slice(0, 12).map((row) => row.name));
+      }).catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Reset navigation lock whenever modal open state changes
   useEffect(() => {
@@ -236,7 +259,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                 دسته‌بندی‌ها
               </h3>
               <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((item) => (
+                {categories.map((item) => (
                   <button
                     key={item.name}
                     type="button"
@@ -270,7 +293,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
               {/* Quick prominent cities */}
               <div className="flex flex-wrap gap-2">
-                {FEATURED_CITIES.map((city) => (
+                {featuredCities.map((city) => (
                   <button
                     key={city}
                     type="button"

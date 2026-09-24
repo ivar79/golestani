@@ -28,7 +28,7 @@ export type Business = {
   social_links?: string[] | Record<string, string>;
   status: BusinessStatus;
   moderation_note?: string;
-  logo?: string;
+  // logo: declared below with the Phase 3 fields (string | null | undefined).
   cover_image?: string;
   onboarding_path?: number;
   created_at?: string;
@@ -37,8 +37,15 @@ export type Business = {
   distance_meters?: number;
   verification_badge?: boolean;
   badges?: string[];
-  navigation_url?: string;
-  rating?: number | null;
+  /** Phase 3 approved flags — promotion/presentation only, no admin workflow. */
+  is_promoted?: boolean;
+  is_claimed?: boolean;
+  /** Derived server-side: license_tracking_code is present. */
+  license_verified?: boolean;
+  /** Raw tracking code (Phase 3): feeds the qr.mojavez.ir deep link. */
+  license_tracking_code?: string | null;
+  /** Public storage path (Phase 3): map popup logo slot. */
+  logo?: string | null;
   showcases?: Showcase[];
 };
 
@@ -88,7 +95,6 @@ export type BusinessSearchParams = {
   limit?: number;
   page?: number;
   verified?: boolean;
-  rating?: number;
   open?: boolean;
   subscription_level?: string;
   showcase?: boolean;

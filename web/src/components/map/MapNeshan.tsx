@@ -2,8 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type maplibregl from "@neshan-maps-platform/maplibre-sdk";
-import { neshanApiKey, neshanKeyPresent, neshanStyleUrl } from "@/lib/mapEngine";
+import {
+  FAILURE_KIND_INIT,
+  FAILURE_KIND_TILE,
+  type FailureKind,
+  INITIAL_PROVIDER_HEALTH,
+  neshanApiKey,
+  neshanKeyPresent,
+  neshanStyleUrl,
+  recordNeshanFailure,
+  resetTileFailureWindow,
+  TILE_FAILURE_WINDOW_MS,
+} from "@/lib/mapEngine";
+import { buildPopupDom } from "@/lib/mapPopupDom";
 import type { MapMarker, MapViewProps } from "./MapView";
+
+/** Props engine برای گزارش خطا/بازیابی به دیسپچر MapView (لایهٔ fallback). */
+export type EngineEvents = {
+  onEngineFailed?: (engine: "neshan" | "online", kind: FailureKind) => void;
+  onEngineRecovered?: (engine: "neshan" | "online") => void;
+};
 
 // تایپ‌های SDK از طریق namespace پیش‌فرض در دسترس‌اند (export مستقیم ندارند)
 type MLMap = InstanceType<typeof maplibregl.Map>;
@@ -31,7 +49,9 @@ export default function MapNeshan({
   onPick,
   autoFit = true,
   className = "h-full w-full",
-}: MapViewProps) {
+  onEngineFailed,
+  onEngineRecovered,
+}: MapViewProps & EngineEvents) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [mapInstance, setMapInstance] = useState<MLMap | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -43,6 +63,16 @@ export default function MapNeshan({
   const onPickRef = useRef(onPick);
   /** openBusinessPopup lives in a ref because marker listeners close over it. */
   const openPopupRef = useRef<(map: MLMap, item: MapMarker) => void>(() => {});
+  // شمارش خطاهای بحرانی تایل/استایل در پنجرهٔ کوتاه — طبق state machine لایهٔ mapEngine.
+  const tileHealthRef = useRef({ ...INITIAL_PROVIDER_HEALTH });
+  const failCbRef = useRef(onEngineFailed);
+  const recoverCbRef = useRef(onEngineRecovered);
+  useEffect(() => {
+    failCbRef.current = onEngineFailed;
+  }, [onEngineFailed]);
+  useEffect(() => {
+    recoverCbRef.current = onEngineRecovered;
+  }, [onEngineRecovered]);
   useEffect(() => {
     onSelectRef.current = onSelectMarker;
   }, [onSelectMarker]);
@@ -54,6 +84,15 @@ export default function MapNeshan({
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
+
+    // گارد کلید: بدون کلید نشان، SDK اصلاً instantiate نمی‌شود تا استثنای
+    // «Api key is not defined!» به کنسول/DevTools نریزد. به‌جای نمایش صفحهٔ
+    // خطا، خرابی init به دیسپچر MapView گزارش می‌شود تا موتور جایگزین
+    // (Leaflet) بی‌صدا فعال شود — تجربهٔ کاربر سالم می‌ماند.
+    if (!neshanKeyPresent) {
+      failCbRef.current?.("neshan", FAILURE_KIND_INIT);
+      return;
+    }
 
     let cancelled = false;
     let map: MLMap | null = null;
@@ -85,6 +124,10 @@ export default function MapNeshan({
 
         map.on("load", () => {
           if (cancelled) return;
+          // نشان با موفقیت بالا آمد: شمارنده‌های خرابی صفر می‌شود تا
+          // fallback/retry state machine بتواند دوباره نشان را ترجیح دهد.
+          recoverCbRef.current?.("neshan");
+          if (cancelled) return;
           // همگام‌سازی بی‌صدا دید با URL (replaceState، بدون رندر مجدد)
           let t: ReturnType<typeof setTimeout> | null = null;
           map!.on("moveend", () => {
@@ -101,18 +144,27 @@ export default function MapNeshan({
           });
         });
 
-        // خطاهای سطح اجرا (کلید نامعتبر، سهمیه، استایل در دسترس نیست)
+        // خطاهای سطح اجرا (کلید نامعتبر، سهمیه، استایل در دسترس نیست).
+        // طبقه‌بندی: خطای کلید/سهمیه/استایل = بحرانی (شمارش برای اعلام خرابی
+        // موتور)؛ خطای گذرا فقط warn. با رسیدن به آستانهٔ state machine، خرابی
+        // به دیسپچر گزارش می‌شود تا fallback انجام شود.
         map.on("error", (e: { error?: { message?: string } }) => {
           const msg = e.error?.message ?? "";
-          if (/Api key|KeyNotFound|LimitExceeded|RateExceeded|48[0-3]/i.test(msg)) {
-            setRuntimeError("سرویس نقشهٔ نشان در دسترس نیست (کلید نامعتبر یا سهمیه تمام شده).");
+          if (/Api key|KeyNotFound|LimitExceeded|RateExceeded|48[0-3]|Failed to fetch|style/i.test(msg)) {
+            const nowMs = Date.now();
+            const failed = recordNeshanFailure(tileHealthRef.current, FAILURE_KIND_TILE, nowMs);
+            if (failed && !cancelled) {
+              resetTileFailureWindow(tileHealthRef.current);
+              failCbRef.current?.("neshan", FAILURE_KIND_TILE);
+            }
           } else if (msg && !msg.includes("404")) {
             console.warn("Neshan engine warning:", msg);
           }
         });
       } catch (err) {
         console.error("خطا در ساخت نقشهٔ نشان:", err);
-        if (!cancelled) setRuntimeError("راه‌اندازی نقشهٔ نشان ناموفق بود.");
+        // init failure → سقوط فوری به fallback (بدون صفحهٔ خطا برای کاربر).
+        if (!cancelled) failCbRef.current?.("neshan", FAILURE_KIND_INIT);
       }
     })();
 
@@ -159,14 +211,17 @@ export default function MapNeshan({
         mlMarkersRef.current.push(marker);
       };
 
-      // پین موقعیت کاربر
+      // پین موقعیت کاربر — فقط markup ثابت (بدون دادهٔ کاربر) با DOM API.
       if (userCoords?.lat != null && userCoords?.lng != null) {
         const el = document.createElement("div");
         el.className = "cursor-pointer z-20";
-        el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow-[0_0_14px_rgba(56,189,248,0.9)]"></div>
-          </div>`;
+        const wrap = document.createElement("div");
+        wrap.className = "relative flex items-center justify-center";
+        const dot = document.createElement("div");
+        dot.className =
+          "w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow-[0_0_14px_rgba(56,189,248,0.9)]";
+        wrap.appendChild(dot);
+        el.appendChild(wrap);
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           onSelectRef.current?.("__user__");
@@ -181,23 +236,54 @@ export default function MapNeshan({
       markers.forEach((item) => {
         if (!Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)) return;
         const isSelected = selectedId === item.id;
+        const isUnclaimed = item.unclaimed === true; // Phase 3: gray pin for unclaimed
+        const isPromoted = item.promoted === true; // Phase 3: gold star pin for promoted
+        // پین‌های مارکر: فقط markup ثابت کامپوننت (رنگ/آیکون بر اساس state)،
+        // بدون هیچ interpolation دادهٔ کسب‌وکار — با DOM API (ضد XSS).
         const el = document.createElement("div");
         el.className = `cursor-pointer transition-transform duration-200 ${
           isSelected ? "scale-125 z-30" : "z-10 hover:scale-110"
         }`;
-        el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="w-8 h-8 rounded-full ${
-              isSelected
-                ? "bg-cyan-400 text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.8)]"
+        const wrap = document.createElement("div");
+        wrap.className = "relative flex items-center justify-center";
+        const badge = document.createElement("div");
+        badge.className = `w-8 h-8 rounded-full flex items-center justify-center ${
+          isSelected
+            ? "bg-cyan-400 text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.8)]"
+            : isUnclaimed
+              ? "bg-slate-400/90 text-slate-700 border border-slate-500/40 shadow-md"
+              : isPromoted
+                ? "bg-amber-500 text-white border border-amber-300/70 shadow-[0_0_14px_rgba(245,158,11,0.55)]"
                 : "bg-slate-900/90 text-cyan-400 border border-cyan-500/40 shadow-md"
-            } flex items-center justify-center">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-                <circle cx="12" cy="10" r="3"/>
-              </svg>
-            </div>
-          </div>`;
+        }`;
+        const NS = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(NS, "svg");
+        svg.setAttribute("class", "w-4 h-4");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2.5");
+        const pinPath = document.createElementNS(NS, "path");
+        pinPath.setAttribute("d", "M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z");
+        const circle = document.createElementNS(NS, "circle");
+        circle.setAttribute("cx", "12");
+        circle.setAttribute("cy", "10");
+        circle.setAttribute("r", "3");
+        svg.appendChild(pinPath);
+        svg.appendChild(circle);
+        if (isPromoted) {
+          const star = document.createElementNS(NS, "path");
+          star.setAttribute(
+            "d",
+            "M12 4.8l1.6 3.2 3.5.5-2.55 2.5.6 3.5L12 12.9l-3.15 1.6.6-3.5L6.9 8.5l3.5-.5L12 4.8z",
+          );
+          star.setAttribute("fill", "currentColor");
+          star.setAttribute("stroke", "none");
+          svg.appendChild(star);
+        }
+        badge.appendChild(svg);
+        wrap.appendChild(badge);
+        el.appendChild(wrap);
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           onSelectRef.current?.(item.id);
@@ -216,9 +302,31 @@ export default function MapNeshan({
   }, [mapInstance, markers, selectedId, userCoords]);
 
   // ۴. هم‌ترازی دید (رفتار معادل MapController لیفلت)
+  // نقشه داخل toggle لیست/نقشه مونت می‌شود: ظرف مخفی 0×0 است و fit اولیه
+  // غلط محاسبه می‌شود. بعد از اولین اندازهٔ واقعی (sizeTick) fit تکرار می‌شود.
+  const [sizeTick, setSizeTick] = useState(0);
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map) return;
+    const el = mountRef.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const ro = new ResizeObserver(() => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => setSizeTick((v) => v + 1), 150);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (t) clearTimeout(t);
+    }; 
+  }, [mapInstance]);
+
   useEffect(() => {
     const map = mapInstance;
     if (!map || !autoFit) return;
+    const el = mountRef.current;
+    if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
 
     const pts = markers.filter((m) => Number.isFinite(m.latitude) && Number.isFinite(m.longitude));
     if (pts.length >= 2) {
@@ -239,22 +347,19 @@ export default function MapNeshan({
       map.flyTo({ center: [center[1], center[0]], zoom: zoom ?? 12, duration: 600, essential: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapInstance, markers, autoFit]);
+  }, [mapInstance, markers, autoFit, sizeTick]);
 
-  /** Lightweight RTL popup for a business marker — title + subtitle + link, mirroring the Leaflet fallback. */
+  /** RTL popup — ساخته‌شده با DOM-safe builder ( ضد XSS؛ بدون innerHTML). */
   const openBusinessPopup = useCallback(
     (map: MLMap, item: MapMarker) => {
       void (async () => {
         const maplibregl = (await import("@neshan-maps-platform/maplibre-sdk")).default;
         mlPopupRef.current?.remove();
-        const html = document.createElement("div");
-        html.dir = "rtl";
-        html.className = "space-y-1 p-1 text-right";
-        html.innerHTML = `
-          <p class="text-sm font-bold text-slate-900">${item.title}</p>
-          ${item.subtitle ? `<p class="text-xs text-slate-600">${item.subtitle}</p>` : ""}
-          ${item.href ? `<a href="${item.href}" class="mt-1 inline-block text-xs font-semibold text-cyan-700 hover:underline">مشاهده صفحهٔ کسب‌وکار ←</a>` : ""}
-        `;
+        // Phase 3 semantics live in the shared builder: unclaimed → lightweight
+        // approved copy + only the /login claim CTA; claimed → logo + info + CTA.
+        // Security: business-controlled strings are set via textContent inside
+        // buildPopupDom — never interpolated into HTML.
+        const html = buildPopupDom(item);
         const popup = new maplibregl.Popup({ offset: 28, closeButton: true, maxWidth: "240px" })
           .setLngLat([item.longitude, item.latitude])
           .setDOMContent(html)
@@ -280,7 +385,14 @@ export default function MapNeshan({
   }, [mapInstance, selectedId, openBusinessPopup]);
 
   const handleRetry = useCallback(() => window.location.reload(), []);
-  const error = runtimeError ?? (neshanKeyPresent ? null : "کلید دسترسی نقشهٔ نشان تنظیم نشده است (NEXT_PUBLIC_NESHAN_MAP_KEY در web/.env.local).");
+  // فقط خطاهای runtime واقعی (که fallback هم نجات‌شان نمی‌دهد) به کاربر نشان
+  // داده می‌شوند؛ «کلید تنظیم نشده» دیگر صفحهٔ خطا نمی‌سازد — دیسپچر MapView
+  // خودکار به Leaflet سوییچ می‌کند و پیام فنی فقط در dev لازم است.
+  const error =
+    runtimeError ??
+    (!neshanKeyPresent && process.env.NODE_ENV === "development"
+      ? "NEXT_PUBLIC_NESHAN_MAP_KEY تنظیم نشده — fallback Leaflet فعال شد (فقط پیام dev)."
+      : null);
 
   return (
     <div className={className} dir="ltr">
@@ -294,6 +406,7 @@ export default function MapNeshan({
               ?mapsource=online
             </code>
           </p>
+          {/* نکته: این پیام فقط برای خطاهای runtime بحرانی (پس از تلاش fallback) نشان داده می‌شود؛ در حالت عادی دیسپچر MapView خودکار موتور جایگزین را فعال می‌کند. */}
           <button
             type="button"
             onClick={handleRetry}

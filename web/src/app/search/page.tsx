@@ -9,11 +9,13 @@ import {
   type Business,
   type SearchFacets,
 } from "@/lib/businesses";
-import { extractApiError } from "@/lib/api";
+import { extractApiError, default as api } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/businessSafety";
 import AppTaskbar from "@/components/layout/AppTaskbar";
 import { useLocationPick } from "@/hooks/useLocationPick";
 import LocationChip from "@/components/search/LocationChip";
-import MiniCard, { formatDistance } from "@/components/search/MiniCard";
+import MiniCard from "@/components/search/MiniCard";
+import { formatDistance } from "@/lib/format";
 import SearchFilters, {
   DEFAULT_FILTERS,
   type SearchFiltersState,
@@ -23,6 +25,14 @@ import SearchResultsSplitView, {
 } from "@/components/search/SearchResultsSplitView";
 import type { MapMarker } from "@/components/map/MapView";
 import { searchIranLocations, getProvince } from "@/lib/iranGeo";
+
+/**
+ * Phase 3 contract: the first 4 list slots are reserved for promoted
+ * (special/advertised) cards — the server already sorts is_promoted DESC
+ * before distance, so the first four promoted results are exactly the
+ * contract's "4 مینی‌کارت اول".
+ */
+const PROMOTED_CARD_CAP = 4;
 
 /** True for axios cancellation errors — these are expected, not user-facing failures. */
 function isCancellation(err: unknown): boolean {
@@ -123,6 +133,8 @@ function SearchPageContent() {
         );
         if (ac.signal.aborted) return;
         setItems(result.data ?? (result as unknown as Business[]));
+        // Phase 3: the API already excludes cold-start (unclaimed) pins from
+        // pagination.total — the counter matches the visible card list.
         setTotal(result.pagination?.total ?? result.data?.length ?? null);
       } catch (err: unknown) {
         if (isCancellation(err)) return;
@@ -198,9 +210,19 @@ function SearchPageContent() {
       href: `/b/${b.slug}`,
       category: b.category,
       distance: b.distance ?? null,
+      // Phase 3: unclaimed businesses render a gray pin with a simple popup.
+      unclaimed: b.is_claimed === false,
+      // Phase 3: promoted pins get the star/gold styling on the map.
+      promoted: b.is_promoted === true,
+      // Phase 3: popup logo slot (resolved to an absolute media URL).
+      logoUrl: resolveMediaUrl(api.defaults.baseURL || "", b.logo ?? null),
     }));
 
-  const cards: SplitViewCardData[] = items.map((b) => ({
+  // Phase 3 cold start: unclaimed businesses stay OFF the results list —
+  // they exist only as gray map pins so the map never looks empty.
+  const listableItems = items.filter((b) => b.is_claimed !== false);
+
+  const cards: SplitViewCardData[] = listableItems.map((b, index) => ({
     id: b.id,
     slug: b.slug,
     name: b.name,
@@ -210,8 +232,14 @@ function SearchPageContent() {
     verification_badge: b.verification_badge,
     distance: b.distance ?? null,
     featured:
+      // Phase 3: promoted businesses wear the ویژه styling — capped to the
+      // first 4 list slots (server sorts promoted first, then by distance).
+      (index < PROMOTED_CARD_CAP && b.is_promoted === true) ||
       filters.showcase ||
       (Array.isArray(b.badges) && b.badges.includes("showcase")),
+    // Phase 3 static license badge — presentation only, no verification workflow.
+    license_verified: b.license_verified === true,
+    license_tracking_code: b.license_tracking_code ?? null,
     phone: b.phone ?? null,
     latitude: b.latitude ?? null,
     longitude: b.longitude ?? null,

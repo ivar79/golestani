@@ -25,6 +25,10 @@ export type SplitViewCardData = {
   verification_badge?: boolean;
   distance?: number | null;
   featured?: boolean;
+  /** Static license badge (Phase 3) — presentation only. */
+  license_verified?: boolean;
+  /** Raw tracking code (Phase 3) — feeds the qr.mojavez.ir badge deep link. */
+  license_tracking_code?: string | null;
   phone?: string | null;
   latitude?: number | null;
   longitude?: number | null;

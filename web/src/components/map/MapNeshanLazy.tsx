@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { MapViewProps } from "./MapView";
+import type { MapViewPropsWithEvents } from "./MapView";
 
 /**
  * بارگذاری تنبل موتور نشان — SDK به window/DOM دسترسی دارد و هرگز نباید روی
@@ -19,6 +19,6 @@ const MapNeshan = dynamic(() => import("./MapNeshan"), {
   ),
 });
 
-export default function MapNeshanLazy(props: MapViewProps) {
+export default function MapNeshanLazy(props: MapViewPropsWithEvents) {
   return <MapNeshan {...props} />;
 }

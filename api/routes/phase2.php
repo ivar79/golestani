@@ -10,4 +10,6 @@ Route::middleware(['auth:sanctum','role:business_owner,user,admin','throttle:30,
 Route::middleware(['auth:sanctum','role:admin','throttle:60,1'])->group(function (): void {
     Route::get('/admin/businesses', [AdminBusinessController::class,'index']);
     Route::get('/admin/businesses/{business}/audit', [AdminBusinessController::class,'audit']);
+    // Phase 3 featured ladder: single-field toggle, admin-only.
+    Route::patch('/admin/businesses/{business}/promote', [AdminBusinessController::class,'promote']);
 });

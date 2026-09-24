@@ -58,5 +58,41 @@ export const activeMarkerIcon = L.divIcon({
   popupAnchor: [0, -44],
 });
 
+// Unclaimed business marker (neutral gray pin — Phase 3, same geometry as businessMarkerIcon)
+export const unclaimedMarkerIcon = L.divIcon({
+  className: "custom-leaflet-unclaimed-marker",
+  html: `
+    <div style="position: relative; width: 32px; height: 42px; transform: translate(-50%, -100%); cursor: pointer; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25));">
+      <svg viewBox="0 0 32 42" width="32" height="42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 0C7.163 0 0 7.163 0 16c0 11.2 14.4 24.8 15.04 25.4.52.52 1.4.52 1.92 0C17.6 40.8 32 27.2 32 16 32 7.163 24.837 0 16 0z" fill="#9ca3af"/>
+        <path d="M16 2C8.268 2 2 8.268 2 16c0 9.8 12.6 22 14 23.4 1.4-1.4 14-13.6 14-23.4 0-7.732-6.268-14-14-14z" fill="#6b7280"/>
+        <circle cx="16" cy="15" r="7" fill="#ffffff"/>
+        <circle cx="16" cy="15" r="4" fill="#6b7280"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [32, 42],
+  iconAnchor: [16, 42],
+  popupAnchor: [0, -38],
+});
+
+// Promoted (ویژه) business marker — gold pin with a star glyph (Phase 3)
+export const promotedMarkerIcon = L.divIcon({
+  className: "custom-leaflet-promoted-marker",
+  html: `
+    <div style="position: relative; width: 34px; height: 44px; transform: translate(-50%, -100%); cursor: pointer; filter: drop-shadow(0 4px 8px rgba(245, 158, 11, 0.45));">
+      <svg viewBox="0 0 32 42" width="34" height="44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 0C7.163 0 0 7.163 0 16c0 11.2 14.4 24.8 15.04 25.4.52.52 1.4.52 1.92 0C17.6 40.8 32 27.2 32 16 32 7.163 24.837 0 16 0z" fill="#f59e0b"/>
+        <path d="M16 2C8.268 2 2 8.268 2 16c0 9.8 12.6 22 14 23.4 1.4-1.4 14-13.6 14-23.4 0-7.732-6.268-14-14-14z" fill="#d97706"/>
+        <circle cx="16" cy="15" r="8" fill="#ffffff"/>
+        <path d="M16 9.6l1.6 3.2 3.5.5-2.55 2.5.6 3.5L16 17.7l-3.15 1.6.6-3.5L10.9 13.3l3.5-.5L16 9.6z" fill="#b45309"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [34, 44],
+  iconAnchor: [17, 44],
+  popupAnchor: [0, -40],
+});
+
 // Set default fallback icon in case anything falls back
 L.Marker.prototype.options.icon = businessMarkerIcon;

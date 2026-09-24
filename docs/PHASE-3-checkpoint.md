@@ -12,8 +12,9 @@
 - pagination استاندارد شامل data، page، limit، total، last_page و next_page است.
 - PostGIS با SRID 4326 و GIST index برای radius، nearest sorting و distance calculation استفاده می‌شود.
 - درایور غیر PostgreSQL از توابع PostGIS استفاده نمی‌کند و جست‌وجوی متنی/فیلتر عادی بدون crash ادامه پیدا می‌کند؛ محاسبه فاصله در fallback غیرفعال است.
-- navigation_url در response از مختصات تولید می‌شود و منطق provider در database ذخیره نمی‌شود.
-- `SearchRankingService` امتیازدهی پایه exact match، verified و کامل بودن پروفایل را جدا می‌کند؛ distance همچنان با مرتب‌سازی spatial مقدم است.
+- navigation_url و rating از payload حذف شدند (2026-09-23): صفر مصرف‌کننده در فرانت و تست — نقشه از مختصات مستقیم استفاده می‌کند (Neshan SDK) و مسیریابی سمت کلاینت ساخته نمی‌شود.
+- رتبه‌بندی جستجو: `is_promoted DESC → distance ASC → id` (شاخه spatial) و `is_promoted DESC → created DESC → id` (fallback) — سرویس جداگانه SearchRankingService حذف شد (dead code، صفر مصرف‌کننده).
+- «نردبان کسب‌وکار» (درخواست گلستانی): `PATCH /admin/businesses/{id}/promote` با `is_promoted` بولین — تنها مسیر تغییر این فیلد، فقط ادمین، ضد mass-assignment، با audit log (`business.promoted`). دکمه/سوییچ در میزکار ادمین کسب‌وکارها.
 
 ## API
 
@@ -21,7 +22,7 @@
 
 پارامترها: `q`, `category`, `city`, `neighborhood`, `verified`, `rating`, `open`, `subscription_level`, `showcase`, `latitude`, `longitude`, `radius`, `page`, `limit`.
 
-Response شامل business fields استاندارد، coordinates، distance، verification_badge، badges، rating، phone، services، description و navigation_url است.
+Response شامل business fields استاندارد، coordinates، distance، verification_badge، badges، is_promoted، is_claimed، license_verified، license_tracking_code، logo، phone، services و description است (rating و navigation_url در 2026-09-23 حذف شدند — صفر مصرف‌کننده).
 
 ## Frontend
 
@@ -34,11 +35,11 @@ Response شامل business fields استاندارد، coordinates، distance، 
 
 Geometry migration و index موجود حفظ شدند. برای taxonomy مستقل Category/Province/City/Neighborhood و cache فهرست‌ها، schema رسمی فعلی وجود نداشت؛ این بخش بدون حدس‌زدن مدل جدید وارد قرارداد فعلی نشد.
 
-## تست و وضعیت
+## تست و وضعیت (به‌روزشده 2026-09-23)
 
-- PHP syntax: PASS.
-- Frontend lint/typecheck/build: PASS پس از اجرای نهایی لازم است.
-- PHPUnit: pending Docker/PostgreSQL verification؛ محیط host فاقد SQLite PDO است و تست backend Pass محسوب نمی‌شود.
+- PHPUnit: PASS — 320 tests (شامل 7 تست جدید BusinessPromotionTest: authz ادمین/کاربر/مهمان، ضد mass-assignment، ترتیب نردبان).
+- Frontend node --test: PASS — 103 tests. tsc --noEmit: PASS.
+- Browser verification: PASS — promote از میزکار ادمین → DB/audit/جستجوی عمومی → ترتیب is_promoted DESC سپس distance ASC در عمل اثبات شد (promoted 488m قبل از 0m غیر-promoted)؛ خاموش‌کردن → بازگشت ترتیب فاصله‌ای؛ bypass کاربر عادی 403، مهمان 401؛ بدون refetch/regression.
 
 ## Backup
 

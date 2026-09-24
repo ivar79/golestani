@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Phone, Route } from "lucide-react";
+import { Phone, Route, ShieldCheck } from "lucide-react";
 import HomeIcon from "@/components/home/HomeIcon";
 import type { Business } from "@/lib/businesses";
+import { buildLicenseTrackUrl } from "@/lib/license";
+import { formatDistance } from "@/lib/format";
+
+/** Shared Phase 3 distance formatter (moved to @/lib/format for testability). */
+export { formatDistance };
 
 export type MiniCardData = Pick<
   Business,
@@ -13,18 +18,16 @@ export type MiniCardData = Pick<
   distance?: number | null;
   /** Featured/showcase flag (real API badge or the showcase filter match). */
   featured?: boolean;
+  /** Phase 3 static license badge — presentation only (license_tracking_code present). */
+  license_verified?: boolean;
+  /** Raw tracking code (Phase 3) — feeds the qr.mojavez.ir badge deep link. */
+  license_tracking_code?: string | null;
   /** Public contact phone (E.164 or 09xxxxxxxxx) — enables the tel: action. */
   phone?: string | null;
   /** Coordinates enable the routing action buttons (نشان / بلد / گوگل‌مپس). */
   latitude?: number | null;
   longitude?: number | null;
 };
-
-/** Format meters the way the contract UI shows them: <۱۰۰۰ m → متر, else کیلومتر. */
-export function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters).toLocaleString("fa-IR")} متر`;
-  return `${(meters / 1000).toLocaleString("fa-IR", { maximumFractionDigits: 1 })} کیلومتر`;
-}
 
 function locationLabel(b: MiniCardData): string | null {
   return b.neighborhood || b.city || null;
@@ -87,6 +90,9 @@ function RoutingButtons({ lat, lng, name }: { lat: number; lng: number; name: st
 export default function MiniCard({ business }: { business: MiniCardData }) {
   const verified = business.verification_badge === true;
   const featured = business.featured === true;
+  // Phase 3: static license badge — presentation only; distinct from the
+  // admin "verified" badge and the showcase/featured styling.
+  const licenseVerified = business.license_verified === true;
   const location = locationLabel(business);
   const hasDistance = typeof business.distance === "number" && business.distance >= 0;
   const hasPhone = typeof business.phone === "string" && business.phone.trim().length > 0;
@@ -114,6 +120,33 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
               {business.name}
             </h3>
             {verified && <HomeIcon name="verified" className="h-4 w-4 shrink-0 text-secondary" />}
+            {licenseVerified &&
+              (() => {
+                // Phase 3 approved behavior: the badge links to the official
+                // license tracking system so visitors can verify the permit.
+                const trackUrl = buildLicenseTrackUrl(business.license_tracking_code);
+                const icon = <ShieldCheck className="h-4 w-4 text-emerald-400" aria-hidden="true" />;
+                const title = "تاییدیه پروانه کسب — مشاهده در سامانه پیگیری مجوز";
+                if (!trackUrl) {
+                  return (
+                    <span title={title} aria-label={title} className="flex shrink-0">
+                      {icon}
+                    </span>
+                  );
+                }
+                return (
+                  <a
+                    href={trackUrl}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    title={title}
+                    aria-label={title}
+                    className="flex shrink-0 transition-opacity hover:opacity-75"
+                  >
+                    {icon}
+                  </a>
+                );
+              })()}
           </div>
           <p className="mt-1 text-sm text-on-surface-variant">{business.category ?? "کسب‌وکار محلی"}</p>
         </div>

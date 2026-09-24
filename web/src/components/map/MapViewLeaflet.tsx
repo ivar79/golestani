@@ -1,11 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import type { LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { businessMarkerIcon, userLocationMarkerIcon, activeMarkerIcon } from "./leafletIcons";
-import { osmAttribution, osmRasterUrl } from "@/lib/mapEngine";
+import {
+  businessMarkerIcon,
+  userLocationMarkerIcon,
+  activeMarkerIcon,
+  unclaimedMarkerIcon,
+  promotedMarkerIcon,
+} from "./leafletIcons";
+import {
+  FAILURE_KIND_TILE,
+  INITIAL_PROVIDER_HEALTH,
+  osmAttribution,
+  osmRasterUrl,
+  recordTileFailure,
+  resetTileFailureWindow,
+  TILE_FAILURE_WINDOW_MS,
+  type FailureKind,
+} from "@/lib/mapEngine";
+
+/** Props engine برای گزارش خطا به دیسپچر MapView (لایهٔ fallback دوطرفه). */
+export type EngineEvents = {
+  onEngineFailed?: (engine: "neshan" | "online", kind: FailureKind) => void;
+  onEngineRecovered?: (engine: "neshan" | "online") => void;
+};
 
 export type MapMarker = {
   id: number | string;
@@ -16,6 +37,12 @@ export type MapMarker = {
   href?: string;
   category?: string;
   distance?: number | null;
+  /** Phase 3: unclaimed businesses get a gray pin + simple popup (no CTA). */
+  unclaimed?: boolean;
+  /** Phase 3: promoted (ویژه) businesses get a gold star pin. */
+  promoted?: boolean;
+  /** Phase 3: absolute logo URL for the claimed-business popup. */
+  logoUrl?: string | null;
 };
 
 export type MapViewProps = {
@@ -45,18 +72,33 @@ function MapController({
   autoFit: boolean;
 }) {
   const map = useMap();
-
   // نقشه داخل toggle لیست/نقشه مونت می‌شود: وقتی مخفی است ظرف 0x0 است و
-  // لیفلت اندازهٔ غلط کش می‌کند و فقط یک تایل ناقص لود می‌کند.
+  // لیفلت اندازهٔ غلط کش می‌کند و فقط یک تایل ناقص لود می‌کند. بعد از اولین
+  // اندازهٔ واقعی، fit مجدد لازم است (sizeTick هم‌زمان افکت fit را دوباره
+  // اجرا می‌کند) وگرنه مارکرها خارج از دید محاسبه شده‌اند.
+  const [sizeTick, setSizeTick] = useState(0);
+
   useEffect(() => {
     const el = map.getContainer();
-    const ro = new ResizeObserver(() => map.invalidateSize());
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const ro = new ResizeObserver(() => {
+      map.invalidateSize();
+      if (t) clearTimeout(t);
+      t = setTimeout(() => setSizeTick((v) => v + 1), 150);
+    });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (t) clearTimeout(t);
+    };
   }, [map]);
 
   useEffect(() => {
     if (!autoFit) return;
+    const el = map.getContainer();
+    // ظرف هنوز مخفی/0×0 است: fit اکنون بی‌معناست؛ بعد از resize واقعی،
+    // sizeTick این افکت را دوباره اجرا می‌کند.
+    if (el.clientWidth === 0 || el.clientHeight === 0) return;
     const points: [number, number][] = [];
     if (userCoords?.lat && userCoords?.lng) {
       points.push([userCoords.lat, userCoords.lng]);
@@ -74,7 +116,7 @@ function MapController({
     } else if (center) {
       map.setView(center, zoom ?? 12);
     }
-  }, [markers, center, zoom, userCoords, autoFit, map]);
+  }, [markers, center, zoom, userCoords, autoFit, map, sizeTick]);
 
   return null;
 }
@@ -113,10 +155,11 @@ function ClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void })
 }
 
 /**
- * MapViewLeaflet — موتور fallback (Leaflet + رستر عمومی OSM).
- * ساده و بدون وابستگی محلی: یک TileLayer که همیشه کار می‌کند.
- * فقط وقتی ?mapsource=online یا NEXT_PUBLIC_MAP_ENGINE=online فعال می‌شود؛
- * با پایداری SDK نشان، در فاز بعدی حذف خواهد شد.
+ * MapViewLeaflet — موتور fallback (Leaflet + رستر مستقل از نشان؛ پیش‌فرض OSM).
+ * منبع تایل با NEXT_PUBLIC_LEAFLET_TILE_URL قابل تعویض است (برای بار production
+ * باید تأمین‌کنندهٔ مجاز طبق سیاست استفاده تنظیم شود). خطاهای تایل تکراری در
+ * پنجرهٔ کوتاه (طبق state machine در mapEngine) به دیسپچر گزارش می‌شوند تا در
+ * صورت موجودبودن، تلاش دوبارهٔ موتور نشان انجام شود.
  */
 export default function MapViewLeaflet({
   markers,
@@ -128,10 +171,28 @@ export default function MapViewLeaflet({
   onSelectMarker,
   autoFit = true,
   className = "h-[460px] w-full",
-}: MapViewProps) {
-  // رستر آنلاین OSM — قالب تایل و attribution از mapEngine (قابل override با env)
+  onEngineFailed,
+}: MapViewProps & EngineEvents) {
+  // رستر آنلاین — قالب تایل و attribution از mapEngine (قابل override با env؛
+  // پیش‌فرض OSM عمومی، مستقل از نشان)
   const rasterUrl = useMemo(() => osmRasterUrl(), []);
   const attribution = useMemo(() => osmAttribution, []);
+
+  // شمارش خطاهای بحرانی تایل در پنجرهٔ کوتاه — فقط با رسیدن به آستانهٔ state
+  // machine به دیسپچر گزارش می‌شود (خطای تکی گذرا سبب تعویض موتور نمی‌شود).
+  const tileHealthRef = useRef({ ...INITIAL_PROVIDER_HEALTH });
+  const failCbRef = useRef(onEngineFailed);
+  useEffect(() => {
+    failCbRef.current = onEngineFailed;
+  }, [onEngineFailed]);
+  const handleTileError = useCallback(() => {
+    const nowMs = Date.now();
+    const failed = recordTileFailure(tileHealthRef.current, nowMs);
+    if (failed) {
+      resetTileFailureWindow(tileHealthRef.current);
+      failCbRef.current?.("online", FAILURE_KIND_TILE);
+    }
+  }, []);
 
   const handleSelect = useCallback(
     (id: number | string) => onSelectMarker?.(id),
@@ -150,7 +211,7 @@ export default function MapViewLeaflet({
         scrollWheelZoom
         className="h-full w-full rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-[#0e1726] shadow-sm"
       >
-        <TileLayer url={rasterUrl} attribution={attribution} maxZoom={19} />
+        <TileLayer url={rasterUrl} attribution={attribution} maxZoom={19} eventHandlers={{ tileerror: handleTileError }} />
 
         {/* User Location Marker */}
         {userCoords?.lat && userCoords?.lng && (
@@ -175,16 +236,59 @@ export default function MapViewLeaflet({
             <Marker
               key={m.id}
               position={[m.latitude, m.longitude]}
-              icon={m.id === selectedId ? activeMarkerIcon : businessMarkerIcon}
+              icon={
+                m.id === selectedId
+                  ? activeMarkerIcon
+                  : m.unclaimed
+                    ? unclaimedMarkerIcon
+                    : m.promoted
+                      ? promotedMarkerIcon
+                      : businessMarkerIcon
+              }
               eventHandlers={{
                 click: () => handleSelect(m.id),
               }}
             >
               <Popup>
-                <div dir="rtl" className="p-2 min-w-[160px] text-right font-sans">
-                  <strong className="block text-sm text-slate-900 font-bold mb-1">
-                    {m.title}
-                  </strong>
+                {m.unclaimed ? (
+                  /* Phase 3 approved copy — gray pin, lightweight popup, no
+                     profile/social links. The claim CTA goes to /login (the
+                     OTP login+signup page); the real claim flow is a later
+                     phase, so this link intentionally leads to the generic
+                     entry point. */
+                  <div dir="rtl" className="p-2 min-w-[200px] max-w-[240px] text-right font-sans">
+                    <strong className="block text-sm text-slate-900 font-bold mb-1">
+                      {m.title}
+                    </strong>
+                    {m.category && (
+                      <span className="text-xs text-slate-500 mb-2 block">{m.category}</span>
+                    )}
+                    <p className="text-[11px] leading-relaxed text-slate-600 mb-2">
+                      این کسب‌وکار هنوز در اینکارت فعال نشده است.
+                    </p>
+                    <a
+                      href="/login"
+                      className="block w-full py-1.5 px-2 bg-[#0b1626] hover:bg-[#00c98d] hover:text-[#0b1626] text-white text-[11px] font-bold rounded-lg text-center transition-colors"
+                    >
+                      صاحب این کسب‌وکار هستید؟ ثبت مالکیت رایگان
+                    </a>
+                  </div>
+                ) : (
+                <div dir="rtl" className="p-2 min-w-[200px] max-w-[260px] text-right font-sans">
+                  <div className="flex items-center gap-2 mb-1">
+                    {m.logoUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={m.logoUrl}
+                        alt=""
+                        className="h-9 w-9 rounded-lg object-cover shrink-0"
+                        loading="lazy"
+                      />
+                    ) : null}
+                    <strong className="block text-sm text-slate-900 font-bold">
+                      {m.title}
+                    </strong>
+                  </div>
                   {m.category && (
                     <span className="inline-block text-xs text-slate-500 mb-1">
                       {m.category}
@@ -200,10 +304,11 @@ export default function MapViewLeaflet({
                       href={m.href}
                       className="mt-2 block w-full py-1 px-2.5 bg-[#0b1626] hover:bg-[#00c98d] hover:text-[#0b1626] text-white text-xs font-bold rounded-lg text-center transition-colors"
                     >
-                      مشاهده پروفایل و کارت →
+                      مشاهده کارت ویزیت
                     </a>
                   )}
                 </div>
+                )}
               </Popup>
             </Marker>
           ) : null

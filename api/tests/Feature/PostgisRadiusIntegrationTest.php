@@ -118,6 +118,26 @@ class PostgisRadiusIntegrationTest extends TestCase
         $this->assertSame([$near->id], collect($tight->json('data'))->pluck('id')->all());
     }
 
+    /** Phase 3 (B/F): promoted DESC outranks distance ASC on real PostGIS. */
+    public function test_promoted_business_sorts_before_nearer_business_on_postgis(): void
+    {
+        $near = $this->makeGeoBusiness('نزدیک', 35.6892, 51.3890);
+        $far = $this->makeGeoBusiness('دورترِ ویژه', 35.6892, 51.4200); // ~2.9km east
+        $far->update(['is_promoted' => true]);
+
+        $res = $this->getJson('/api/search/businesses?latitude=35.6892&longitude=51.3890&radius=5000&category=کافه')
+            ->assertOk();
+
+        // The farther promoted business must rank first, beating pure distance order.
+        $this->assertSame([$far->id, $near->id], collect($res->json('data'))->pluck('id')->all());
+
+        // Payload flags travel through the spatial branch too.
+        $rows = collect($res->json('data'))->keyBy('id');
+        $this->assertTrue($rows[$far->id]['is_promoted']);
+        $this->assertFalse($rows[$near->id]['is_promoted']);
+        $this->assertTrue($rows[$far->id]['is_claimed']);
+    }
+
     /** A business without coordinates can never leak into a radius result set. */
     public function test_business_without_geom_is_excluded_from_radius_results(): void
     {
@@ -137,5 +157,37 @@ class PostgisRadiusIntegrationTest extends TestCase
             ->assertOk();
 
         $this->assertNotContains($floating->id, collect($res->json('data'))->pluck('id'));
+    }
+
+    /**
+     * Phase 3 cold start: unclaimed rows must be fully first-class citizens
+     * of the spatial query — geom backfilled, distance computed, radius
+     * filtering applied — so gray pins behave exactly like claimed pins.
+     */
+    public function test_unclaimed_businesses_work_with_postgis_radius_and_distance(): void
+    {
+        $seeder = new \Database\Seeders\UnclaimedBusinessSeeder;
+        $seeder->run();
+
+        $unclaimedNear = Business::where('slug', 'unclaimed-vanak-florist')->firstOrFail();
+        $this->assertFalse($unclaimedNear->is_claimed);
+
+        // geom was backfilled by the seeder — prove it.
+        $geom = DB::selectOne('SELECT ST_AsText(geom) AS wkt FROM businesses WHERE id = ?', [$unclaimedNear->id]);
+        $this->assertNotNull($geom?->wkt);
+        $this->assertStringStartsWith('POINT(51.4102 35.7597)', (string) $geom->wkt);
+
+        // Radius around Vanak (~600m from the florist) must include it with
+        // a real ST_Distance value, same as claimed businesses.
+        $res = $this->getJson('/api/search/businesses?latitude=35.7597&longitude=51.4102&radius=600')
+            ->assertOk();
+
+        $rows = collect($res->json('data'))->keyBy('id');
+        $this->assertArrayHasKey($unclaimedNear->id, $rows);
+        $this->assertFalse($rows[$unclaimedNear->id]['is_claimed']);
+        $this->assertNotNull($rows[$unclaimedNear->id]['distance']);
+
+        // And the pagination counter separates it from the listable total.
+        $this->assertGreaterThanOrEqual(1, (int) $res->json('pagination.unclaimed_total'));
     }
 }

@@ -2,13 +2,33 @@ import api from "@/lib/api";
 import type { Business, BusinessStatus } from "@/lib/businesses";
 
 export type BusinessImage = { id: number; path: string; alt: string | null };
-export type Phase2Business = Business & { public_url?: string; images?: BusinessImage[] };
+export type CardSummary = {
+  id: number;
+  template: string;
+  theme: string;
+  font_size: string;
+  font_family?: string;
+  print_file_path?: string | null;
+  print_file_name?: string | null;
+  print_file_mime?: string | null;
+  /** Phase 4: always null — print files are private; use downloadPrintFile(). */
+  print_file_url?: string | null;
+  has_print_file?: boolean;
+};
+export type Phase2Business = Business & {
+  public_url?: string;
+  images?: BusinessImage[];
+  cards?: CardSummary[];
+  designer?: { id: number; display_name: string; referral_code: string } | null;
+};
 export type BusinessInput = {
   name: string; category: string | null; description: string | null;
   phone: string | null; email: string | null; address: string | null;
   city: string | null; neighborhood: string | null;
   latitude: number | null; longitude: number | null;
   services: string[]; social_links: Record<string, string>;
+  designer_referral_code?: string | null;
+  referral_code?: string | null;
 };
 export type Page<T> = { data: T[]; current_page: number; last_page: number; total: number };
 export type AuditEvent = { id: number; actor_id: number | null; event: string; metadata: string | Record<string, unknown>; created_at: string };
@@ -31,6 +51,9 @@ export const getAdminBusinesses = (status: string, q: string, page: number, sign
   api.get<Page<Phase2Business>>("/admin/businesses", { params: { status: status || undefined, q: q || undefined, page }, signal }).then(r => r.data);
 export const moderateBusiness = (id: number, status: "approved" | "rejected" | "suspended", moderation_note: string, badges: string[]) =>
   api.patch<Phase2Business>(`/admin/businesses/${id}/moderate`, { status, moderation_note: moderation_note || null, badges }).then(r => r.data);
+/** Phase 3 featured ladder: the ONLY way is_promoted changes (admin-only). */
+export const promoteBusiness = (id: number, is_promoted: boolean) =>
+  api.patch<{ id: number; slug: string; name: string; is_promoted: boolean }>(`/admin/businesses/${id}/promote`, { is_promoted }).then(r => r.data);
 export const getBusinessAudit = (id: number, page = 1) => api.get<Page<AuditEvent>>(`/admin/businesses/${id}/audit`, { params: { page } }).then(r => r.data);
 
 
