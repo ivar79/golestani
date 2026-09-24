@@ -30,6 +30,26 @@ class OtpService
         Cache::forget($this->attemptsKey($phone));
     }
 
+    /**
+     * Drop a just-stored OTP and refund one send-slot when delivery failed.
+     *
+     * Without this, a provider outage would leave a valid code in the cache
+     * while the user never receives it (and their send budget is consumed).
+     * Only the SMS_DRIVER=log path can return true without a real dispatch;
+     * real providers throw instead, which is exactly when rollback matters.
+     */
+    public function discardFailedSend(string $phone): void
+    {
+        Cache::forget($this->otpKey($phone));
+
+        $key = $this->sendCountKey($phone);
+        $count = (int) Cache::get($key, 0);
+
+        if ($count > 0) {
+            Cache::put($key, $count - 1, now()->addSeconds(self::SENDS_TTL_SECONDS));
+        }
+    }
+
     public function verify(string $phone, string $code): bool
     {
         $hash = Cache::get($this->otpKey($phone));

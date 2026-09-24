@@ -39,7 +39,20 @@ class AuthController extends Controller
         $this->otp->store($phone, $code);
         $this->otp->incrementSendCount($phone);
 
-        $this->sms->send($phone, "کد تأیید شما: {$code}");
+        try {
+            $this->sms->send($phone, "کد تأیید شما: {$code}");
+        } catch (\Throwable $e) {
+            // Delivery failed (provider timeout/5xx/rejection): drop the stored
+            // code and refund the send slot so the user is not billed a window
+            // for an SMS they never received.
+            $this->otp->discardFailedSend($phone);
+
+            report($e);
+
+            return response()->json([
+                'message' => 'ارسال پیامک موقتاً ممکن نیست. لطفاً چند لحظه دیگر دوباره تلاش کنید.',
+            ], 503);
+        }
 
         return response()->json([
             'message' => 'کد ارسال شد',
