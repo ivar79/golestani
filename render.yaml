@@ -21,11 +21,12 @@ services:
     plan: free
     region: frankfurt          # closest Render region to Iran/EU audience
     rootDir: api
-    # Pre-deploy DB work: migrations + geo validation run inside the container
-    # BEFORE it starts serving traffic (see docker/start.sh + ValidatePostgis).
-    preDeployCommand:
-      - php artisan migrate --force
-      - php artisan db:validate-postgis
+    # NOTE: no preDeployCommand — it is a paid-plans-only Render feature and
+    # this service runs on the free plan. docker/start.sh already runs
+    # `php artisan migrate --force` on every boot BEFORE nginx serves traffic,
+    # so schema freshness is preserved on each deploy. PostGIS can be checked
+    # anytime with `php artisan db:validate-postgis` (kept as a standalone
+    # command; the staging seeder workflow also guards schema freshness).
     healthCheckPath: /api/health
     envVars:
       - key: APP_ENV

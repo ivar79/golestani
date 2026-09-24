@@ -1,18 +1,24 @@
 name: CI
 
-# Per-request scope: run on every PR to main. The backend suite (SQLite
-# in-memory, forced by phpunit.xml) plus the frontend typecheck and build act
-# as the merge gate. PostGIS integration tests skip themselves (PGSQL_TEST_*
-# unset) — they are exercised against real Postgres by the staging workflow.
+# Run on every PR to main AND on direct pushes to main, so commits that
+# bypass a PR (hotfixes, direct admin commits) are still gated — and Render's
+# "After CI Checks Pass" auto-deploy mode keeps working for push-triggered
+# commits (Render does NOT deploy a commit that has zero CI checks).
+# The backend suite (SQLite in-memory, forced by phpunit.xml) plus the
+# frontend typecheck and build act as the merge gate. PostGIS integration
+# tests skip themselves (PGSQL_TEST_* unset) — they are exercised against
+# real Postgres by the staging workflow.
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
