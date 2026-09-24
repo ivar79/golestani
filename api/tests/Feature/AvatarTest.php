@@ -55,8 +55,13 @@ class AvatarTest extends TestCase
         Storage::fake('public');
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
 
+        // Use a format the test environment's GD build always supports. The
+        // production avatar pipeline accepts webp too; the test only proves
+        // upload/replace/expose/delete semantics, not GD's codec list. (CI
+        // runners and the dev image differ in bundled GD webp support, which
+        // made UploadedFile::fake()->image('me.webp') environment-dependent.)
         $this->actingAs($user)->postJson('/api/auth/avatar', [
-            'avatar' => UploadedFile::fake()->image('me.webp', 64, 64),
+            'avatar' => UploadedFile::fake()->image('me.png', 64, 64),
         ])->assertOk();
 
         $this->actingAs($user)->getJson('/api/auth/me')

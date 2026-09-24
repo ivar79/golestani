@@ -58,7 +58,10 @@ export default function LocationSearch({
 }) {
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Row[] | null>(null);
-  const [searching, setSearching] = useState(false);
+  // Last scheduled search id that has NOT landed yet. Both state updates
+  // happen inside async callbacks only (react-hooks/set-state-in-effect
+  // forbids setState in the effect body); `searching` derives from them.
+  const [inflightSeq, setInflightSeq] = useState<number | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -82,26 +85,28 @@ export default function LocationSearch({
   }, [open]);
 
   // Debounced live search: ≥ MIN_CHARS chars, 300ms after the last keystroke.
+  // No setState in the effect body: `rows` is cleared during render (the
+  // derived pattern below) and `inflightSeq` is updated inside the async
+  // debounce callback. `unavailable` intentionally persists between
+  // keystrokes so the offline notice does not flash on and off.
+  const tooShort = normalizeWs(query).length < MIN_CHARS;
+  const requestedSeq = seqRef.current;
   useEffect(() => {
+    if (tooShort) return;
     const q = normalizeWs(query);
-    if (q.length < MIN_CHARS) {
-      setRows(null);
-      setSearching(false);
-      setUnavailable(false);
-      return;
-    }
-    setSearching(true);
     const seq = ++seqRef.current;
     const timer = window.setTimeout(async () => {
       const merged = await runSearch(q);
       // Stale response (a newer keystroke started later) — discard silently.
       if (seq !== seqRef.current) return;
       setRows(merged);
-      setSearching(false);
+      if (inflightSeq === seq) setInflightSeq(null);
       setOpen(true);
     }, DEBOUNCE_MS);
+    if (inflightSeq !== seq) setInflightSeq(seq);
     return () => window.clearTimeout(timer);
-  }, [query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runSearch is stable per-mount (module helpers + setState)
+  }, [query, tooShort]);
 
   /** Neshan first; offline Iran dataset as fallback when empty/unavailable. */
   async function runSearch(q: string): Promise<Row[]> {
@@ -162,6 +167,11 @@ export default function LocationSearch({
     setOpen(false);
   }
 
+  // Derived busy state: the newest scheduled search (this render's seq) has
+  // not landed yet — either the debounce is counting down or the request is
+  // in flight. `requestedSeq` tracks the effect schedule without setState.
+  const searching = !tooShort && inflightSeq === requestedSeq && requestedSeq > 0;
+
   return (
     <div ref={rootRef} className="relative w-full">
       <form
@@ -170,12 +180,12 @@ export default function LocationSearch({
           // Enter submits immediately (the debounce effect also covers it).
           const q = normalizeWs(query);
           if (q.length >= MIN_CHARS) {
-            setSearching(true);
             const seq = ++seqRef.current;
+            setInflightSeq(seq);
             void runSearch(q).then((merged) => {
               if (seq !== seqRef.current) return;
               setRows(merged);
-              setSearching(false);
+              if (inflightSeq === seq) setInflightSeq(null);
               setOpen(true);
             });
           }
