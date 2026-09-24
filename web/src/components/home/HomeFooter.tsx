@@ -1,5 +1,6 @@
 "use client";
 import { cms, cmsList, useHomepageContent } from "@/lib/homepage";
+import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 import HomeIcon, { type HomeIconName } from "./HomeIcon";
 
 export default function HomeFooter() {
@@ -18,13 +19,8 @@ export default function HomeFooter() {
       <div className="mx-auto w-full px-[clamp(1.25rem,5vw,6rem)]">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 items-start">
           <div className="col-span-1 md:col-span-6">
-            <div className="mb-3.5 flex items-center gap-3">
-              <span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
-              </span>
-              <span className="text-xl font-bold text-white">{cms(content, "brand")}</span>
-            </div>
+            {/* Full finalized primary logo (or CMS-uploaded) — white variant, no box/filter */}
+            <CmsBrandLogo variant="primary" tone="light" width={160} className="mb-3.5" />
             <p className="max-w-md text-sm leading-6 text-surface-variant">{about}</p>
           </div>
           <div className="col-span-1 md:col-span-3">

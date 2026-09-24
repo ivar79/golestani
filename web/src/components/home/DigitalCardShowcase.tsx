@@ -46,9 +46,10 @@ export default function DigitalCardShowcase() {
               }`}
             />
             <div className="relative z-10 flex h-full flex-col items-center justify-between">
-              <div className="relative mt-2 h-12 w-12 overflow-hidden rounded-full border-2 border-white/20 bg-panel">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
+              {/* Neutral initial avatar — sample/demo cards must NOT carry the
+                  InKart brand (the business page belongs to the business). */}
+              <div className="relative mt-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-white/20 bg-panel text-base font-black text-white/90">
+                {(card.title || "؟").trim().charAt(0)}
               </div>
               <div className="mt-2 w-full truncate text-center text-sm font-medium text-white">
                 {card.title}

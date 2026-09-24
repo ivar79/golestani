@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 import LoginVideo from "@/components/auth/LoginVideo";
 
 /**
@@ -39,13 +39,18 @@ export default function AuthLayout({
         aria-hidden="true"
       />
 
-      {/* Brand header, top-left (physical), per reference — same project texts */}
+      {/* Brand header, top-left (physical) over the dark video — finalized white
+          logo, full primary on desktop/tablet, standalone iK symbol on mobile.
+          No box/border around it. */}
       <div className="absolute left-5 top-5 z-20 sm:left-8 sm:top-6 lg:left-10 lg:top-8">
-        <Link href="/" dir="ltr" className="flex items-center gap-3" aria-label="صفحه اصلی اینکارت">
-          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-cyan-400/30">
-            <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={36} height={36} className="h-full w-full object-cover" />
-          </span>
-          <span className="text-lg font-bold tracking-tight text-white">اینکارت</span>
+        <Link
+          href="/"
+          dir="ltr"
+          aria-label="رفتن به صفحه اصلی اینکارت"
+          className="flex items-center transition-opacity duration-200 hover:opacity-80"
+        >
+          <CmsBrandLogo variant="symbol" tone="light" height={36} className="sm:hidden" />
+          <CmsBrandLogo variant="primary" tone="light" width={140} className="hidden sm:block" />
         </Link>
       </div>
 

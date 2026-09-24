@@ -38,8 +38,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const moving = useRef(false);
 
   // Restore the persisted theme once, after hydration.
+  // react-hooks/set-state-in-effect flags this one-shot restore, but it is
+  // the sanctioned hydration-safe pattern for reading an external store
+  // (localStorage): the first render is always "dark" so the client output
+  // matches the SSR HTML, and the persisted choice lands right after mount.
+  // (The lint-clean long-term shape is useSyncExternalStore with a
+  // "dark"-returning server snapshot — kept as-is until that refactor.)
   useEffect(() => {
     const stored = normalizeStored(window.localStorage.getItem(STORAGE_KEY));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration-safe external-store read, see comment above
     if (stored !== "dark") setThemeState(stored);
   }, []);
 

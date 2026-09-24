@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cms, useHomepageContent } from "@/lib/homepage";
 import { getPublicAds, type Advertisement } from "@/lib/ads";
 import { panelPath } from "@/lib/panelPath";
+import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 import { avatarUrl } from "@/lib/auth";
 import { Camera, CreditCard, LayoutDashboard, LogOut, Trash2 } from "lucide-react";
 
@@ -68,8 +69,7 @@ export default function AppTaskbar() {
   const { user, logout, uploadAvatar, removeAvatar } = useAuth();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const content = useHomepageContent();
-  const brand = cms(content, "brand") || "اینکارت";
-  const logo = cms(content, "logo");
+  // Custom CMS logo (homepage.logo) is handled inside CmsBrandLogo — no local var needed.
   const loginLabel = cms(content, "header.login") || "ورود / ثبت‌نام";
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -214,18 +214,19 @@ export default function AppTaskbar() {
     };
   }, [menuOpen, drawerOpen, searchOpen, userMenuOpen, closeAll]);
 
+  // Brand block — هویت نهایی InKart + لوگوی سفارشی CMS (اگر ادمین آپلود
+  // کرده باشد). دسکتاپ/تبلت: primary؛ موبایل: نماد iK. بدون باکس/سایه.
   const logoBlock = (
-    <Link href="/" className="flex items-center gap-3" aria-label={brand} onClick={closeAll}>
-      {logo ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={logo} alt="" className="h-10 w-auto object-contain" />
-      ) : (
-        <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-lg shadow-secondary/20">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/incart-logo.webp" alt="لوگوی اینکارت" className="h-full w-full object-cover" />
-        </span>
-      )}
-      <span className="text-xl font-bold text-white lg:text-2xl">{brand}</span>
+    <Link
+      href="/"
+      aria-label="رفتن به صفحه اصلی اینکارت"
+      onClick={closeAll}
+      className="flex shrink-0 items-center gap-3 transition-opacity duration-200 hover:opacity-80"
+    >
+      {/* priority: همین لوگو LCP موبایل است — هشدار Next/Image رفع می‌شود. */}
+      <CmsBrandLogo variant="symbol" tone="light" height={38} className="md:hidden" priority />
+      <CmsBrandLogo variant="primary" tone="light" width={135} className="hidden md:block xl:hidden" />
+      <CmsBrandLogo variant="primary" tone="light" width={155} className="hidden xl:block" />
     </Link>
   );
 

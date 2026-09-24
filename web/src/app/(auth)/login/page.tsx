@@ -2,11 +2,11 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { AlertCircle, ShieldCheck, Smartphone } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import PhoneInput from "@/components/auth/PhoneInput";
+import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 
 const PHONE_KEY = "golestani_login_phone";
 
@@ -68,11 +68,9 @@ export default function LoginPage() {
 
   return (
     <AuthGlass>
-      {/* Header row: brand tile on the physical LEFT, title on the RIGHT (RTL) */}
+      {/* Header row: finalized iK symbol on the physical LEFT, title on the RIGHT (RTL) */}
       <div className="flex items-start justify-between gap-4">
-        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-400/30">
-          <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={48} height={48} className="h-full w-full object-cover" />
-        </div>
+        <CmsBrandLogo variant="symbol" tone="light" height={44} className="shrink-0" />
         <div className="text-right">
           <p className="text-[12px] text-slate-400">به اینکارت خوش آمدید</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">
