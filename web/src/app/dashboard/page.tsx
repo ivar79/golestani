@@ -7,13 +7,16 @@ import { Crosshair } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
+import { downloadPrintFile } from "@/lib/phase4";
 import { avatarUrl } from "@/lib/auth";
 import { getQrUrl } from "@/lib/businesses";
+import { getPublicTaxonomies } from "@/lib/taxonomies";
 import { OnboardingView } from "@/components/dashboard/OnboardingView";
 import UsernamePicker from "@/components/dashboard/UsernamePicker";
 import { DashboardFab } from "@/components/dashboard/DashboardFab";
 import { DashboardSidebar, type DashboardTab } from "@/components/dashboard/DashboardSidebar";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { SubscriptionPanel } from "@/components/dashboard/SubscriptionPanel";
 import LocationSearch, { type LocationSearchResult } from "@/components/dashboard/LocationSearch";
 import { ThemeProvider, useTheme } from "@/components/dashboard/ThemeProvider";
 import MapView from "@/components/map/MapView";
@@ -76,6 +79,7 @@ type Form = {
   latitude: string;
   longitude: string;
   services: string;
+  designer_referral_code: string;
 };
 
 type Social = { key: string; url: string };
@@ -92,9 +96,10 @@ const EMPTY: Form = {
   latitude: "",
   longitude: "",
   services: "",
+  designer_referral_code: "",
 };
 
-const CATEGORIES = [
+const FALLBACK_CATEGORIES = [
   "کافه و رستوران",
   "مبلمان و دکوراسیون داخلی",
   "پوشاک و مد",
@@ -141,8 +146,20 @@ function DashboardInner() {
   const [currentTab, setCurrentTab] = useState<DashboardTab>("overview");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
 
   const mediaForm = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void getPublicTaxonomies("category")
+        .then((rows) => {
+          if (rows.length) setCategories(rows.map((row) => row.name));
+        })
+        .catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   function choose(b: Phase2Business | null) {
     setEditing(b);
@@ -170,6 +187,7 @@ function DashboardInner() {
             latitude: b.latitude == null ? "" : String(b.latitude),
             longitude: b.longitude == null ? "" : String(b.longitude),
             services: (b.services || []).join("\n"),
+            designer_referral_code: b.designer?.referral_code || "",
           }
         : EMPTY,
     );
@@ -261,6 +279,7 @@ function DashboardInner() {
       longitude: form.longitude === "" ? null : Number(form.longitude),
       services,
       social_links: links,
+      designer_referral_code: form.designer_referral_code.trim() || null,
     };
   }
 
@@ -415,6 +434,7 @@ function DashboardInner() {
           onSkip={() => setOnboarding(false)}
           onSelect={(path) => {
             setOnboarding(false);
+            if (path === 1) router.push("/card-maker");
             if (path === 2) router.push("/card-maker");
             if (path === 3) router.push("/designer");
           }}
@@ -602,6 +622,8 @@ function DashboardInner() {
             />
           )}
 
+          {currentTab === "subscriptions" && <SubscriptionPanel businessId={editing?.id} />}
+
           {/* TAB 2: BUSINESS INFO & CONTACT (مشخصات و تماس) */}
           {currentTab === "info" && (
             <form onSubmit={submit} className="space-y-6">
@@ -642,7 +664,7 @@ function DashboardInner() {
                       className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
                     />
                     <datalist id="categories-list">
-                      {CATEGORIES.map((c) => (
+                      {categories.map((c) => (
                         <option key={c} value={c} />
                       ))}
                     </datalist>
@@ -651,7 +673,7 @@ function DashboardInner() {
                   {/* Categories quick pills */}
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5 -mt-2">
                     <span className="text-[11px] text-ik-muted">پیشنهادات سریع:</span>
-                    {CATEGORIES.slice(0, 6).map((cat) => (
+                    {categories.slice(0, 6).map((cat) => (
                       <button
                         key={cat}
                         type="button"
@@ -759,6 +781,24 @@ function DashboardInner() {
                       onChange={(e) => change("services", e.target.value)}
                       placeholder="مثال:&#10;اینترنت رایگان&#10;فضای باز&#10;سفارش تلفنی"
                       className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent"
+                    />
+                  </label>
+
+                  <label className="sm:col-span-2 space-y-1.5">
+                    <span className="text-xs font-semibold text-ik-muted flex items-center justify-between">
+                      <span>کد معرف طراح (اختیاری — فاز ۴)</span>
+                      {editing?.designer && (
+                        <span className="text-[11px] text-ik-success font-medium">
+                          منتسب به: {editing.designer.display_name} ({editing.designer.referral_code})
+                        </span>
+                      )}
+                    </span>
+                    <input
+                      maxLength={32}
+                      value={form.designer_referral_code}
+                      onChange={(e) => change("designer_referral_code", e.target.value)}
+                      placeholder="در صورت معرفی توسط طراح، کد معرف را وارد نمایید (مثال: DES-A84K1)"
+                      className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash px-4 py-2.5 text-sm text-ik-text placeholder:text-ik-muted outline-none focus:border-ik-accent font-mono"
                     />
                   </label>
                 </div>
@@ -1371,6 +1411,51 @@ function DashboardInner() {
                           </span>
                         )}
                       </div>
+                    </div>
+
+                    {/* Phase 4: Card Maker & Print File summary */}
+                    <div className="rounded-2xl border border-ik-border bg-ik-panel-soft/40 p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-ik-text flex items-center gap-1.5">
+                          <CreditCard className="h-4 w-4 text-ik-accent" />
+                          <span>طرح کارت ویزیت و فایل چاپی (فاز ۴)</span>
+                        </h4>
+                        <Link
+                          href="/card-maker"
+                          className="rounded-lg bg-ik-accent hover:bg-ik-accent-hover px-3 py-1 text-xs font-bold text-ik-accent-contrast transition-colors"
+                        >
+                          مدیریت در کارت‌ساز
+                        </Link>
+                      </div>
+                      {editing?.cards && (editing.cards[0]?.has_print_file || editing.cards[0]?.print_file_path) ? (
+                        <div className="rounded-xl border border-ik-border bg-ik-bg/50 p-3 flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-ik-text truncate">
+                              {editing.cards[0].print_file_name || "فایل طرح چاپی فیزیکی"}
+                            </p>
+                            <p className="text-[10px] text-ik-muted mt-0.5">
+                              {editing.cards[0].print_file_mime || "نگهداری شده در سرور (دسترسی خصوصی)"}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!editing) return;
+                              setMessage(null);
+                              downloadPrintFile(editing.id)
+                                .then(() => setMessage({ text: "دانلود فایل طرح چاپی آغاز شد." }))
+                                .catch(() => setMessage({ text: "دانلود فایل چاپی ناموفق بود — دوباره تلاش کنید.", error: true }));
+                            }}
+                            className="text-xs text-ik-accent hover:underline font-bold shrink-0 mr-2"
+                          >
+                            دانلود
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-ik-muted">
+                          هنوز فایل طرح چاپی آپلود نشده است. برای طراحی آنلاین کارت یا بارگذاری تصویر/PDF طرح چاپی موجود، به بخش کارت‌ساز مراجعه کنید.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

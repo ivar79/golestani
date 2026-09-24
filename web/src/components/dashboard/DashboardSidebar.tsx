@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   LayoutDashboard,
   Store,
@@ -16,9 +15,11 @@ import {
   ChevronRight,
   ExternalLink,
 } from "lucide-react";
+import { useTheme } from "./ThemeProvider";
 import { ThemeToggle } from "./ThemeToggle";
+import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 
-export type DashboardTab = "overview" | "info" | "location" | "media" | "qr";
+export type DashboardTab = "overview" | "info" | "location" | "media" | "qr" | "subscriptions";
 
 interface DashboardSidebarProps {
   currentTab: DashboardTab;
@@ -50,6 +51,7 @@ export function DashboardSidebar({
   completionRate,
   onLogout,
 }: DashboardSidebarProps) {
+  const { theme } = useTheme();
   const menuItems = [
     {
       id: "overview" as DashboardTab,
@@ -78,6 +80,11 @@ export function DashboardSidebar({
       label: "لینک عمومی و QR",
       icon: QrCode,
     },
+    {
+      id: "subscriptions" as DashboardTab,
+      label: "اشتراک و امکانات",
+      icon: CreditCard,
+    },
   ];
 
   return (
@@ -89,24 +96,25 @@ export function DashboardSidebar({
       {/* Top Header & Brand */}
       <div className="flex h-16 items-center justify-between px-4 border-b border-ik-border">
         {!collapsed && (
-          <Link href="/" className="flex items-center gap-2.5 min-w-0 group" aria-label="اینکارت">
-            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.35)] group-hover:scale-105 transition-transform">
-              <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={36} height={36} className="h-full w-full object-cover" />
-            </span>
-            <div className="flex flex-col min-w-0">
-              <span className="font-black text-sm text-ik-text tracking-tight group-hover:text-ik-accent transition-colors">
-                اینکارت
-              </span>
-              <span className="text-[10px] text-ik-muted truncate">
-                پنل مدیریت کسب‌وکار
-              </span>
-            </div>
+          <Link
+            href="/"
+            aria-label="رفتن به صفحه اصلی اینکارت"
+            className="flex min-w-0 flex-col items-start gap-1.5 transition-opacity duration-200 hover:opacity-80"
+          >
+            {/* Full primary logo — tone follows the dashboard theme */}
+            <CmsBrandLogo variant="primary" tone={theme === "warm" ? "dark" : "light"} width={150} />
+            <span className="text-[10px] text-ik-muted">پنل مدیریت کسب‌وکار</span>
           </Link>
         )}
 
         {collapsed && (
-          <Link href="/" className="relative mx-auto flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.35)]" aria-label="اینکارت">
-            <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={36} height={36} className="h-full w-full object-cover" />
+          <Link
+            href="/"
+            aria-label="رفتن به صفحه اصلی اینکارت"
+            className="mx-auto flex h-9 items-center justify-center transition-opacity duration-200 hover:opacity-80"
+          >
+            {/* Standalone iK symbol when collapsed — centered, no container */}
+            <CmsBrandLogo variant="symbol" tone={theme === "warm" ? "dark" : "light"} height={34} />
           </Link>
         )}
 

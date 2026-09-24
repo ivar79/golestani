@@ -20,21 +20,27 @@ interface AuthContextValue {
 // Context value kept out of render dependency churn via useMemo below.
 const Context=createContext<AuthContextValue|null>(null);
 export function AuthProvider({children}:{children:ReactNode}) {
-  // Lazy initializers read localStorage once during the first render instead
-  // of calling setState synchronously inside an effect (react-hooks lint).
-  // The provider is client-side ("use client") and mounts after hydration, so
-  // the read is browser-only in practice; useStorageValue guards SSR anyway.
-  const [token,setToken]=useState<string|null>(()=>readStoredToken());
+  // Hydration-safe session adoption: client components ARE server-rendered in
+  // the App Router, so the first client render must match the server HTML.
+  // Both start with an empty session; the persisted token is adopted in the
+  // mount effect below (one post-hydration transition instead of a mismatch).
+  const [token,setToken]=useState<string|null>(null);
   const [user,setUser]=useState<UserInfo|null>(null);
-  const [loading,setLoading]=useState<boolean>(()=>Boolean(readStoredToken()));
+  const [loading,setLoading]=useState<boolean>(true);
+  const [hydrated,setHydrated]=useState<boolean>(false);
   useEffect(()=>{
-    // Persisted token already seeded into state by the lazy initializers.
-    if (!token) { setAuthCookie(false); return; }
+    // Adopt the persisted token once, after hydration, so SSR/client agree.
+    const stored=readStoredToken();
+    if (stored) setToken(stored);
+    setHydrated(true);
+  },[]);
+  useEffect(()=>{
+    if (!token) { setAuthCookie(false); if (hydrated) setLoading(false); return; }
     setAuthCookie(true);
     let active=true;
     getMe().then(me=>{if(active)setUser(me);}).catch(()=>{if(active){clearSession();setToken(null);setUser(null);}}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
-  },[token]);
+  },[token,hydrated]);
   const accept=useCallback((result:VerifyOtpResponse)=>{
     localStorage.setItem(TOKEN_KEY,result.token);setAuthCookie(true);setToken(result.token);setUser(result.user);setLoading(false);return result.user;
   },[]);

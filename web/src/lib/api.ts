@@ -18,12 +18,22 @@ api.interceptors.request.use(config => {
     const token = window.localStorage.getItem(TOKEN_KEY);
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
-  // DELETE requests also need a non-simple Content-Type for the CSRF guard.
-  // Let the browser choose multipart boundaries for real uploads.
+  // Non-GET requests need a non-simple Content-Type for the backend CSRF
+  // guard (ApiRequestSafety). axios only SENDS the Content-Type header when a
+  // body exists, so body-less DELETE/PUT calls were rejected with 415 in the
+  // real browser (masked as pass in jsdom-less unit tests). Give them an
+  // empty JSON object so the header is actually transmitted.
+  // FormData keeps the browser-chosen multipart boundary for uploads; a
+  // file-bearing PUT must be sent as POST with the Laravel _method=PUT
+  // spoofing field (PHP parses multipart bodies only for POST).
   if (typeof FormData !== "undefined" && config.data instanceof FormData) {
     config.headers.delete("Content-Type");
   } else {
-    if (!["get", "head", "options"].includes((config.method || "get").toLowerCase())) config.headers.set("Content-Type", "application/json");
+    const method = (config.method || "get").toLowerCase();
+    if (!["get", "head", "options"].includes(method)) {
+      if (config.data === undefined || config.data === null) config.data = {};
+      config.headers.set("Content-Type", "application/json");
+    }
   }
   return config;
 });

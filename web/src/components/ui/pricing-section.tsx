@@ -1,16 +1,15 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import NumberFlow from "@number-flow/react";
-import { CheckCheck, Zap } from "lucide-react";
-import { useId, useState } from "react";
+import { Check, CheckCheck, CreditCard, FileText, Loader2, UploadCloud, X, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
+import { extractApiError } from "@/lib/api";
+import { getOwnedBusinesses, type Phase2Business } from "@/lib/phase2";
+import { getPlansPricing, submitSubscription, type Plan } from "@/lib/subscriptions";
+import { planFeatureLines, type PublicPlansResponse } from "@/lib/entitlements";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
-import { cn } from "@/lib/utils";
-
-/* ------------------------------------------------------------------ */
-/* CMS-shaped props — the page (Server Component) fills these from     */
-/* site_settings with safe fallbacks.                                  */
-/* ------------------------------------------------------------------ */
 
 export interface PricingContent {
   eyebrow: string;
@@ -27,290 +26,166 @@ export interface PricingContent {
   licenseLabel1: string;
   licenseLabel2: string;
   ctaLabel: string;
-  /** Toman prices per switch state: [personal, corporate][3m, forever]. */
-  plans: {
-    personal3m: number;
-    personalForever: number;
-    corporate3m: number;
-    corporateForever: number;
-  };
+  plans: { personal3m: number; personalForever: number; corporate3m: number; corporateForever: number };
 }
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 16, filter: "blur(8px)" },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    filter: "blur(0px)",
-    transition: { delay: i * 0.08, duration: 0.5, ease: "easeOut" as const },
-  }),
+  hidden: { opacity: 0, y: 16 },
+  visible: (index: number) => ({ opacity: 1, y: 0, transition: { delay: index * 0.06, duration: 0.45, ease: "easeOut" as const } }),
 };
 
-/** Persian-formatted Toman, e.g. ۹۸٬۰۰۰ */
-const toman = (value: number) =>
-  new Intl.NumberFormat("fa-IR").format(value * 1000);
-void toman; // reserved for non-NumberFlow fallback rendering
+const toman = (value: number) => `${new Intl.NumberFormat("fa-IR").format(value)} تومان`;
 
-/* ------------------------------------------------------------------ */
-
-const PricingSwitch = ({
-  button1,
-  button2,
-  onSwitch,
-  className,
-  layoutId,
-}: {
-  button1: string;
-  button2: string;
-  onSwitch: (value: string) => void;
-  className?: string;
-  layoutId?: string;
-}) => {
-  const [selected, setSelected] = useState("0");
-  const uniqueId = useId();
-  const switchLayoutId = layoutId || `switch-${uniqueId}`;
-
-  const handleSwitch = (value: string) => {
-    setSelected(value);
-    onSwitch(value);
-  };
-
+function PricingSwitch({ first, second, value, onChange }: { first: string; second: string; value: boolean; onChange: (value: boolean) => void }) {
   return (
-    <div
-      role="group"
-      aria-label={`${button1} / ${button2}`}
-      className={cn(
-        "relative z-10 flex w-full rounded-full border border-gray-200 bg-neutral-50 p-1",
-        className,
-      )}
-    >
-      {(
-        [
-          { value: "0", label: button1 },
-          { value: "1", label: button2 },
-        ] as const
-      ).map(({ value, label }) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={selected === value}
-          onClick={() => handleSwitch(value)}
-          className={cn(
-            "relative z-10 w-full h-10 rounded-full px-3 py-1 font-medium transition-colors sm:h-14 sm:px-6 sm:py-2",
-            selected === value
-              ? "text-white"
-              : "text-muted-foreground hover:text-gray-900",
-          )}
-        >
-          {selected === value && (
-            <motion.span
-              layoutId={switchLayoutId}
-              className="absolute left-0 top-0 h-10 w-full rounded-full border-4 border-gray-900 bg-gradient-to-t from-neutral-900 via-neutral-800 to-neutral-900 shadow-sm shadow-black sm:h-14"
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-            />
-          )}
-          <span className="relative">{label}</span>
+    <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+      {[{ label: first, selected: !value, next: false }, { label: second, selected: value, next: true }].map((item) => (
+        <button key={item.label} type="button" aria-pressed={item.selected} onClick={() => onChange(item.next)} className={`rounded-xl px-3 py-3 text-sm font-semibold transition-colors ${item.selected ? "bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20" : "text-slate-400 hover:bg-white/[0.06] hover:text-white"}`}>
+          {item.label}
         </button>
       ))}
     </div>
   );
-};
+}
 
-export default function PricingSection({ content }: { content: PricingContent }) {
-  const [isUpdates, setIsUpdates] = useState(false);
-  const [isCorporate, setIsCorporate] = useState(false);
-  const reducedMotion = useReducedMotion();
+function ReceiptModal({ plan, businesses, selectedBusiness, onBusinessChange, onClose, onSubmitted }: { plan: Plan; businesses: Phase2Business[]; selectedBusiness: string; onBusinessChange: (value: string) => void; onClose: () => void; onSubmitted: (message: string) => void }) {
+  const [reference, setReference] = useState("");
+  const [file, setFile] = useState<File | undefined>();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const toggleUpdates = (value: string) =>
-    setIsUpdates(Number.parseInt(value) === 1);
-  const toggleCorporate = (value: string) =>
-    setIsCorporate(Number.parseInt(value) === 1);
-
-  const calculatePrice = () => {
-    if (!isUpdates && !isCorporate) return content.plans.personal3m;
-    if (isUpdates && !isCorporate) return content.plans.personalForever;
-    if (!isUpdates && isCorporate) return content.plans.corporate3m;
-    return content.plans.corporateForever;
-  };
-
-  const currentPrice = calculatePrice();
-  // Crossed-out anchor price (قیمت قبل از تخفیف) — same 1.45 markup as the
-  // reference design. Plans are stored in THOUSANDS of Toman, so convert to
-  // raw Toman before applying the markup and rounding to the nearest thousand.
-  const originalPrice = Math.round((currentPrice * 1000 * 1.45) / 1000) * 1000;
-
-  const MotionDiv = reducedMotion ? "div" : motion.div;
+  async function submit() {
+    if (!selectedBusiness) return setError("ابتدا کسب‌وکار موردنظر را انتخاب کنید.");
+    if (!reference.trim() && !file) return setError("شماره پیگیری یا فایل رسید را وارد کنید.");
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitSubscription(Number(selectedBusiness), { plan_id: plan.id, receipt_reference: reference.trim() || undefined, receipt: file });
+      onSubmitted("درخواست شما ثبت شد و پس از بررسی مدیر فعال می‌شود.");
+    } catch (requestError) {
+      setError(extractApiError(requestError));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="relative mx-auto w-full min-h-screen px-4 pt-10">
-      <div className="bg-white px-4 py-16">
-        <div
-          className="absolute inset-0 z-0"
-          style={{
-            background:
-              "radial-gradient(125% 125% at 50% 90%, #fff 40%, var(--color-primary) 100%)",
-          }}
-        />
-        <div className="relative z-10 mx-auto max-w-4xl text-center">
-          <MotionDiv
-            variants={fadeUp}
-            custom={0}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.4 }}
-            className="mb-4 flex items-center justify-center"
-          >
-            <Zap className="me-2 h-5 w-5 fill-emerald-500 text-emerald-500" />
-            <span className="font-medium text-emerald-600">{content.eyebrow}</span>
-          </MotionDiv>
-
-          <h1 className="mb-4 text-3xl font-semibold leading-[120%] text-gray-900 sm:text-4xl md:text-5xl">
-            <VerticalCutReveal
-              splitBy="words"
-              staggerDuration={0.15}
-              staggerFrom="first"
-              containerClassName="justify-center"
-              transition={{
-                type: "spring",
-                stiffness: 250,
-                damping: 40,
-                delay: 0.4,
-              }}
-            >
-              {content.title}
-            </VerticalCutReveal>
-          </h1>
-
-          <MotionDiv
-            variants={fadeUp}
-            custom={1}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.4 }}
-            className="text-xl text-gray-600"
-          >
-            {content.subtitle}
-          </MotionDiv>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
+      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-[#0c1424] shadow-2xl shadow-black/40">
+        <div className="flex items-start justify-between border-b border-white/10 p-5 sm:p-6">
+          <div><p className="text-xs font-semibold text-emerald-300">ثبت درخواست اشتراک</p><h2 id="receipt-title" className="mt-1 text-xl font-black text-white">{plan.name}</h2><p className="mt-1 text-xs text-slate-400">{toman(plan.price)} برای {plan.duration_days} روز</p></div>
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="بستن مودال"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-5 p-5 sm:p-6">
+          {error && <div role="alert" className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm leading-6 text-rose-200">{error}</div>}
+          <label className="block space-y-2 text-sm font-semibold text-slate-200">کسب‌وکار<select value={selectedBusiness} onChange={(event) => onBusinessChange(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none focus:border-emerald-400"><option value="">انتخاب کسب‌وکار</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+          <label className="block space-y-2 text-sm font-semibold text-slate-200">شماره رسید یا کد پیگیری <span className="font-normal text-slate-500">(اختیاری اگر فایل انتخاب شود)</span><input value={reference} onChange={(event) => setReference(event.target.value)} maxLength={160} placeholder="مثال: TRX-123456" className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-400" /></label>
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-4 text-sm text-slate-300 hover:border-emerald-400/60 hover:bg-emerald-400/[0.04]"><UploadCloud className="h-5 w-5 shrink-0 text-emerald-300" /><span className="min-w-0 flex-1 truncate">{file ? file.name : "فایل رسید را انتخاب کنید (JPG، PNG یا PDF تا ۵MB)"}</span><input type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only" onChange={(event) => setFile(event.target.files?.[0])} /></label>
+          <div className="flex items-start gap-2 rounded-2xl bg-emerald-400/[0.06] p-3 text-xs leading-6 text-slate-400"><FileText className="mt-1 h-4 w-4 shrink-0 text-emerald-300" />رسیدها به‌صورت دستی بررسی می‌شوند و وضعیت درخواست در داشبورد شما نمایش داده خواهد شد.</div>
+          <button type="button" onClick={() => void submit()} disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}ثبت درخواست</button>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Features + switches + price */}
-      <div className="relative z-10 px-4 pb-16">
-        <div className="mx-auto max-w-6xl">
-          <div className="grid items-center gap-8 sm:grid-cols-2 md:gap-12">
-            <div>
-              <MotionDiv
-                variants={fadeUp}
-                custom={2}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, amount: 0.3 }}
-                className="mb-2 text-3xl font-medium text-gray-900"
-              >
-                <h3>{content.featuresTitle}</h3>
-              </MotionDiv>
+export default function PricingSection({ content }: { content: PricingContent }) {
+  const router = useRouter();
+  const { user } = useAuth();
+  const reducedMotion = useReducedMotion();
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [pricing, setPricing] = useState<PublicPlansResponse | null>(null);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [isForever, setIsForever] = useState(false);
+  const [isCorporate, setIsCorporate] = useState(false);
+  const [modalPlan, setModalPlan] = useState<Plan | null>(null);
+  const [businesses, setBusinesses] = useState<Phase2Business[]>([]);
+  const [selectedBusiness, setSelectedBusiness] = useState("");
+  const [success, setSuccess] = useState<string | null>(null);
 
-              <div className="space-y-4">
-                {content.features.map((feature, index) => (
-                  <MotionDiv
-                    key={index}
-                    variants={fadeUp}
-                    custom={3 + index}
-                    initial="hidden"
-                    whileInView="visible"
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="flex items-center"
-                  >
-                    <div className="me-3 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 shadow-md shadow-emerald-500">
-                      <CheckCheck className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-gray-700">{feature}</span>
-                  </MotionDiv>
-                ))}
-              </div>
-            </div>
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void getPlansPricing()
+        .then((payload) => { setPricing(payload); setPlans(payload.plans); })
+        .catch((requestError) => setPlansError(extractApiError(requestError)))
+        .finally(() => setPlansLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
-            <div className="space-y-8">
-              <MotionDiv
-                variants={fadeUp}
-                custom={3}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, amount: 0.3 }}
-              >
-                <h4 className="mb-2 font-semibold text-gray-900">
-                  {content.updatesTitle}
-                </h4>
-                <p className="mb-2 text-sm text-gray-600">{content.updatesHint}</p>
-                <PricingSwitch
-                  button1={content.updatesLabel1}
-                  button2={content.updatesLabel2}
-                  onSwitch={toggleUpdates}
-                  className="grid w-full grid-cols-2"
-                />
-              </MotionDiv>
+  // NOTE (price hardcode ban): plan prices render only from API data.
+  // The CMS content fallback below is display-only legacy scaffolding and
+  // is no longer used for plan cards.
+  void content.plans;
+  const displayedPlans = plans.filter((plan) => plan.is_active);
+  const currentPlan = displayedPlans.find((plan) => (isCorporate ? plan.name.toLowerCase().includes("سازمانی") || plan.name.toLowerCase().includes("corporate") : !plan.name.toLowerCase().includes("سازمانی") && !plan.name.toLowerCase().includes("corporate"))) ?? displayedPlans[0];
+  const MotionDiv = reducedMotion ? "div" : motion.div;
 
-              <MotionDiv
-                variants={fadeUp}
-                custom={4}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, amount: 0.3 }}
-              >
-                <h4 className="mb-1 font-semibold text-gray-900">
-                  {content.licenseTitle}
-                </h4>
-                <p className="mb-2 text-sm text-gray-600">{content.licenseHint}</p>
-                <PricingSwitch
-                  button1={content.licenseLabel1}
-                  button2={content.licenseLabel2}
-                  onSwitch={toggleCorporate}
-                  className="grid w-full grid-cols-2"
-                />
-              </MotionDiv>
+  async function openReceipt(plan: Plan) {
+    if (!user) return router.push("/login?next=/pricing");
+    setSuccess(null);
+    try {
+      const owned = await getOwnedBusinesses();
+      setBusinesses(owned);
+      setSelectedBusiness(String(owned[0]?.id ?? ""));
+      setModalPlan(plan);
+    } catch (requestError) {
+      setPlansError(extractApiError(requestError));
+    }
+  }
 
-              <MotionDiv
-                variants={fadeUp}
-                custom={5}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, amount: 0.3 }}
-                className="grid grid-cols-2 items-center gap-2 px-2 text-center"
-              >
-                <div className="mb-4 flex items-center justify-center gap-2" dir="ltr">
-                  <span className="text-2xl font-semibold text-gray-900 sm:text-5xl">
-                    <NumberFlow
-                      value={currentPrice * 1000}
-                      format={{
-                        numberingSystem: "arabext",
-                      }}
-                      suffix=" تومان"
-                      className="text-2xl font-semibold sm:text-5xl"
-                    />
-                  </span>
-                  <span
-                    className="relative text-lg text-gray-600 before:absolute before:left-0 before:top-3 before:z-10 before:h-0.5 before:w-full before:bg-gray-800 sm:text-xl"
-                    dir="rtl"
-                  >
-                    <NumberFlow
-                      value={originalPrice}
-                      format={{ numberingSystem: "arabext" }}
-                      suffix=" تومان"
-                      className="text-lg font-semibold line-through sm:text-xl"
-                    />
-                  </span>
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-night px-4 pb-20 pt-28 text-surface sm:px-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(16,185,129,0.14),transparent_28%),radial-gradient(circle_at_85%_35%,rgba(34,211,238,0.10),transparent_30%)]" />
+      <div className="relative mx-auto max-w-6xl">
+        <div className="mx-auto max-w-3xl text-center"><MotionDiv variants={fadeUp} custom={0} initial="hidden" animate="visible" className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-300"><Zap className="h-4 w-4" />{content.eyebrow}</MotionDiv><h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl"><VerticalCutReveal splitBy="words" staggerDuration={0.12} staggerFrom="first" containerClassName="justify-center">{content.title}</VerticalCutReveal></h1><p className="mt-5 text-base leading-8 text-slate-400 sm:text-lg">{content.subtitle}</p></div>
+        {plansError && <div role="alert" className="mx-auto mt-8 max-w-2xl rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-center text-sm text-rose-200">{plansError}<button type="button" onClick={() => window.location.reload()} className="ms-2 font-bold underline">تلاش دوباره</button></div>}
+        {success && <div role="status" className="mx-auto mt-8 max-w-2xl rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-center text-sm text-emerald-200">{success}</div>}
+        {/* Free tier — rendered from the server contract (config-driven). */}
+        {pricing && (
+          <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-white">{pricing.free_tier.label}</h2>
+                  <p className="mt-2 text-sm text-slate-400">{pricing.free_tier.description}</p>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-lg w-full border-4 border-emerald-600 text-lg sm:h-16 sm:text-xl"
-                >
-                  {content.ctaLabel}
-                </button>
-              </MotionDiv>
+                <span className="text-2xl font-black text-slate-400">۰</span>
+              </div>
+              <ul className="mt-6 space-y-3 text-sm text-slate-300">
+                {planFeatureLines(pricing.free_tier.capabilities, pricing.labels).map((line) => (
+                  <li key={line.key} className="flex gap-2">
+                    {line.state === "off"
+                      ? <X className="h-4 w-4 shrink-0 text-slate-600" />
+                      : <Check className="h-4 w-4 shrink-0 text-emerald-300" />}
+                    <span className={line.state === "off" ? "text-slate-500" : ""}>{line.label}</span>
+                  </li>
+                ))}
+              </ul>
+              <button type="button" onClick={() => router.push("/dashboard")} className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-sm font-black text-white transition hover:bg-white/10">
+                <CreditCard className="h-4 w-4" />
+                شروع رایگان
+              </button>
             </div>
           </div>
+        )}
+
+        <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
+          {plansLoading ? <div className="col-span-full flex items-center justify-center gap-3 py-16 text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin text-emerald-300" />در حال دریافت پلن‌ها...</div> : displayedPlans.length === 0 ? <div className="col-span-full rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-slate-400">در حال حاضر پلن فعالی برای نمایش وجود ندارد.</div> : displayedPlans.map((plan, index) => { const selected = currentPlan?.id === plan.id; return <MotionDiv key={plan.id} variants={fadeUp} custom={index + 1} initial="hidden" animate="visible" className={`relative rounded-3xl border p-6 transition-transform hover:-translate-y-1 ${selected ? "border-emerald-400/60 bg-emerald-400/[0.09] shadow-2xl shadow-emerald-950/40" : "border-white/10 bg-white/[0.04]"}`}>
+            {(selected || plan.is_featured) && <span className="absolute -top-3 right-6 rounded-full bg-emerald-400 px-3 py-1 text-[11px] font-black text-slate-950">{plan.is_featured ? "پیشنهاد ویژه" : "پلن فعلی"}</span>}
+            <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black text-white">{plan.name}</h2><p className="mt-2 text-sm text-slate-400">{plan.description || `اعتبار ${plan.duration_days} روزه`}</p></div><CreditCard className="h-6 w-6 text-emerald-300" /></div><div className="mt-8 text-3xl font-black text-white">{toman(plan.price)}</div>
+            {/* Feature lines come from the SERVER catalog labels — zero hardcoded feature names. */}
+            <ul className="mt-6 space-y-3 text-sm text-slate-300">
+              {planFeatureLines(plan.features, pricing?.labels ?? {}).filter((line) => line.state !== "off").map((line) => (
+                <li key={line.key} className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-emerald-300" />{line.label}</li>
+              ))}
+            </ul><button type="button" onClick={() => void openReceipt(plan)} className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300"><CreditCard className="h-4 w-4" />{content.ctaLabel}</button>
+          </MotionDiv>; })}
         </div>
+        <div className="mx-auto mt-12 max-w-2xl rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-7"><h3 className="text-lg font-bold text-white">{content.featuresTitle}</h3><div className="mt-4 grid gap-3 sm:grid-cols-2">{content.features.map((feature) => <div key={feature} className="flex items-center gap-2 text-sm text-slate-400"><CheckCheck className="h-4 w-4 text-emerald-300" />{feature}</div>)}</div><div className="mt-6 grid gap-4 sm:grid-cols-2"><div><p className="mb-2 text-xs text-slate-500">{content.updatesTitle}</p><PricingSwitch first={content.updatesLabel1} second={content.updatesLabel2} value={isForever} onChange={setIsForever} /></div><div><p className="mb-2 text-xs text-slate-500">{content.licenseTitle}</p><PricingSwitch first={content.licenseLabel1} second={content.licenseLabel2} value={isCorporate} onChange={setIsCorporate} /></div></div></div>
       </div>
+      {modalPlan && <ReceiptModal plan={modalPlan} businesses={businesses} selectedBusiness={selectedBusiness} onBusinessChange={setSelectedBusiness} onClose={() => setModalPlan(null)} onSubmitted={(message) => { setModalPlan(null); setSuccess(message); }} />}
     </div>
   );
 }
