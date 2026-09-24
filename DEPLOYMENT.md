@@ -7,6 +7,8 @@ Monorepo با دو بخش مستقل:
 | فرانت‌اند | `web/` | Next.js 16 + Tailwind v4 | **Vercel** |
 | بک‌اند | `api/` | Laravel 12 (PHP 8.3) + PostgreSQL/PostGIS | **Render / Railway** |
 
+> **قرارداد پشته فنی:** پیاده‌سازی فقط با فناوری‌های مصوب — Next.js + TypeScript / Laravel + PHP 8.3 / PostgreSQL + PostGIS / Redis. Node.js هیچ سرویسی در پشته نیست؛ صرفاً ابزار build و اجرای خود Next.js است.
+
 ---
 
 ## ۰. زیرساخت نقشه (تایل‌سرور محلی — فقط PHP)

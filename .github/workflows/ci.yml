@@ -1,0 +1,96 @@
+name: CI
+
+# Per-request scope: run on every PR to main. The backend suite (SQLite
+# in-memory, forced by phpunit.xml) plus the frontend typecheck and build act
+# as the merge gate. PostGIS integration tests skip themselves (PGSQL_TEST_*
+# unset) — they are exercised against real Postgres by the staging workflow.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (Laravel / PHPUnit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3 with required extensions
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, pdo_sqlite, gd, intl, mbstring, zip
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Copy environment file
+        run: |
+          # CI never touches real credentials: phpunit.xml forces the sqlite
+          # in-memory connection regardless of what .env contains.
+          cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Run test suites
+        run: php artisan test
+
+  frontend:
+    name: Frontend typecheck and build (Next.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install npm dependencies (clean, from lockfile)
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        env:
+          # Server-side fetch during build skips upstream CMS calls when the
+          # variable is unset (verified behavior) — a static placeholder keeps
+          # that path deterministic without any network dependency.
+          NEXT_PUBLIC_API_URL: https://staging-api.invalid/api
+        run: npm run build
+
+      - name: Frontend safety tests
+        run: node --test tests/phase2-safety.test.cjs

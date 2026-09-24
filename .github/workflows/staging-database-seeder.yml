@@ -169,12 +169,39 @@ jobs:
                   fwrite(STDERR, "Required staging tables are missing.\n");
                   exit(1);
               }
+
+              // Schema freshness guard: the seeder image ships today's main
+              // code while the staging schema is only migrated by the Render
+              // preDeploy. Seeding a schema that is behind main lets the
+              // seeders and the deployed API diverge (e.g. columns added by
+              // new migrations do not exist yet). Refuse early, read-only.
+              $migrationFiles = glob(getcwd() . '/database/migrations/*.php');
+              if ($migrationFiles === false || $migrationFiles === []) {
+                  fwrite(STDERR, "No migration files found in the seeder image.\n");
+                  exit(1);
+              }
+              sort($migrationFiles);
+              $expectedMigrations = array_map(
+                  static fn (string $file): string => basename($file, '.php'),
+                  $migrationFiles
+              );
+              $statement = $pdo->prepare(
+                  'SELECT migration FROM migrations WHERE migration = ANY (CAST(:names AS text[]))'
+              );
+              $statement->execute(['names' => '{' . implode(',', $expectedMigrations) . '}']);
+              $appliedMigrations = array_column($statement->fetchAll(PDO::FETCH_ASSOC), 'migration');
+              $missingMigrations = array_diff($expectedMigrations, $appliedMigrations);
+              if ($missingMigrations !== []) {
+                  fwrite(STDERR, "Staging schema is behind main - deploy main first (Render preDeploy runs the migrations), then re-run this workflow.\n");
+                  fwrite(STDERR, 'Missing migrations (' . count($missingMigrations) . '): ' . implode(', ', array_slice($missingMigrations, 0, 5)) . "\n");
+                  exit(1);
+              }
           } catch (Throwable $exception) {
               fwrite(STDERR, "Read-only database preflight failed.\n");
               exit(1);
           }
 
-          echo "Read-only preflight passed: connection, database identity, public schema, and required tables verified.\n";
+          echo "Read-only preflight passed: connection, database identity, public schema, required tables, and schema freshness verified.\n";
           PHP
 
           # The preflight above is read-only. It does not run migrations or any schema-changing command.
@@ -186,7 +213,7 @@ jobs:
             "$IMAGE" php -r "$PREFLIGHT"
 
           echo "WARNING: This operation modifies staging roles, permissions, permission_role, and site_settings."
-          echo "WARNING: It does not run migrations and does not create an admin user."
+          echo "WARNING: It does not create an admin user. It does not run migrations - the schema freshness guard above requires staging to already be migrated to main."
           docker run --rm \
             --env APP_ENV=staging \
             --env APP_DEBUG=false \

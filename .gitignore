@@ -14,6 +14,9 @@ Desktop.ini
 *.result.cache
 .freebuff/
 .devserver.log
+.devserver.err.log
+web-dev.log
+web/dev-server.log
 
 # --- local backup snapshots (never commit/push) ---
 backup/

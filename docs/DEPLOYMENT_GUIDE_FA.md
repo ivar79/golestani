@@ -6,7 +6,7 @@
 - Laravel 12
 - PostgreSQL 16 به همراه PostGIS 3.4
 - Redis 7
-- Node.js سازگار با Next.js 16 و npm
+- ابزار ساخت فرانت‌اند: Node.js + npm — فقط ابزار build و اجرای خود Next.js؛ **بخشی از پشته اصلی نیست** و هیچ سرویس Node.js در استقرار وجود ندارد
 - وب‌سرور معکوس با HTTPS در محیط واقعی
 
 ## تنظیمات Backend

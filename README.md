@@ -115,3 +115,5 @@ npm run dev
 - **Database:** PostgreSQL **+ PostGIS** → Render / Neon
 - **Authentication:** **Bearer Token** (Santum) — بدون stateful cookie
 - **SMS:** abstraction `SmsServiceInterface` با driver های `log` (فعلاً) و `http` (آینده)
+
+> **پشته فنی مصوب (طبق قرارداد):** Next.js + TypeScript / Laravel + PHP 8.3 / PostgreSQL + PostGIS / Redis — پیاده‌سازی فقط با همین فناوری‌های مصوب انجام شده است. **Node.js هیچ سرویسی در پشته نیست؛** صرفاً ابزار build و اجرای خود Next.js است (همان‌طور که وب‌سرور ابزار اجرای PHP است).

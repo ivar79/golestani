@@ -48,7 +48,7 @@ The exact folder structure at the root of the repository will be:
 - **Why it fits the 45-day constraint:** Developers and staging environments will rely on a standardized `.env` template that wires the frontend to `http://localhost:8000/api` during local development automatically. 
 
 ## 7. Local Development Setup
-**Decision:** Containerized Backend (Laravel Sail / Docker) + Local Node Frontend.
+**Decision:** Containerized Backend (Laravel Sail / Docker) + Local Next.js Frontend. (Next.js tooling runs on Node as its build/runtime only; no Node service is part of the deployed stack — the stack itself is Next.js + TypeScript / Laravel + PHP 8.3 / PostgreSQL + PostGIS / Redis.)
 - **Why it fits the 45-day constraint:** The project requires PostgreSQL **with the PostGIS extension**. Installing PostGIS natively on Windows/Mac is historically prone to severe dependency errors. Providing a `docker-compose.yml` that pulls a pre-built `postgis/postgis` image guarantees that any developer on the team has a working spatial database in under 5 minutes.
 - **Alternative Risks:** Forcing developers to install PostgreSQL, PostGIS, PHP 8.3, and Redis directly on their host OS will result in days lost to environment troubleshooting ("works on my machine" syndrome).
 
