@@ -45,6 +45,18 @@ export default function AdminUsersTab() {
     }
   };
 
+  const handleRoleChange = async (user: AdminUser, role: string) => {
+    setBusyId(user.id);
+    try {
+      const updated = await updateAdminUser(user.id, { roles: [role] });
+      setUsers((prev) => prev.map((row) => (row.id === user.id ? updated : row)));
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (loading && users.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -98,7 +110,7 @@ export default function AdminUsersTab() {
                       {user.phone}
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap items-center gap-1">
                         {user.roles.map((r) => (
                           <span
                             key={r.name}
@@ -111,6 +123,14 @@ export default function AdminUsersTab() {
                         {user.roles.length === 0 && (
                           <span className="text-xs text-slate-500">کاربر عادی</span>
                         )}
+                        <select value={user.roles[0]?.name ?? "user"} onChange={(event) => void handleRoleChange(user, event.target.value)} disabled={isBusy} className="rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1 text-[11px] text-slate-300" aria-label="تغییر نقش کاربر">
+                          <option value="user">کاربر</option>
+                          <option value="business_owner">صاحب کسب‌وکار</option>
+                          <option value="designer">طراح</option>
+                          <option value="support">پشتیبانی</option>
+                          <option value="expert">کارشناس</option>
+                          <option value="admin">مدیر</option>
+                        </select>
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
@@ -128,7 +148,7 @@ export default function AdminUsersTab() {
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() => void handleAction(user)}
+                        onClick={() => void handleToggleStatus(user)}
                         className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-all whitespace-nowrap active:scale-95 disabled:opacity-50 cursor-pointer ${
                           user.is_active
                             ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
@@ -231,7 +251,7 @@ export default function AdminUsersTab() {
                 <button
                   type="button"
                   disabled={isBusy}
-                  onClick={() => void handleAction(user)}
+                        onClick={() => void handleToggleStatus(user)}
                   className={`flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap active:scale-[0.98] disabled:opacity-50 cursor-pointer ${
                     user.is_active
                       ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]"

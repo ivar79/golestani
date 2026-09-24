@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 import {
   LayoutDashboard,
   Building2,
@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Menu,
   X,
+  Upload,
   CreditCard,
   Megaphone,
   Palette,
@@ -26,6 +27,9 @@ import {
   AlertCircle,
   Save,
   Home,
+  Database,
+  Activity,
+  History as HistoryIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
@@ -37,16 +41,28 @@ import {
   moderateAdminPortfolio,
   type AdminOverview,
 } from "@/lib/admin";
-import { getAdminSettings, saveAdminSetting } from "@/lib/admin";
+import { getAdminSettings, saveAdminSetting, uploadAdminMedia } from "@/lib/admin";
 import AdminPagesTab from "@/components/admin/AdminPagesTab";
 import AdminMapTab from "@/components/admin/AdminMapTab";
 import AdminBlogTab from "@/components/admin/AdminBlogTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
 import AdminUsersTab from "@/components/admin/AdminUsersTab";
+import AdminTaxonomiesTab from "@/components/admin/AdminTaxonomiesTab";
+import AdminHealthTab from "@/components/admin/AdminHealthTab";
+import AdminPlansTab from "@/components/admin/AdminPlansTab";
+import AdminDesignersTab from "@/components/admin/AdminDesignersTab";
+import AdminReportsTab from "@/components/admin/AdminReportsTab";
+import AdminAuditTab from "@/components/admin/AdminAuditTab";
 
 const TABS = [
   { id: "Overview", label: "پیشخوان و صف‌ها", icon: LayoutDashboard },
   { id: "Users", label: "کاربران و نقش‌ها", icon: Users },
+  { id: "Taxonomies", label: "داده‌های پایه", icon: Database },
+  { id: "Health", label: "سلامت و سوابق", icon: Activity },
+  { id: "Plans", label: "پلن‌ها و درآمد", icon: CreditCard },
+  { id: "Designers", label: "مدیریت طراحان", icon: Palette },
+  { id: "Reports", label: "گزارش‌های مردمی", icon: AlertCircle },
+  { id: "Audit", label: "سوابق مدیریتی", icon: HistoryIcon },
   { id: "Homepage", label: "محتوای صفحه اصلی (CMS)", icon: SlidersHorizontal },
   { id: "Pages", label: "صفحات مستقل", icon: FileText },
   { id: "Blog", label: "وبلاگ و مقالات", icon: BookOpen },
@@ -57,6 +73,13 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 const HOMEPAGE_GROUPS = [
+  {
+    id: "brand",
+    title: "هویت و لوگو (Brand)",
+    description:
+      "لوگوی سفارشی برند — در صورت خالی‌بودن، لوگوی استاندارد InKart در سراسر سایت نشان داده می‌شود. مسیر فایل آپلودی را از تب رسانه کپی کنید.",
+    keys: ["homepage.logo", "homepage.brand"],
+  },
   {
     id: "hero",
     title: "بخش هیرو (Hero & Intro)",
@@ -161,6 +184,7 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeGroup, setActiveGroup] = useState("hero");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [maxScroll, setMaxScroll] = useState(0);
 
@@ -306,16 +330,14 @@ export default function AdminPage() {
         <div>
           {/* Brand Header */}
           <div className="flex items-center justify-between border-b border-white/[0.08] px-6 py-5">
-            <Link href="/" className="flex items-center gap-3 group">
-              <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.4)] group-hover:scale-105 transition-transform">
-                <Image src="/incart-logo.webp" alt="لوگوی اینکارت" width={40} height={40} className="h-full w-full object-cover" />
-              </div>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-white group-hover:text-cyan-400 transition-colors">
-                  مرکز مدیریت اینکارت
-                </h1>
-                <p className="text-[11px] text-slate-400">سامانه جامع معرفی کسب‌وکارها</p>
-              </div>
+            <Link
+              href="/"
+              aria-label="رفتن به صفحه اصلی اینکارت"
+              className="flex min-w-0 flex-col items-start gap-1.5 transition-opacity duration-200 hover:opacity-80"
+            >
+              {/* Same finalized identity as the owner dashboard — no separate admin logo */}
+              <CmsBrandLogo variant="primary" tone="light" width={150} />
+              <span className="text-[10px] text-slate-400">مرکز مدیریت اینکارت</span>
             </Link>
             <button
               onClick={() => setMobileMenuOpen(false)}
@@ -648,6 +670,11 @@ export default function AdminPage() {
                     await moderateAdminSubscription(id, "active");
                     await refresh();
                   }}
+                  rejectAction={async (id, note) => {
+                    await moderateAdminSubscription(id, "rejected", note);
+                    await refresh();
+                  }}
+                  rejectLabel="رد رسید"
                   actionLabel="فعال‌سازی آنی"
                   emptyText="درخواست اشتراک معلقی وجود ندارد."
                   emptySubtext="تمام فاکتورهای پرداخت‌شده فعال هستند."
@@ -674,6 +701,11 @@ export default function AdminPage() {
                     await moderateAdminAdvertisement(id, "approved");
                     await refresh();
                   }}
+                  rejectAction={async (id, note) => {
+                    await moderateAdminAdvertisement(id, "rejected", note);
+                    await refresh();
+                  }}
+                  rejectLabel="رد تبلیغ"
                   actionLabel="تأیید بنر تبلیغاتی"
                   emptyText="آگهی تبلیغاتی در صف تایید نیست."
                   emptySubtext="نمایش تبلیغات در وضعیت پایدار است."
@@ -687,6 +719,11 @@ export default function AdminPage() {
                     await moderateAdminPortfolio(id, "approved");
                     await refresh();
                   }}
+                  rejectAction={async (id, note) => {
+                    await moderateAdminPortfolio(id, "rejected", note);
+                    await refresh();
+                  }}
+                  rejectLabel="رد نمونه‌کار"
                   actionLabel="تأیید نمونه‌کار"
                   emptyText="نمونه‌کار جدیدی ارسال نشده است."
                   emptySubtext="پروفایل طراحان به‌روز است."
@@ -778,15 +815,44 @@ export default function AdminPage() {
                               className="min-h-[96px] w-full rounded-xl border border-white/10 bg-slate-950/60 p-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
                             />
                           ) : (
-                            <input
-                              id={key}
-                              type="text"
-                              value={settings[key] ?? ""}
-                              onChange={(e) =>
-                                setSettings((x) => ({ ...x, [key]: e.target.value }))
-                              }
-                              className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
-                            />
+                            <div className="flex flex-col gap-2">
+                              <input
+                                id={key}
+                                type="text"
+                                value={settings[key] ?? ""}
+                                onChange={(e) =>
+                                  setSettings((x) => ({ ...x, [key]: e.target.value }))
+                                }
+                                className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:bg-slate-950/80"
+                              />
+                              {/* Media fields (logo/hero image): one-click upload sets the path */}
+                              {key.endsWith(".logo") || key.endsWith(".image") ? (
+                                <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3.5 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20">
+                                  <Upload className="h-3.5 w-3.5" />
+                                  <span>{uploadingLogo ? "در حال آپلود…" : "آپلود فایل و پرکردن مسیر"}</span>
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                    className="hidden"
+                                    disabled={uploadingLogo}
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      setUploadingLogo(true);
+                                      setError(null);
+                                      try {
+                                        const media = await uploadAdminMedia(file);
+                                        setSettings((x) => ({ ...x, [key]: media.path }));
+                                      } catch {
+                                        setError("آپلود فایل ناموفق بود.");
+                                      } finally {
+                                        setUploadingLogo(false);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              ) : null}
+                            </div>
                           )}
                         </div>
                       );
@@ -838,6 +904,42 @@ export default function AdminPage() {
               <AdminUsersTab />
             </div>
           )}
+
+          {tab === "Taxonomies" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminTaxonomiesTab />
+            </div>
+          )}
+
+          {tab === "Health" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminHealthTab />
+            </div>
+          )}
+
+          {tab === "Plans" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminPlansTab />
+            </div>
+          )}
+
+          {tab === "Designers" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminDesignersTab />
+            </div>
+          )}
+
+          {tab === "Reports" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminReportsTab />
+            </div>
+          )}
+
+          {tab === "Audit" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminAuditTab />
+            </div>
+          )}
         </div>
       </main>
     </div>
@@ -851,6 +953,8 @@ function QueueCard({
   items,
   action,
   actionLabel,
+  rejectAction,
+  rejectLabel,
   emptyText,
   emptySubtext,
 }: {
@@ -859,6 +963,8 @@ function QueueCard({
   items: Record<string, unknown>[];
   action: (id: number) => Promise<unknown>;
   actionLabel: string;
+  rejectAction?: (id: number, note: string) => Promise<unknown>;
+  rejectLabel?: string;
   emptyText: string;
   emptySubtext: string;
 }) {
@@ -868,6 +974,18 @@ function QueueCard({
     setActingId(id);
     try {
       await action(id);
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function handleReject(id: number) {
+    if (!rejectAction) return;
+    const note = window.prompt("دلیل رد را وارد کنید:")?.trim();
+    if (!note) return;
+    setActingId(id);
+    try {
+      await rejectAction(id, note);
     } finally {
       setActingId(null);
     }
@@ -917,6 +1035,7 @@ function QueueCard({
                     <span className="flex h-2 w-2 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.7)]" />
                     <span className="truncate font-medium text-slate-200">{name}</span>
                   </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => void handleAction(id)}
@@ -925,6 +1044,8 @@ function QueueCard({
                   >
                     {isBusy ? "در حال انجام..." : actionLabel}
                   </button>
+                  {rejectAction && <button type="button" onClick={() => void handleReject(id)} disabled={isBusy} className="min-h-[36px] rounded-xl border border-rose-400/30 bg-rose-400/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 disabled:opacity-50">{rejectLabel}</button>}
+                  </div>
                 </li>
               );
             })}
@@ -947,6 +1068,8 @@ function QueueCard({
 /** Translate CMS keys to human-friendly Persian labels */
 function formatCmsKey(key: string): string {
   const map: Record<string, string> = {
+    "homepage.logo": "لوگوی سفارشی برند (مسیر فایل آپلودی)",
+    "homepage.brand": "نام برند (متن)",
     "homepage.hero.title": "تیتر اصلی هیرو (Hero Title)",
     "homepage.hero.subtitle": "زیرتیتر هیرو (Subtitle)",
     "homepage.hero.badges": "نشان بالای تیتر (Badge)",
@@ -979,7 +1102,6 @@ function formatCmsKey(key: string): string {
     "homepage.footer.about": "متن درباره ما در فوتر",
     "homepage.footer.links": "پیوندهای فوتر (JSON)",
     "homepage.footer.copyright": "متن کپی‌رایت",
-    "homepage.brand": "نام برند",
     "homepage.nav.pricing": "عنوان منو: تعرفه‌ها",
     "pricing.eyebrow": "تعرفه‌ها: متن بالای تیتر (Eyebrow)",
     "pricing.title": "تعرفه‌ها: تیتر اصلی",

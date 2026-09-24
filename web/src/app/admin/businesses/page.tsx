@@ -5,18 +5,21 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
+import { downloadPrintFile } from "@/lib/phase4";
 import {
   badgeLabel,
   getAdminBusinesses,
   getBusinessAudit,
   mediaUrl,
   moderateBusiness,
+  promoteBusiness,
   safeHttpUrl,
   statusLabel,
   type AuditEvent,
   type Page,
   type Phase2Business,
 } from "@/lib/phase2";
+import { getPublicTaxonomies } from "@/lib/taxonomies";
 import {
   Building2,
   ChevronRight,
@@ -30,6 +33,7 @@ import {
   Mail,
   Loader2,
   X,
+  TrendingUp,
 } from "lucide-react";
 
 export default function BusinessModerationPage() {
@@ -43,6 +47,9 @@ export default function BusinessModerationPage() {
   const [data, setData] = useState<Page<Phase2Business> | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Phase 3 featured ladder: per-row in-flight state so toggling one row
+  // never disables the whole page (no list-wide refetch on success).
+  const [promotingId, setPromotingId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Phase2Business | null>(null);
   const [note, setNote] = useState("");
   const [badges, setBadges] = useState<string[]>([]);
@@ -51,6 +58,7 @@ export default function BusinessModerationPage() {
   const [audit, setAudit] = useState<Page<AuditEvent> | null>(null);
   const [auditPage, setAuditPage] = useState(1);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [badgeOptions, setBadgeOptions] = useState<Record<string, string>>(badgeLabel);
   const [scrollY, setScrollY] = useState(0);
   const [maxScroll, setMaxScroll] = useState(1);
 
@@ -117,6 +125,15 @@ export default function BusinessModerationPage() {
     return () => controller.abort();
   }, [selected?.id, auditPage, revision]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void getPublicTaxonomies("badge").then((rows) => {
+        if (rows.length) setBadgeOptions(Object.fromEntries(rows.map((row) => [row.slug, row.name])));
+      }).catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   function choose(b: Phase2Business) {
     setSelected(b);
     setNote(b.moderation_note || "");
@@ -147,6 +164,28 @@ export default function BusinessModerationPage() {
       setMessage({ text: extractApiError(e), error: true });
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Phase 3: flip is_promoted; patch the row in place — no refetch. */
+  async function togglePromote(b: Phase2Business) {
+    setPromotingId(b.id);
+    setMessage(null);
+    try {
+      const res = await promoteBusiness(b.id, !b.is_promoted);
+      setData((d) =>
+        d ? { ...d, data: d.data.map((x) => (x.id === res.id ? { ...x, is_promoted: res.is_promoted } : x)) } : d,
+      );
+      setSelected((s) => (s && s.id === res.id ? { ...s, is_promoted: res.is_promoted } : s));
+      setMessage({
+        text: res.is_promoted
+          ? "کسب‌وکار نردبان شد و در نتایج جستجو به‌عنوان برگزیده بالاتر دیده می‌شود."
+          : "نردبان کسب‌وکار خاموش شد.",
+      });
+    } catch (e) {
+      setMessage({ text: extractApiError(e), error: true });
+    } finally {
+      setPromotingId(null);
     }
   }
 
@@ -348,6 +387,15 @@ export default function BusinessModerationPage() {
                   {(selected.services || []).join("، ") || "بدون خدمات درج‌شده"}
                 </p>
               </div>
+
+              {selected.designer && (
+                <div className="space-y-1.5 sm:col-span-2 rounded-xl border border-secondary/30 bg-secondary/10 p-3">
+                  <span className="text-xs font-bold text-secondary">طراح معرف کسب‌وکار (فاز ۴):</span>
+                  <p className="text-xs text-white mt-0.5">
+                    {selected.designer.display_name} — کد معرف: <span className="font-mono text-secondary font-bold" dir="ltr">{selected.designer.referral_code}</span>
+                  </p>
+                </div>
+              )}
             </div>
 
             {selected.description && (
@@ -413,6 +461,37 @@ export default function BusinessModerationPage() {
               </div>
             </div>
 
+            {/* Phase 4: Print File Review (private disk, authorized download) */}
+            {selected.cards && (selected.cards[0]?.has_print_file || selected.cards[0]?.print_file_path) && (
+              <div className="mt-5 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-cyan-300">طرح چاپی موجود کسب‌وکار (عکس یا PDF — فاز ۴):</span>
+                    <p className="mt-0.5 text-xs text-white font-medium">
+                      {selected.cards[0].print_file_name || "فایل طرح فیزیکی"}
+                      <span className="text-slate-400 text-[10px] mr-2">({selected.cards[0].print_file_mime || "سند ذخیره شده"})</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessage(null);
+                      downloadPrintFile(selected.id)
+                        .then(() => setMessage({ text: "دانلود فایل طرح چاپی آغاز شد." }))
+                        .catch((err) => {
+                          const httpStatus = (err as { response?: { status?: number } })?.response?.status;
+                          setMessage({ text: httpStatus === 404 ? "فایل روی سرور یافت نشد." : extractApiError(err), error: true });
+                        });
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>دانلود طرح چاپی</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Decision & Badges Form */}
             <form onSubmit={submit} className="mt-6 border-t border-white/[0.08] pt-5">
               <fieldset disabled={busy} className="space-y-4">
@@ -452,7 +531,7 @@ export default function BusinessModerationPage() {
                     نشان‌های اعتبارسنجی (Badges):
                   </span>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.entries(badgeLabel).map(([key, label]) => {
+                    {Object.entries(badgeOptions).map(([key, label]) => {
                       const isChecked = badges.includes(key);
                       return (
                         <label
@@ -563,20 +642,46 @@ export default function BusinessModerationPage() {
                       >
                         {statusLabel[b.status] || b.status}
                       </span>
+                      {b.is_promoted && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-300 whitespace-nowrap shadow-[0_0_10px_rgba(245,158,11,0.15)]">
+                          <TrendingUp className="h-3 w-3" />
+                          برگزیده
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1.5 text-xs text-slate-400">
                       {[b.city, b.neighborhood, b.category].filter(Boolean).join(" • ")}
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => choose(b)}
-                    className="flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-300 hover:border-cyan-400/60 hover:bg-cyan-500/20 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap self-end sm:self-auto shadow-[0_0_12px_rgba(34,211,238,0.1)] transition-all"
-                  >
-                    بررسی و تغییر وضعیت
-                  </button>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      disabled={promotingId !== null}
+                      onClick={() => togglePromote(b)}
+                      title={b.is_promoted ? "خاموش کردن نردبان (حذف از حالت برگزیده)" : "نردبان کردن کسب‌وکار (نمایش بالاتر در نتایج جستجو)"}
+                      className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-semibold active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap transition-all ${
+                        b.is_promoted
+                          ? "border-amber-400/40 bg-amber-500/10 text-amber-300 hover:border-amber-400/70 hover:bg-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.12)]"
+                          : "border-white/10 bg-white/5 text-slate-300 hover:border-amber-400/40 hover:text-amber-200 hover:bg-amber-500/10"
+                      }`}
+                    >
+                      {promotingId === b.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <TrendingUp className="h-3.5 w-3.5" />
+                      )}
+                      <span>{b.is_promoted ? "حذف نردبان" : "نردبان"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => choose(b)}
+                      className="flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-300 hover:border-cyan-400/60 hover:bg-cyan-500/20 active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap shadow-[0_0_12px_rgba(34,211,238,0.1)] transition-all"
+                    >
+                      بررسی و تغییر وضعیت
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
