@@ -13,9 +13,12 @@ use App\Models\Media;
 use App\Models\Article;
 use App\Models\PageContent;
 use App\Models\SiteSetting;
+use App\Models\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
 
 class AdminController extends Controller
 {
@@ -144,6 +147,53 @@ class AdminController extends Controller
     public function media(Request $request): JsonResponse { $request->validate(['file'=>['required','file','mimes:jpg,jpeg,png,webp,pdf,svg','max:10240']]); $file=$request->file('file'); return response()->json(Media::create(['path'=>$file->store('media','public'),'original_name'=>$file->getClientOriginalName(),'mime_type'=>$file->getMimeType(),'file_size'=>$file->getSize()]),201); }
     public function mediaList(): JsonResponse { return response()->json(Media::orderByDesc('created_at')->get()); }
 
+    public function health(): JsonResponse
+    {
+        $database = ['ok' => false, 'driver' => DB::connection()->getDriverName()];
+        $postgis = ['ok' => false, 'version' => null];
+        $redis = ['ok' => false];
+
+        try {
+            DB::select('select 1');
+            $database['ok'] = true;
+            if ($database['driver'] === 'pgsql') {
+                $postgis['version'] = DB::selectOne('select PostGIS_Version() as version')->version ?? null;
+                $postgis['ok'] = $postgis['version'] !== null;
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            Redis::connection()->ping();
+            $redis['ok'] = true;
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return response()->json([
+            'status' => $database['ok'] && ($database['driver'] !== 'pgsql' || $postgis['ok']) ? 'ok' : 'degraded',
+            'checked_at' => now()->toIso8601String(),
+            'database' => $database,
+            'postgis' => $postgis,
+            'redis' => $redis,
+            'storage' => ['ok' => is_writable(storage_path('app'))],
+        ]);
+    }
+
+    public function auditLog(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'event' => ['nullable', 'string', 'max:100'],
+            'subject_type' => ['nullable', 'string', 'max:60'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $query = DB::table('audit_events')->orderByDesc('id');
+        if (! empty($data['event'])) $query->where('event', $data['event']);
+        if (! empty($data['subject_type'])) $query->where('subject_type', $data['subject_type']);
+        return response()->json($query->paginate(50));
+    }
+
     public function overview(): JsonResponse
     {
         return response()->json([
@@ -177,7 +227,21 @@ class AdminController extends Controller
             'name' => ['nullable', 'string', 'max:120'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+        $roles = $request->input('roles');
+        unset($data['roles']);
         $user->update($data);
+        if (is_array($roles)) {
+            $roleNames = array_values(array_unique(array_map('strval', $roles)));
+            $roleIds = Role::whereIn('name', $roleNames)->pluck('id', 'name');
+            abort_if($roleIds->count() !== count($roleNames), 422, 'یکی از نقش‌های انتخاب‌شده معتبر نیست.');
+            if ($user->is($request->user()) && ! in_array('admin', $roleNames, true)) {
+                abort(422, 'مدیر نمی‌تواند نقش مدیریتی خودش را حذف کند.');
+            }
+            if ($user->hasRole('admin') && ! in_array('admin', $roleNames, true) && User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->count() <= 1) {
+                abort(422, 'آخرین مدیر سامانه قابل تنزل نیست.');
+            }
+            $user->roles()->sync($roleIds->values());
+        }
         return response()->json($user->fresh('roles'));
     }
 

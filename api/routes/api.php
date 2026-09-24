@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\ShowcaseController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\AdminController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AdminTaxonomyController;
+use App\Http\Controllers\Api\BusinessReportController;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
@@ -57,6 +59,8 @@ Route::prefix('auth')->group(function (): void {
 Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function (): void {
     Route::get('/businesses/{business}/card', [BusinessCardController::class, 'show']);
     Route::put('/businesses/{business}/card', [BusinessCardController::class, 'save']);
+    // Phase 4: authorized print-file download (owner/admin only, 403 else).
+    Route::get('/businesses/{business}/card/print-file', [BusinessCardController::class, 'download']);
 });
 // P1: 'user' may bootstrap their own designer profile; the designer role
 // is assigned server-side on first create. Portfolio access stays owned.
@@ -68,14 +72,19 @@ Route::middleware(['auth:sanctum', 'role:designer,user,admin'])->prefix('designe
     Route::delete('/portfolios/{portfolio}', [DesignerController::class, 'destroyPortfolio']);
 });
 Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/portfolios/{portfolio}/moderate', [DesignerController::class, 'moderate']);
+Route::middleware(['auth:sanctum', 'role:admin'])->group(function (): void {
+    Route::get('/admin/designers', [DesignerController::class, 'adminIndex']);
+    Route::patch('/admin/designers/{designer}/moderate', [DesignerController::class, 'adminModerate']);
+});
 
 Route::get('/plans', [SubscriptionController::class, 'plans']);
+Route::get('/public/taxonomies', [AdminTaxonomyController::class, 'public']);
 Route::get('/public/homepage', [AdminController::class, 'publicHomepage']);
 Route::get('/public/businesses/{business:slug}/showcases', [ShowcaseController::class, 'public']);
 Route::get('/public/advertisements/{slot}', [AdvertisementController::class, 'public']);
 Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function (): void {
     Route::get('/businesses/{business}/subscriptions', [SubscriptionController::class, 'index']);
-    Route::post('/businesses/{business}/subscriptions', [SubscriptionController::class, 'store']);
+    Route::post('/businesses/{business}/subscriptions', [SubscriptionController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/businesses/{business}/showcases', [ShowcaseController::class, 'index']);
     Route::post('/businesses/{business}/showcases', [ShowcaseController::class, 'store']);
     Route::put('/showcases/{showcase}', [ShowcaseController::class, 'update']);
@@ -84,11 +93,31 @@ Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function
     Route::post('/businesses/{business}/advertisements', [AdvertisementController::class, 'store']);
 });
 Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/subscriptions/{subscription}/moderate', [SubscriptionController::class, 'moderate']);
+Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('/notifications', [SubscriptionController::class, 'notifications']);
+    Route::patch('/notifications/{notification}/read', [SubscriptionController::class, 'readNotification']);
+    Route::get('/subscriptions/{subscription}/receipt', [SubscriptionController::class, 'receipt']);
+});
+Route::middleware(['auth:sanctum', 'role:admin'])->get('/admin/reports/revenue', [SubscriptionController::class, 'reports']);
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function (): void {
+    Route::get('/taxonomies', [AdminTaxonomyController::class, 'index']);
+    Route::post('/taxonomies', [AdminTaxonomyController::class, 'store']);
+    Route::put('/taxonomies/{taxonomy}', [AdminTaxonomyController::class, 'update']);
+    Route::delete('/taxonomies/{taxonomy}', [AdminTaxonomyController::class, 'destroy']);
+    Route::get('/plans', [SubscriptionController::class, 'adminPlans']);
+    // Entitlement catalog: drives the admin plan editor — no feature name is
+    // hardcoded in the admin frontend.
+    Route::get('/entitlements/catalog', [SubscriptionController::class, 'catalog']);
+    Route::post('/plans', [SubscriptionController::class, 'storePlan']);
+    Route::put('/plans/{plan}', [SubscriptionController::class, 'updatePlan']);
+    Route::delete('/plans/{plan}', [SubscriptionController::class, 'destroyPlan']);
+});
 Route::get('/search/businesses', [BusinessController::class, 'search']);
 // M1 (Phase 3): distinct filter values for the search UI (cached 5 min).
 Route::get('/search/facets', [BusinessController::class, 'facets']);
 Route::get('/public/businesses/{slug}', [PublicBusinessController::class, 'show']);
 Route::get('/public/businesses/{slug}/qr', [PublicBusinessController::class, 'qr']);
+Route::middleware('auth:sanctum')->post('/public/businesses/{business}/reports', [BusinessReportController::class, 'store']);
 // P1: 'user' may pass the gate to create their first business; the
 // business_owner role is assigned server-side in store(). All resource
 // access stays ownership-scoped via authorizeOwner()/own-relation queries.
@@ -100,6 +129,8 @@ Route::middleware(['auth:sanctum', 'role:business_owner,user,admin', 'throttle:3
 Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->patch('/admin/businesses/{business}/moderate', [BusinessController::class, 'moderate']);
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function (): void {
     Route::get('/overview', [AdminController::class, 'overview']);
+    Route::get('/health', [AdminController::class, 'health']);
+    Route::get('/audit', [AdminController::class, 'auditLog']);
     Route::get('/users', [AdminController::class, 'users']);
     Route::patch('/users/{user}', [AdminController::class, 'updateUser']);
     Route::patch('/showcases/{showcase}/moderate', [AdminController::class, 'moderateShowcase']);
@@ -109,6 +140,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/articles', [AdminController::class, 'articles']); Route::post('/articles', [AdminController::class, 'saveArticle']); Route::post('/articles/{article}', [AdminController::class, 'saveArticle']); Route::delete('/articles/{article}', [AdminController::class, 'deleteArticle']);
     Route::post('/media', [AdminController::class, 'media']);
     Route::get('/media', [AdminController::class, 'mediaList']);
+    Route::get('/reports', [BusinessReportController::class, 'index']);
+    Route::patch('/reports/{report}/moderate', [BusinessReportController::class, 'moderate']);
 });
 
 require __DIR__."/phase2.php";
