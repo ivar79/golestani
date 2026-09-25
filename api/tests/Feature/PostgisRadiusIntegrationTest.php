@@ -178,11 +178,12 @@ class PostgisRadiusIntegrationTest extends TestCase
         $this->assertStringStartsWith('POINT(51.4102 35.7597)', (string) $geom->wkt);
 
         // Radius around Vanak (~600m from the florist) must include it with
-        // a real ST_Distance value, same as claimed businesses.
+        // a real ST_Distance value, same as claimed businesses. Phase 3
+        // result-set separation: unclaimed pins live in their own key.
         $res = $this->getJson('/api/search/businesses?latitude=35.7597&longitude=51.4102&radius=600')
             ->assertOk();
 
-        $rows = collect($res->json('data'))->keyBy('id');
+        $rows = collect($res->json('unclaimed'))->keyBy('id');
         $this->assertArrayHasKey($unclaimedNear->id, $rows);
         $this->assertFalse($rows[$unclaimedNear->id]['is_claimed']);
         $this->assertNotNull($rows[$unclaimedNear->id]['distance']);

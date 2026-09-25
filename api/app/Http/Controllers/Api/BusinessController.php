@@ -146,34 +146,80 @@ class BusinessController extends Controller
         $data = $r->validated();
         $pgsql = DB::connection()->getDriverName() === 'pgsql';
         $like = $pgsql ? 'ilike' : 'like';
-        $query = Business::query()->where('status', 'approved');
-        if (!empty($data['q'])) {
-            $term = '%'.addcslashes($data['q'], '%_\\').'%';
-            $query->where(function ($q) use ($term, $like, $pgsql) {
-                $q->where('name', $like, $term)->orWhere('category', $like, $term)->orWhere('description', $like, $term);
-                // Identifiers are fixed; all user input remains bound parameters.
-                foreach (['services','social_links'] as $column) {
-                    if ($pgsql) $q->orWhereRaw('CAST('.$column.' AS TEXT) ILIKE ?', [$term]);
-                    else $q->orWhere($column, 'like', $term);
-                }
-            });
-        }
-        foreach (['city','neighborhood','category'] as $field) if (!empty($data[$field])) $query->where($field, $data[$field]);
-        if (!empty($data['verified'])) $query->whereJsonContains('badges', 'verified');
-        if (!empty($data['showcase'])) $query->whereHas('showcases', fn($q) => $q->where('is_published', true));
-        $hasPoint = isset($data['latitude'], $data['longitude']);
-        if ($hasPoint && isset($data['radius']) && $pgsql) $query->whereRaw('ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)', [$data['longitude'], $data['latitude'], $data['radius']]);
-        if ($hasPoint && $pgsql) {
-            // Phase 3 approved ordering: promoted first, then nearest, then id.
-            $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderByDesc('is_promoted')->orderBy('distance_meters')->orderBy('id');
-        } else $query->orderByDesc('is_promoted')->latest()->orderByDesc('id');
-        $p = $query->paginate((int) ($data['limit'] ?? 20));
-        // Phase 3: cold-start rows (unclaimed) ride the same payload for the
-        // map but never belong to the visible list — subtract them from the
-        // paginated total so the front-end counter matches the card list,
-        // and report their count separately for observability.
-        $unclaimedTotal = (clone $query)->where('is_claimed', false)->toBase()->count();
-        $items = $p->getCollection()->map(fn(Business $b) => [
+
+        // Phase 3 result-set separation:
+        //   MAIN SET (claimed/listable) owns the pagination — it is the only
+        //     set that feeds the result cards, so total/last_page/next_page
+        //     describe exactly the cards the front-end renders.
+        //   MAP-ONLY SET (unclaimed cold-start rows) rides the same filter +
+        //     spatial scope so the map never looks empty, but it NEVER
+        //     consumes a list slot and is reported separately.
+        // Both sets share one scoping closure so a filter/radius change always
+        // applies to both identically.
+        $base = function () use ($data, $pgsql, $like) {
+            $query = Business::query()->where('status', 'approved');
+            if (!empty($data['q'])) {
+                $term = '%'.addcslashes($data['q'], '%_\\').'%';
+                $query->where(function ($q) use ($term, $like, $pgsql) {
+                    $q->where('name', $like, $term)->orWhere('category', $like, $term)->orWhere('description', $like, $term);
+                    // Identifiers are fixed; all user input remains bound parameters.
+                    foreach (['services','social_links'] as $column) {
+                        if ($pgsql) $q->orWhereRaw('CAST('.$column.' AS TEXT) ILIKE ?', [$term]);
+                        else $q->orWhere($column, 'like', $term);
+                    }
+                });
+            }
+            foreach (['city','neighborhood','category'] as $field) if (!empty($data[$field])) $query->where($field, $data[$field]);
+            if (!empty($data['verified'])) $query->whereJsonContains('badges', 'verified');
+            if (!empty($data['showcase'])) $query->whereHas('showcases', fn($q) => $q->where('is_published', true));
+            $hasPoint = isset($data['latitude'], $data['longitude']);
+            if ($hasPoint && isset($data['radius']) && $pgsql) $query->whereRaw('ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)', [$data['longitude'], $data['latitude'], $data['radius']]);
+            if ($hasPoint && $pgsql) {
+                // Phase 3 approved ordering: promoted first, then nearest, then id.
+                $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderByDesc('is_promoted')->orderBy('distance_meters')->orderBy('id');
+            } else $query->orderByDesc('is_promoted')->latest()->orderByDesc('id');
+            return $query;
+        };
+
+        // The listable set is paginated on its own — unclaimed rows are NOT
+        // part of it, so every pagination field describes only claimed rows.
+        $p = $base()->where('is_claimed', true)->paginate((int) ($data['limit'] ?? 20));
+
+        // Pin volume is bounded by this same scope — the Phase 3 filters and
+        // the validated radius (<= 100km) the user asked for. That is a
+        // TRANSPORT/SCOPE bound, not a product-level pin cap: no arbitrary
+        // row limit is applied here. If a performance cap is ever introduced,
+        // it must slice AFTER the spatial ordering above (never dropping the
+        // nearest pins first) and must never touch the claimed pagination.
+        $unclaimedRows = $base()->where('is_claimed', false)->get();
+
+        $items = $p->getCollection()->map(fn(Business $b) => $this->searchItem($b))->all();
+        $unclaimed = $unclaimedRows->map(fn(Business $b) => $this->searchItem($b))->all();
+
+        return response()->json([
+            'data' => $items,
+            'pagination' => [
+                'page' => $p->currentPage(),
+                'limit' => $p->perPage(),
+                'total' => $p->total(),
+                'last_page' => $p->lastPage(),
+                'next_page' => $p->nextPageUrl(),
+                'unclaimed_total' => count($unclaimed),
+            ],
+            // Phase 3 cold-start pins for the map only (gray pin, simple
+            // popup). They never appear in `data` and never affect its
+            // pagination — the front-end merges them into markers only.
+            'unclaimed' => $unclaimed,
+        ]);
+    }
+
+    /**
+     * One search payload row — shared by the paginated claimed set and the
+     * map-only unclaimed set so both carry identical field semantics.
+     */
+    private function searchItem(Business $b): array
+    {
+        return [
             'id'=>$b->id,'slug'=>$b->slug,'name'=>$b->name,'category'=>$b->category,'city'=>$b->city,'neighborhood'=>$b->neighborhood,'address'=>$b->address,
             'coordinates'=>['latitude'=>$b->latitude,'longitude'=>$b->longitude],'distance'=>$b->distance_meters ?? null,
             'verification_badge'=>in_array('verified',(array)$b->badges,true),'badges'=>$b->badges,
@@ -185,8 +231,7 @@ class BusinessController extends Controller
             // Phase 3: map popups show the logo when one was uploaded.
             'logo'=>$b->logo,
             'phone'=>$b->phone,'services'=>$b->services,'description'=>$b->description,
-        ]);
-        return response()->json(['data'=>$items,'pagination'=>['page'=>$p->currentPage(),'limit'=>$p->perPage(),'total'=>max(0, $p->total() - $unclaimedTotal),'last_page'=>$p->lastPage(),'next_page'=>$p->nextPageUrl(),'unclaimed_total'=>$unclaimedTotal]]);
+        ];
     }
     public function facets(): JsonResponse
     {

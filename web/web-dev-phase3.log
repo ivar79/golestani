@@ -1,0 +1,32 @@
+
+> web@0.1.0 dev
+> next dev --port 3000
+
+▲ Next.js 16.3.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://169.254.83.107:3000
+- Environments: .env.local
+✓ Ready in 1600ms
+⚠ Warning: Next.js ignored package-lock.json in C:\Users\Hossein because it is outside the current Git repository (C:\Users\Hossein\Desktop\golestani-export-new\golestani).
+ To use this directory, set `turbopack.root` in your Next.js config.
+
+✓ Running next.config.ts took 98ms
+
+ GET / 200 in 5.8s (next.js: 4.9s, application-code: 875ms)
+ GET /search 200 in 422ms (next.js: 118ms, application-code: 304ms)
+✓ Compiled in 709ms
+ GET /search 200 in 118ms (next.js: 40ms, application-code: 77ms)
+ GET / 200 in 1042ms (next.js: 433ms, application-code: 608ms)
+ GET / 200 in 108ms (next.js: 23ms, application-code: 84ms)
+ GET / 200 in 433ms (next.js: 71ms, application-code: 362ms)
+ GET /api/ads/taskbar 200 in 6.5s (next.js: 6.3s, application-code: 152ms)
+ GET /search 200 in 466ms (next.js: 221ms, application-code: 245ms)
+ GET / 200 in 231ms (next.js: 33ms, application-code: 199ms)
+ GET /api/ads/taskbar 200 in 194ms (next.js: 116ms, application-code: 78ms)
+ GET /search?q=%DA%A9%D8%A7%D9%81%D9%87&city=%D8%AA%D9%87%D8%B1%D8%A7%D9%86 200 in 190ms (next.js: 16ms, application-code: 174ms)
+ GET /search?q=%DA%A9%D8%A7%D9%81%D9%87&city=%D8%AA%D9%87%D8%B1%D8%A7%D9%86 200 in 279ms (next.js: 14ms, application-code: 265ms)
+[browser] Image with src "/brand/inkart-logo-primary.png" was detected as the Largest Contentful Paint (LCP). Please add the `loading="eager"` property if this image is above the fold.
+Read more: https://nextjs.org/docs/app/api-reference/components/image#loading
+ GET /search 200 in 94ms (next.js: 11ms, application-code: 83ms)
+ GET /search 200 in 201ms (next.js: 27ms, application-code: 174ms)
+ GET /search 200 in 126ms (next.js: 20ms, application-code: 106ms)

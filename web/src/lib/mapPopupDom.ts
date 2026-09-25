@@ -58,7 +58,7 @@ function appendCta(parent: HTMLElement, href: string, label: string): void {
   if (!isSafeHref(href)) return;
   const a = el(
     "a",
-    "mt-1 block text-center rounded-lg bg-[#0b1626] px-2 py-1.5 text-[11px] font-bold text-white hover:bg-[#00c98d] hover:text-[#0b1626] transition-colors",
+    "mt-1 block text-center rounded-lg bg-ik-accent px-2 py-1.5 text-[11px] font-bold text-ik-accent-contrast hover:bg-ik-accent-hover transition-colors",
     label,
   );
   a.setAttribute("href", href);
@@ -71,16 +71,18 @@ function appendCta(parent: HTMLElement, href: string, label: string): void {
 export function buildPopupDom(item: PopupMarker): HTMLElement {
   const root = document.createElement("div");
   root.dir = "rtl";
-  root.className = "space-y-1 p-1 text-right";
+  // Colors come from the --ik-* tokens (the popup pane lives inside the shell,
+  // so they resolve in both the Warm Editorial and the dark theme).
+  root.className = "space-y-1 p-1 text-right text-ik-text";
 
   if (item.unclaimed === true) {
     // Phase 3: پین خاکستری — پاپ‌آپ سبک توافقی؛ تنها CTA ثبت مالکیت.
-    root.appendChild(el("p", "text-sm font-bold text-slate-900", item.title));
+    root.appendChild(el("p", "text-sm font-bold text-ik-text", item.title));
     if (item.category) {
-      root.appendChild(el("p", "text-xs text-slate-500", item.category));
+      root.appendChild(el("p", "text-xs text-ik-muted", item.category));
     }
     root.appendChild(
-      el("p", "text-[11px] leading-relaxed text-slate-600", "این کسب‌وکار هنوز در اینکارت فعال نشده است."),
+      el("p", "text-[11px] leading-relaxed text-ik-muted", "این کسب‌وکار هنوز در اینکارت فعال نشده است."),
     );
     appendCta(root, "/login", "صاحب این کسب‌وکار هستید؟ ثبت مالکیت رایگان");
     return root;
@@ -89,14 +91,14 @@ export function buildPopupDom(item: PopupMarker): HTMLElement {
   // claimed
   const head = el("div", "flex items-center gap-2");
   appendLogo(head, item.logoUrl);
-  head.appendChild(el("p", "text-sm font-bold text-slate-900", item.title));
+  head.appendChild(el("p", "text-sm font-bold text-ik-text", item.title));
   root.appendChild(head);
 
   if (item.category) {
-    root.appendChild(el("p", "text-xs text-slate-500", item.category));
+    root.appendChild(el("p", "text-xs text-ik-muted", item.category));
   }
   if (item.subtitle) {
-    root.appendChild(el("p", "text-xs text-slate-600", item.subtitle));
+    root.appendChild(el("p", "text-xs text-ik-muted", item.subtitle));
   }
   if (item.href) {
     appendCta(root, item.href, "مشاهده کارت ویزیت");

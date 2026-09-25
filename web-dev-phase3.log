@@ -1,0 +1,82 @@
+
+> web@0.1.0 dev
+> next dev --port 3000
+
+▲ Next.js 16.3.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.190.104.41:3000
+- Environments: .env.local
+✓ Ready in 1965ms
+⚠ Warning: Next.js ignored package-lock.json in C:\Users\Hossein because it is outside the current Git repository (C:\Users\Hossein\Desktop\golestani-export-new\golestani).
+ To use this directory, set `turbopack.root` in your Next.js config.
+
+✓ Running next.config.ts took 337ms
+
+○ Compiling /search ...
+ GET /search 200 in 31.1s (next.js: 25.6s, application-code: 5.5s)
+ GET /search 200 in 502ms (next.js: 299ms, application-code: 203ms)
+ GET /api/ads/taskbar 200 in 3.5s (next.js: 3.3s, application-code: 116ms)
+✓ Compiled in 12.9s
+ GET /search 200 in 235ms (next.js: 45ms, application-code: 190ms)
+✓ Compiled in 261ms
+ GET /search 200 in 90ms (next.js: 30ms, application-code: 59ms)
+ GET /search 200 in 166ms (next.js: 15ms, application-code: 151ms)
+ GET /api/ads/taskbar 200 in 57ms (next.js: 30ms, application-code: 27ms)
+✓ Compiled in 556ms
+ GET /search 200 in 75ms (next.js: 34ms, application-code: 42ms)
+ GET /search 200 in 219ms (next.js: 16ms, application-code: 204ms)
+ GET /api/ads/taskbar 200 in 101ms (next.js: 76ms, application-code: 25ms)
+✓ Finished writing to filesystem cache in 16.4s
+ GET /search 200 in 2.1s (next.js: 767ms, application-code: 1380ms)
+ GET /search 200 in 369ms (next.js: 88ms, application-code: 281ms)
+ GET /search 200 in 220ms (next.js: 20ms, application-code: 200ms)
+ GET /search 200 in 142ms (next.js: 21ms, application-code: 121ms)
+ GET /search 200 in 174ms (next.js: 19ms, application-code: 155ms)
+ GET /search 200 in 138ms (next.js: 17ms, application-code: 121ms)
+ GET /search 200 in 123ms (next.js: 14ms, application-code: 109ms)
+ GET /search 200 in 201ms (next.js: 27ms, application-code: 175ms)
+ GET /search 200 in 205ms (next.js: 16ms, application-code: 189ms)
+ GET /search 200 in 159ms (next.js: 15ms, application-code: 145ms)
+ GET /search 200 in 209ms (next.js: 50ms, application-code: 159ms)
+ GET /search 200 in 126ms (next.js: 15ms, application-code: 111ms)
+ GET /search 200 in 578ms (next.js: 58ms, application-code: 521ms)
+ GET /search 200 in 278ms (next.js: 25ms, application-code: 253ms)
+ GET /search 200 in 130ms (next.js: 16ms, application-code: 114ms)
+✓ Finished filesystem cache database compaction in 32.5s
+ GET /search 200 in 370ms (next.js: 126ms, application-code: 244ms)
+ GET /search 200 in 258ms (next.js: 20ms, application-code: 238ms)
+ GET /search 200 in 182ms (next.js: 26ms, application-code: 155ms)
+ GET /search 200 in 120ms (next.js: 11ms, application-code: 108ms)
+ GET /search 200 in 117ms (next.js: 12ms, application-code: 105ms)
+ GET /search 200 in 130ms (next.js: 15ms, application-code: 115ms)
+ GET /search 200 in 123ms (next.js: 13ms, application-code: 111ms)
+ GET /search 200 in 176ms (next.js: 15ms, application-code: 161ms)
+ GET /search 200 in 197ms (next.js: 18ms, application-code: 179ms)
+ GET /search 200 in 181ms (next.js: 13ms, application-code: 169ms)
+ GET /search 200 in 143ms (next.js: 21ms, application-code: 122ms)
+ GET /search 200 in 130ms (next.js: 16ms, application-code: 113ms)
+ GET /search 200 in 683ms (next.js: 206ms, application-code: 476ms)
+ GET /search 200 in 305ms (next.js: 39ms, application-code: 265ms)
+ GET /search 200 in 170ms (next.js: 21ms, application-code: 149ms)
+ GET /search 200 in 238ms (next.js: 22ms, application-code: 216ms)
+ GET /search 200 in 264ms (next.js: 18ms, application-code: 246ms)
+ GET /search 200 in 169ms (next.js: 30ms, application-code: 139ms)
+ GET /search 200 in 126ms (next.js: 11ms, application-code: 114ms)
+ GET /search 200 in 392ms (next.js: 16ms, application-code: 375ms)
+ GET /search 200 in 589ms (next.js: 31ms, application-code: 558ms)
+ GET /search 200 in 164ms (next.js: 15ms, application-code: 149ms)
+ GET /search 200 in 184ms (next.js: 12ms, application-code: 171ms)
+ GET /search 200 in 134ms (next.js: 15ms, application-code: 119ms)
+ GET /search 200 in 274ms (next.js: 16ms, application-code: 258ms)
+ GET /search 200 in 126ms (next.js: 15ms, application-code: 111ms)
+ GET /search 200 in 160ms (next.js: 16ms, application-code: 145ms)
+ GET /search 200 in 426ms (next.js: 16ms, application-code: 410ms)
+ GET /search 200 in 591ms (next.js: 31ms, application-code: 560ms)
+ GET /search 200 in 140ms (next.js: 16ms, application-code: 124ms)
+ GET /search 200 in 175ms (next.js: 14ms, application-code: 161ms)
+ GET /search 200 in 195ms (next.js: 12ms, application-code: 183ms)
+ GET /search 200 in 157ms (next.js: 14ms, application-code: 143ms)
+ GET /search 200 in 161ms (next.js: 20ms, application-code: 141ms)
+ GET /search 200 in 127ms (next.js: 13ms, application-code: 114ms)
+ GET /search 200 in 143ms (next.js: 15ms, application-code: 128ms)
+ GET /search 200 in 145ms (next.js: 18ms, application-code: 126ms)

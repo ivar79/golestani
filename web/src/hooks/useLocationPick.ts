@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import api, { TOKEN_KEY } from "@/lib/api";
+import { acquireBestFix, GpsError } from "@/lib/gps";
 
 export type GeoPoint = {
   latitude: number;
@@ -22,6 +23,13 @@ export type LocationState = {
   status: "idle" | "locating" | "syncing" | "error";
   /** Human-readable error for the last failed operation. */
   error: string | null;
+  /**
+   * True once the one-time persisted-location restore has completed (whether
+   * or not a location existed). Consumers that must include a restored
+   * location in their FIRST action (e.g. the search's initial fetch) wait for
+   * this instead of fetching twice.
+   */
+  restored: boolean;
   /** Ask the browser for the device position. Never overwrites a manual pick silently. */
   requestBrowserLocation: () => void;
   /** Set a location manually (map click / city choice). Always wins over saved/browser. */
@@ -80,14 +88,21 @@ export function useLocationPick(): LocationState {
   const [source, setSource] = useState<LocationSource>(null);
   const [status, setStatus] = useState<LocationState["status"]>("idle");
   const [error, setError] = useState<string | null>(null);
+  /** Flips true once the persisted-location restore has run (see below). */
+  const [restored, setRestored] = useState(false);
   /** True while a manual pick is authoritative; browser geolocation must defer. */
   const manualActive = useRef<boolean>(false);
   const mounted = useRef(true);
+  /** Abort controller for an in-flight GPS request (unmount / supersede). */
+  const gpsAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      // Stop any in-flight GPS session so the watch never outlives the consumer.
+      gpsAbortRef.current?.abort();
+      gpsAbortRef.current = null;
     };
   }, []);
 
@@ -98,14 +113,26 @@ export function useLocationPick(): LocationState {
   // A manual pick is restored with full protection — it never expires. Only
   // the user changing or clearing it removes it (contract:
   // "حفظ موقعیت انتخاب‌شده تا تغییر دستی توسط کاربر").
+  // `restored` always flips true here so consumers can fold the restored
+  // location into their FIRST action instead of doing it twice.
   useEffect(() => {
     const stored = readStored();
-    if (!stored) return;
+    manualActive.current = stored?.source === "manual";
+    if (!stored) {
+      // One-shot hydration-safe external-store read — the same sanctioned
+      // pattern used by ThemeProvider/AuthContext: the first render is
+      // identical on server and client (restored=false), and this flag lands
+      // right after mount so consumers can fold the (absent) location into
+      // their first action instead of acting twice.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRestored(true);
+      return;
+    }
     queueMicrotask(() => {
       setLocation(stored.point);
       setSource(stored.source);
+      setRestored(true);
     });
-    manualActive.current = stored.source === "manual";
   }, []);
 
   // Auto GPS request, once, Snap-style: only when the user has no location at
@@ -164,7 +191,7 @@ export function useLocationPick(): LocationState {
 
   const requestBrowserLocation = useCallback(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
-      setError("مرورگر شما از تعیین موقعیت پشتیبانی نمی‌کند.");
+      setError("مرورگر شما از تعیین موقعیت پشتیبانی نمی‌کند. موقعیت را دستی روی نقشه انتخاب کنید.");
       setStatus("error");
       return;
     }
@@ -172,41 +199,54 @@ export function useLocationPick(): LocationState {
     // refusal so this attempt can prompt the browser again.
     clearDeclinedFlag();
     if (manualActive.current) return; // manual pick wins until the user changes/clears it
+    // Supersede any in-flight session before starting a new one.
+    gpsAbortRef.current?.abort();
+    const ac = new AbortController();
+    gpsAbortRef.current = ac;
     setStatus("locating");
     setError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (!mounted.current) return;
-        const { latitude, longitude, accuracy } = pos.coords;
-        if (!isValid(latitude, longitude)) {
-          setError("موقعیت دریافتی نامعتبر است.");
-          setStatus("error");
-          return;
-        }
-        commit({ latitude, longitude, label: null, accuracy: accuracy ?? null }, "browser");
+
+    // Best available fix via a short watch session (see @/lib/gps): keeps the
+    // most accurate fix, resolves early once it is good enough, and always
+    // clears the watch. Aborting (unmount / supersession) stops it cleanly.
+    void acquireBestFix(navigator.geolocation, { signal: ac.signal })
+      .then((pt) => {
+        if (ac.signal.aborted || !mounted.current) return;
+        commit({ latitude: pt.latitude, longitude: pt.longitude, label: null, accuracy: pt.accuracy }, "browser");
         setStatus("idle");
-      },
-      (err) => {
-        if (!mounted.current) return;
-        if (err.code === err.PERMISSION_DENIED) {
+      })
+      .catch((err: unknown) => {
+        if (ac.signal.aborted || !mounted.current) return;
+        // The classified GPS error drives the right UX + the declined flag.
+        const code = err instanceof GpsError ? err.code : "unavailable_api";
+        if (code === "permission_denied") {
           // Remember the refusal: no more automatic prompts, only manual requests.
           try {
             window.localStorage.setItem(GPS_DECLINED_KEY, "1");
           } catch {
             /* Private mode: the in-memory behaviour is still fine. */
           }
-          setError("دسترسی به موقعیت رد شد. می‌توانید موقعیت را دستی روی نقشه انتخاب کنید.");
+          setError(
+            "دسترسی به موقعیت رد شد. دسترسی را در تنظیمات مرورگر باز کنید یا موقعیت را دستی روی نقشه انتخاب کنید.",
+          );
+        } else if (code === "unavailable") {
+          setError(
+            "سرویس موقعیت‌یاب دستگاه در دسترس نیست. موقعیت را دستی روی نقشه انتخاب کنید.",
+          );
+        } else if (code === "timeout") {
+          setError(
+            "دریافت موقعیت بیش از حد طول کشید. دوباره تلاش کنید یا موقعیت را دستی انتخاب کنید.",
+          );
         } else {
           setError(
-            err.code === err.TIMEOUT
-              ? "دریافت موقعیت بیش از حد طول کشید."
-              : "دریافت موقعیت ناموفق بود.",
+            "مرورگر شما از تعیین موقعیت پشتیبانی نمی‌کند. موقعیت را دستی روی نقشه انتخاب کنید.",
           );
         }
         setStatus("error");
-      },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
-    );
+      })
+      .finally(() => {
+        if (gpsAbortRef.current === ac) gpsAbortRef.current = null;
+      });
   }, [commit, clearDeclinedFlag]);
 
   // Keep the stable ref in sync for the auto-prompt effect declared above.
@@ -238,6 +278,7 @@ export function useLocationPick(): LocationState {
     source,
     status,
     error,
+    restored,
     requestBrowserLocation,
     setManualLocation,
     clearLocation,

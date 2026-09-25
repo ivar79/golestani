@@ -82,7 +82,25 @@ export const uploadShowcase = (businessId: number, data: FormData) =>
 export const deleteShowcase = (id: number) =>
   api.delete<{ message: string }>(`/showcases/${id}`).then((r) => r.data);
 
-export type BusinessSearchResponse = { data: Business[]; pagination: { page: number; limit: number; total: number; last_page: number; next_page: string | null } };
+export type BusinessSearchPagination = {
+  page: number;
+  limit: number;
+  /** Count of the CLAIMED (listable) set only — matches the visible card list. */
+  total: number;
+  last_page: number;
+  next_page: string | null;
+  /** Count of the map-only unclaimed pins in the same filter scope. */
+  unclaimed_total: number;
+};
+
+export type BusinessSearchResponse = {
+  /** Listable (claimed) results — the only set that feeds result cards. */
+  data: Business[];
+  pagination: BusinessSearchPagination;
+  /** Phase 3 cold-start pins for the MAP only — never result cards. They
+   *  never consume a pagination slot; merge them into markers, not the list. */
+  unclaimed: Business[];
+};
 
 export type BusinessSearchParams = {
   q?: string;
@@ -135,8 +153,15 @@ export const searchBusinesses = (
     .get<BusinessSearchResponse>("/search/businesses", { params: wire, ...config })
     .then((r) => {
       const payload = r.data.data ?? (r.data as unknown as Business[]);
+      // The map-only unclaimed set arrives in its own key (absent on legacy
+      // responses → [] fallback). It is normalized exactly like `data`.
+      const unclaimedPayload = r.data.unclaimed ?? [];
       const normalized = (Array.isArray(payload) ? payload : []).map(normalizeBusiness);
-      return { ...r.data, data: normalized } as BusinessSearchResponse;
+      return {
+        ...r.data,
+        data: normalized,
+        unclaimed: unclaimedPayload.map(normalizeBusiness),
+      } as BusinessSearchResponse;
     });
 };
 

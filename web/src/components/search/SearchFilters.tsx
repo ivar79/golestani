@@ -13,7 +13,7 @@ export type SearchFiltersState = {
   neighborhood: string | null;
   verified: boolean;
   showcase: boolean;
-  /** Radius in meters; null = unlimited (no radius param sent). */
+  /** Radius options require a location; radius chip is disabled without one. */
   radius: number | null;
   /** Distance sorting requires a location; sort chip is shown only then. */
   nearest: boolean;
@@ -85,16 +85,18 @@ export default function SearchFilters({
   }
 
   return (
-    <div className="sticky top-[4.5rem] z-20 flex shrink-0 flex-col gap-4 rounded-t-2xl border-b border-white/10 bg-[#0c1626]/85 px-4 pb-4 pt-5 backdrop-blur-xl">
-      {/* Location meta row: city chip + neighborhood + radius selector */}
-      <div className="flex items-center justify-between text-xs text-on-surface-variant">
+    <div className="sticky top-[4.5rem] z-20 flex shrink-0 flex-col gap-4 rounded-t-2xl border-b border-ik-border bg-ik-panel/85 px-4 pb-4 pt-5">
+      {/* Location meta row: city chip + neighborhood + radius selector.
+          Mobile-first: wraps to tidy rows on narrow screens instead of
+          squeezing into one overflowing toolbar. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ik-muted">
         <button
           type="button"
           onClick={() => setShowCityPicker(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-surface-container-highest/60 hover:bg-surface-container-highest border border-white/5 px-2.5 py-1.5 text-white transition-colors"
+          className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-ik-border bg-ik-wash px-2.5 text-ik-text transition-colors hover:bg-ik-wash-hover"
           title="انتخاب یا تغییر شهر و منطقه"
         >
-          <MapPin className="h-3.5 w-3.5 text-secondary" />
+          <MapPin className="h-3.5 w-3.5 text-ik-accent" />
           <span>{filters.city ?? "همه شهرها (سراسری)"}</span>
           <ChevronDown className="h-3 w-3 opacity-60" />
         </button>
@@ -103,7 +105,7 @@ export default function SearchFilters({
           <button
             type="button"
             onClick={() => pickCity(null)}
-            className="text-[11px] text-slate-400 hover:text-white"
+            className="min-h-[44px] text-[11px] text-ik-muted transition-colors hover:text-ik-text"
           >
             حذف فیلتر شهر
           </button>
@@ -116,10 +118,10 @@ export default function SearchFilters({
               type="button"
               onClick={() => setShowNeighborhood((v) => !v)}
               disabled={neighborhoods.length === 0}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 transition-colors ${
+              className={`flex min-h-[44px] items-center gap-1 rounded-md px-2 transition-colors ${
                 filters.neighborhood
-                  ? "text-secondary"
-                  : "hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  ? "text-ik-accent"
+                  : "transition-colors hover:text-ik-text disabled:cursor-not-allowed disabled:opacity-40"
               }`}
               title={neighborhoods.length === 0 ? "محله‌ای ثبت نشده است" : "فیلتر محله"}
             >
@@ -130,16 +132,16 @@ export default function SearchFilters({
               />
             </button>
             {showNeighborhood && neighborhoods.length > 0 && (
-              <div className="absolute left-0 top-full z-30 mt-1 max-h-56 w-44 overflow-y-auto rounded-xl border border-white/10 bg-panel shadow-xl">
+              <div className="absolute left-0 top-full z-30 mt-1 max-h-56 w-44 overflow-y-auto rounded-xl border border-ik-border bg-ik-panel shadow-lg">
                 {neighborhoods.map((n) => (
                   <button
                     key={n}
                     type="button"
                     onClick={() => pickNeighborhood(n)}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-right text-xs transition-colors ${
+                    className={`flex min-h-[44px] w-full items-center justify-between px-3 text-right text-xs transition-colors ${
                       filters.neighborhood === n
-                        ? "bg-secondary/10 text-secondary"
-                        : "text-on-surface-variant hover:bg-white/5"
+                        ? "bg-ik-accent/10 text-ik-accent"
+                        : "text-ik-muted hover:bg-ik-wash"
                     }`}
                   >
                     <span>{n}</span>
@@ -154,7 +156,7 @@ export default function SearchFilters({
             <button
               type="button"
               onClick={() => setShowRadius((v) => !v)}
-              className="flex items-center gap-1 rounded-md px-2 py-1 hover:text-white"
+              className="flex min-h-[44px] items-center gap-1 rounded-md px-2 transition-colors hover:text-ik-text"
             >
               <span>شعاع: {filters.radius ? radiusLabel : "بدون محدودیت"}</span>
               <HomeIcon
@@ -163,7 +165,7 @@ export default function SearchFilters({
               />
             </button>
             {showRadius && (
-              <div className="absolute left-0 top-full z-30 mt-1 w-40 rounded-xl border border-white/10 bg-panel shadow-xl">
+              <div className="absolute left-0 top-full z-30 mt-1 w-40 rounded-xl border border-ik-border bg-ik-panel shadow-lg">
                 {RADIUS_OPTIONS.map((opt) => (
                   <button
                     key={opt.label}
@@ -177,10 +179,10 @@ export default function SearchFilters({
                       });
                       setShowRadius(false);
                     }}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-right text-xs transition-colors ${
+                    className={`flex min-h-[44px] w-full items-center justify-between px-3 text-right text-xs transition-colors ${
                       filters.radius === opt.value
-                        ? "bg-secondary/10 text-secondary"
-                        : "text-on-surface-variant hover:bg-white/5"
+                        ? "bg-ik-accent/10 text-ik-accent"
+                        : "text-ik-muted hover:bg-ik-wash"
                     } ${opt.value !== null && !hasLocation ? "cursor-not-allowed opacity-40" : ""}`}
                   >
                     <span>{opt.label}</span>
@@ -197,11 +199,11 @@ export default function SearchFilters({
 
       {/* Modal / Dialog for Selecting Province & Cities/Villages */}
       {showCityPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#0c1626] p-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-cyan-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ik-bg/70 p-4">
+          <div className="relative w-full max-w-lg rounded-2xl border border-ik-border bg-ik-panel p-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-ik-border pb-3">
+              <h4 className="flex items-center gap-2 text-sm font-bold text-ik-text">
+                <MapPin className="h-4 w-4 text-ik-accent" />
                 {selectedProvince
                   ? `شهرها و روستاهای استان ${selectedProvince.name}`
                   : "پوشش سراسری: انتخاب استان"}
@@ -212,18 +214,19 @@ export default function SearchFilters({
                   setShowCityPicker(false);
                   setSelectedProvince(null);
                 }}
-                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-ik-muted transition-colors hover:bg-ik-wash hover:text-ik-text"
+                aria-label="بستن"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="py-4">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => pickCity(null)}
-                  className="text-xs text-cyan-400 hover:underline"
+                  className="min-h-[44px] text-xs text-ik-accent transition-colors hover:underline"
                 >
                   همه شهرهای ایران (بدون محدودیت)
                 </button>
@@ -231,7 +234,7 @@ export default function SearchFilters({
                   <button
                     type="button"
                     onClick={() => setSelectedProvince(null)}
-                    className="text-xs text-slate-400 hover:text-white"
+                    className="min-h-[44px] text-xs text-ik-muted transition-colors hover:text-ik-text"
                   >
                     ← بازگشت به لیست استان‌ها
                   </button>
@@ -239,29 +242,29 @@ export default function SearchFilters({
               </div>
 
               {selectedProvince ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3">
                   {selectedProvince.cities.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => pickCity(c)}
-                      className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-right text-xs text-cyan-200 hover:bg-cyan-500/25 transition-colors"
+                      className="min-h-[44px] rounded-xl border border-ik-accent/30 bg-ik-accent/10 px-3 text-right text-xs text-ik-accent transition-colors hover:bg-ik-accent/20"
                     >
                       {c}
                     </button>
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3">
                   {getAllProvinces().map((p) => (
                     <button
                       key={p.slug}
                       type="button"
                       onClick={() => setSelectedProvince(p)}
-                      className="rounded-xl border border-white/5 bg-white/[0.04] px-3 py-2 text-right text-xs text-slate-300 hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 transition-colors flex items-center justify-between"
+                      className="flex min-h-[44px] items-center justify-between rounded-xl border border-ik-border bg-ik-wash px-3 text-right text-xs text-ik-text transition-colors hover:border-ik-accent/40 hover:bg-ik-wash-hover"
                     >
                       <span>{p.name}</span>
-                      <ChevronDown className="w-3 h-3 opacity-40 -rotate-90" />
+                      <ChevronDown className="h-3 w-3 -rotate-90 opacity-40" />
                     </button>
                   ))}
                 </div>
@@ -271,17 +274,18 @@ export default function SearchFilters({
         </div>
       )}
 
-      {/* Filter chips */}
-      <div className="scrollbar-hide -mx-4 flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-1">
+      {/* Filter chips — strip scrolls horizontally; it must NOT bleed past
+          the panel edges (negative margins caused page-level overflow on 320px). */}
+      <div className="no-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto pb-1 px-1">
         {(facets?.categories ?? []).map((cat) => (
           <button
             key={cat}
             type="button"
             onClick={() => pickCategory(cat)}
-            className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+            className={`min-h-[44px] whitespace-nowrap rounded-lg border px-3 text-xs transition-colors ${
               filters.category === cat
-                ? "border-secondary/20 bg-secondary/10 text-secondary"
-                : "border-white/10 bg-surface-container-highest/50 text-on-surface-variant hover:bg-surface-container-highest"
+                ? "border-ik-accent/30 bg-ik-accent/10 text-ik-accent"
+                : "border-ik-border bg-ik-wash text-ik-text hover:bg-ik-wash-hover"
             }`}
           >
             {cat}
@@ -290,10 +294,10 @@ export default function SearchFilters({
         <button
           type="button"
           onClick={() => toggle("verified")}
-          className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+          className={`min-h-[44px] whitespace-nowrap rounded-lg border px-3 text-xs transition-colors ${
             filters.verified
-              ? "border-secondary/20 bg-secondary/10 text-secondary"
-              : "border-white/10 bg-surface-container-highest/50 text-on-surface-variant hover:bg-surface-container-highest"
+              ? "border-ik-accent/30 bg-ik-accent/10 text-ik-accent"
+              : "border-ik-border bg-ik-wash text-ik-text hover:bg-ik-wash-hover"
           }`}
         >
           تایید شده
@@ -301,10 +305,10 @@ export default function SearchFilters({
         <button
           type="button"
           onClick={() => toggle("showcase")}
-          className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+          className={`min-h-[44px] whitespace-nowrap rounded-lg border px-3 text-xs transition-colors ${
             filters.showcase
-              ? "border-secondary/20 bg-secondary/10 text-secondary"
-              : "border-white/10 bg-surface-container-highest/50 text-on-surface-variant hover:bg-surface-container-highest"
+              ? "border-ik-accent/30 bg-ik-accent/10 text-ik-accent"
+              : "border-ik-border bg-ik-wash text-ik-text hover:bg-ik-wash-hover"
           }`}
         >
           ویژه
@@ -312,8 +316,8 @@ export default function SearchFilters({
       </div>
 
       {/* Result count + nearest sort */}
-      <div className="flex items-center justify-between pt-1">
-        <span className="text-sm text-white">
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <span className="text-sm text-ik-text">
           {loading
             ? "در حال جست‌وجو…"
             : resultCount != null
@@ -324,8 +328,8 @@ export default function SearchFilters({
           <button
             type="button"
             onClick={() => onChange({ ...filters, nearest: !filters.nearest })}
-            className={`flex items-center gap-1 text-xs ${
-              filters.nearest ? "text-secondary" : "text-on-surface-variant hover:text-white"
+            className={`flex min-h-[44px] items-center gap-1 text-xs transition-colors ${
+              filters.nearest ? "text-ik-accent" : "text-ik-muted hover:text-ik-text"
             }`}
           >
             <span>نزدیک‌ترین</span>

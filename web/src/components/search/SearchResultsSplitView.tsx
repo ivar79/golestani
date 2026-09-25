@@ -11,8 +11,13 @@ import MapView, { type MapMarker } from "@/components/map/MapView";
  * on the left (RTL layout). Mobile: a floating segmented switch toggles
  * between «نقشه» and «لیست» with smooth mount/unmount.
  *
- * Two-way sync: marker click → popup + smooth scroll + neon ring highlight
- * on the matching card; card focus (hover/click) → map marker highlight.
+ * Mobile map height is responsive, not fixed: `min(62svh, 480px)` bounded by
+ * min/max heights, so on 320–414px viewports the map stays usable without
+ * crowding out search/filters/cards, and landscape keeps a sane layout.
+ * Safe-area insets keep the floating switch clear of the home indicator.
+ *
+ * Two-way sync: marker click → popup + smooth scroll + highlight ring on
+ * the matching card; card focus (hover/click) → map marker highlight.
  */
 
 export type SplitViewCardData = {
@@ -73,9 +78,9 @@ export default function SearchResultsSplitView({
   }, []);
 
   const mapPane = (
-    <div className="h-full min-h-[420px] w-full">
+    <div className="h-[min(62svh,480px)] min-h-[280px] w-full lg:h-full lg:min-h-0">
       <MapView
-        className="h-[420px] w-full lg:h-full lg:min-h-0"
+        className="h-full w-full"
         markers={markers}
         center={center}
         userCoords={userCoords ? { lat: userCoords.lat, lng: userCoords.lng } : null}
@@ -87,7 +92,7 @@ export default function SearchResultsSplitView({
   );
 
   const listPane = (
-    <div className="grid content-start gap-4 p-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-4 p-4">
       {!loading && cards.length === 0 && (emptyState ?? null)}
       {cards.map((card) => (
         <div
@@ -99,7 +104,7 @@ export default function SearchResultsSplitView({
           onFocus={() => handleFocusCard(card.id)}
           className={`rounded-[20px] transition-all duration-300 ${
             selectedId === card.id
-              ? "ring-2 ring-cyan-400/70 shadow-[0_0_25px_rgba(34,211,238,0.35)]"
+              ? "ring-2 ring-ik-accent/60 shadow-lg shadow-ik-accent/15"
               : ""
           }`}
         >
@@ -111,17 +116,17 @@ export default function SearchResultsSplitView({
 
   return (
     <div className="relative">
-      {/* Mobile floating switch */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center lg:hidden">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/[0.08] bg-[#060c18]/90 p-1 shadow-[0_10px_35px_rgba(0,0,0,0.6),0_0_30px_-8px_rgba(34,211,238,0.4)] backdrop-blur-2xl">
+      {/* Mobile floating switch — safe-area aware, 44px touch targets */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-40 flex justify-center lg:hidden">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-ik-border bg-ik-panel/95 p-1 shadow-lg backdrop-blur-md">
           <button
             type="button"
             onClick={() => setMobileView("list")}
             aria-pressed={mobileView === "list"}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all ${
+            className={`flex min-h-[44px] min-w-[88px] items-center justify-center gap-1.5 rounded-full px-4 text-xs font-bold transition-colors ${
               mobileView === "list"
-                ? "bg-cyan-500/20 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.25)]"
-                : "text-slate-400 hover:text-white"
+                ? "bg-ik-accent/15 text-ik-accent"
+                : "text-ik-muted hover:text-ik-text"
             }`}
           >
             <LayoutList className="h-4 w-4" />
@@ -131,10 +136,10 @@ export default function SearchResultsSplitView({
             type="button"
             onClick={() => setMobileView("map")}
             aria-pressed={mobileView === "map"}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all ${
+            className={`flex min-h-[44px] min-w-[88px] items-center justify-center gap-1.5 rounded-full px-4 text-xs font-bold transition-colors ${
               mobileView === "map"
-                ? "bg-cyan-500/20 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.25)]"
-                : "text-slate-400 hover:text-white"
+                ? "bg-ik-accent/15 text-ik-accent"
+                : "text-ik-muted hover:text-ik-text"
             }`}
           >
             <MapIcon className="h-4 w-4" />
@@ -143,12 +148,14 @@ export default function SearchResultsSplitView({
         </div>
       </div>
 
-      {/* Desktop split: results (right) + sticky full-height map (left) */}
+      {/* Desktop split: results (right) + sticky full-height map (left).
+          min-w-0 on both items: without it the auto/1fr tracks grow to the
+          cards' min-content width and overflow the viewport on 320px. */}
       <div className="grid gap-6 lg:grid-cols-[1fr_460px]">
-        <div className={mobileView === "list" ? "" : "hidden lg:block"}>{listPane}</div>
-        <div className={mobileView === "map" ? "" : "hidden lg:block"}>
-          <div className="lg:sticky lg:top-36 lg:h-[calc(100vh-11rem)]">
-            <div className="h-full rounded-2xl border border-white/10 bg-[#0c1626]/60 p-3 backdrop-blur-md">
+        <div className={`min-w-0 ${mobileView === "list" ? "" : "hidden lg:block"}`}>{listPane}</div>
+        <div className={`min-w-0 ${mobileView === "map" ? "" : "hidden lg:block"}`}>
+          <div className="lg:sticky lg:top-36 lg:h-[calc(100svh-11rem)]">
+            <div className="h-full rounded-2xl border border-ik-border bg-ik-panel/60 p-3">
               {mapPane}
             </div>
           </div>
@@ -156,7 +163,7 @@ export default function SearchResultsSplitView({
       </div>
 
       {/* Mobile bottom padding so the floating switch never covers cards */}
-      <div className="h-16 lg:hidden" />
+      <div className="h-[calc(4.5rem+env(safe-area-inset-bottom))] lg:hidden" />
     </div>
   );
 }

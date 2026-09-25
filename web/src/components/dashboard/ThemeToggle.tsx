@@ -37,17 +37,17 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
       role="radiogroup"
       aria-label="حالت نمایش"
       onKeyDown={onKeyDown}
-      className={`relative inline-flex h-9 shrink-0 items-center overflow-hidden rounded-full border transition-colors ${
+      className={`relative inline-flex h-9 shrink-0 items-center overflow-hidden rounded-full border transition-colors pointer-coarse:h-11 ${
         theme === "dark"
           ? "border-ik-border bg-ik-panel-soft"
-          : "border-[#d8ccbd] bg-[#ede4d7]"
+          : "border-ik-border bg-ik-panel-soft" // warm values resolve via the same tokens
       } ${compact ? "w-[64px]" : "w-[72px]"}`}
     >
       {/* Sliding thumb — half the inner width, always fully inside the track */}
       <span
         aria-hidden
         className={`absolute h-[calc(100%-6px)] w-[calc(50%-3px)] rounded-full transition-[inset-inline-start] duration-500 ease-out motion-reduce:transition-none ${
-          theme === "dark" ? "start-[3px] bg-ik-wash-hover" : "start-[calc(50%)] bg-[#fbf8f2] shadow-sm"
+          theme === "dark" ? "start-[3px] bg-ik-wash-hover" : "start-[calc(50%)] bg-ik-panel shadow-sm"
         } ${compact ? "hidden" : ""}`}
       />
       {OPTIONS.map((opt) => {
@@ -69,21 +69,21 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
                   ? "text-ik-text"
                   : "text-ik-muted hover:text-ik-text"
                 : active
-                  ? "text-[#2a211b]"
-                  : "text-[#6f6256] hover:text-[#2a211b]"
+                  ? "text-ik-text"
+                  : "text-ik-muted hover:text-ik-text"
             }`}
           >
-            {/* Moon → cyan in dark theme, Sun → terracotta in warm theme */}
+            {/* Moon → accent in dark theme, Sun → accent in warm theme (semantic tokens) */}
             <Icon
               size={compact ? 13 : 15}
               aria-hidden
               className={
                 opt.value === "dark"
                   ? theme === "dark" && active
-                    ? "text-cyan-300"
+                    ? "text-ik-accent"
                     : ""
                   : theme === "warm" && active
-                    ? "text-[#a85f3f]"
+                    ? "text-ik-accent"
                     : ""
               }
             />

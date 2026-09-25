@@ -12,7 +12,6 @@ import {
   neshanStyleUrl,
   recordNeshanFailure,
   resetTileFailureWindow,
-  TILE_FAILURE_WINDOW_MS,
 } from "@/lib/mapEngine";
 import { buildPopupDom } from "@/lib/mapPopupDom";
 import type { MapMarker, MapViewProps } from "./MapView";
@@ -54,7 +53,6 @@ export default function MapNeshan({
 }: MapViewProps & EngineEvents) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [mapInstance, setMapInstance] = useState<MLMap | null>(null);
-  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const mlMarkersRef = useRef<MLMarker[]>([]);
   const mlPopupRef = useRef<InstanceType<typeof maplibregl.Popup> | null>(null);
 
@@ -219,7 +217,7 @@ export default function MapNeshan({
         wrap.className = "relative flex items-center justify-center";
         const dot = document.createElement("div");
         dot.className =
-          "w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow-[0_0_14px_rgba(56,189,248,0.9)]";
+          "w-4 h-4 rounded-full bg-ik-accent border-2 border-white shadow-md shadow-ik-accent/50";
         wrap.appendChild(dot);
         el.appendChild(wrap);
         el.addEventListener("click", (e) => {
@@ -247,14 +245,16 @@ export default function MapNeshan({
         const wrap = document.createElement("div");
         wrap.className = "relative flex items-center justify-center";
         const badge = document.createElement("div");
+        // Pin colors come from the --ik-* tokens (resolved through the
+        // .dashboard-shell ancestor) so pins follow the active theme.
         badge.className = `w-8 h-8 rounded-full flex items-center justify-center ${
           isSelected
-            ? "bg-cyan-400 text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.8)]"
+            ? "bg-ik-accent text-ik-accent-contrast shadow-lg shadow-ik-accent/40"
             : isUnclaimed
-              ? "bg-slate-400/90 text-slate-700 border border-slate-500/40 shadow-md"
+              ? "bg-ik-muted/35 text-ik-muted border border-ik-border shadow-md"
               : isPromoted
-                ? "bg-amber-500 text-white border border-amber-300/70 shadow-[0_0_14px_rgba(245,158,11,0.55)]"
-                : "bg-slate-900/90 text-cyan-400 border border-cyan-500/40 shadow-md"
+                ? "bg-ik-warning text-ik-accent-contrast border border-ik-warning/70 shadow-md"
+                : "bg-ik-panel/90 text-ik-accent border border-ik-accent/40 shadow-md"
         }`;
         const NS = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(NS, "svg");
@@ -328,17 +328,29 @@ export default function MapNeshan({
     const el = mountRef.current;
     if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
 
-    const pts = markers.filter((m) => Number.isFinite(m.latitude) && Number.isFinite(m.longitude));
+    // Viewport parity with MapController (Leaflet): the user pin joins the
+    // fit like every marker, so both engines frame the same area.
+    const pts: Array<[number, number]> = [];
+    if (userCoords?.lat != null && userCoords?.lng != null) {
+      pts.push([userCoords.lat, userCoords.lng]);
+    }
+    for (const m of markers) {
+      if (Number.isFinite(m.latitude) && Number.isFinite(m.longitude)) {
+        pts.push([m.latitude, m.longitude]);
+      }
+    }
     if (pts.length >= 2) {
       const bounds: BoundsLike = [
-        [Math.min(...pts.map((m) => m.longitude)), Math.min(...pts.map((m) => m.latitude))],
-        [Math.max(...pts.map((m) => m.longitude)), Math.max(...pts.map((m) => m.latitude))],
+        [Math.min(...pts.map((p) => p[1])), Math.min(...pts.map((p) => p[0]))],
+        [Math.max(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0]))],
       ];
       map.fitBounds(bounds, { padding: 50, maxZoom: 16, duration: 800, essential: true });
     } else if (pts.length === 1) {
+      // Single point — Leaflet parity: explicit zoom ?? 14 instead of
+      // max(current, 13), so a GPS-only view starts at the same scale.
       map.flyTo({
-        center: [pts[0].longitude, pts[0].latitude],
-        zoom: Math.max(map.getZoom(), 13),
+        center: [pts[0][1], pts[0][0]],
+        zoom: zoom ?? 14,
         duration: 600,
         essential: true,
       });
@@ -346,8 +358,12 @@ export default function MapNeshan({
       // center از صفحات با قرارداد قدیمی Leaflet به‌صورت [lat, lng] می‌آید.
       map.flyTo({ center: [center[1], center[0]], zoom: zoom ?? 12, duration: 600, essential: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapInstance, markers, autoFit, sizeTick]);
+    // Viewport parity with MapController (Leaflet): identical dependency set
+    // (markers / userCoords / center / zoom / autoFit + sizeTick) so both
+    // engines re-fit on exactly the same inputs. Notably the user's own
+    // location joins the fit in both — a location change never leaves the
+    // user pin outside the frame, and neither engine refits without the other.
+  }, [mapInstance, markers, userCoords, center, zoom, autoFit, sizeTick]);
 
   /** RTL popup — ساخته‌شده با DOM-safe builder ( ضد XSS؛ بدون innerHTML). */
   const openBusinessPopup = useCallback(
@@ -384,25 +400,23 @@ export default function MapNeshan({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapInstance, selectedId, openBusinessPopup]);
 
-  const handleRetry = useCallback(() => window.location.reload(), []);
   // فقط خطاهای runtime واقعی (که fallback هم نجات‌شان نمی‌دهد) به کاربر نشان
   // داده می‌شوند؛ «کلید تنظیم نشده» دیگر صفحهٔ خطا نمی‌سازد — دیسپچر MapView
   // خودکار به Leaflet سوییچ می‌کند و پیام فنی فقط در dev لازم است.
-  const error =
-    runtimeError ??
-    (!neshanKeyPresent && process.env.NODE_ENV === "development"
-      ? "NEXT_PUBLIC_NESHAN_MAP_KEY تنظیم نشده — fallback Leaflet فعال شد (فقط پیام dev)."
-      : null);
+  const handleRetry = useCallback(() => window.location.reload(), []);
+  const error = !neshanKeyPresent && process.env.NODE_ENV === "development"
+    ? "NEXT_PUBLIC_NESHAN_MAP_KEY تنظیم نشده — fallback Leaflet فعال شد (فقط پیام dev)."
+    : null;
 
   return (
     <div className={className} dir="ltr">
       <div ref={mountRef} className="h-full w-full" />
       {error && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-950/85 p-6 text-center backdrop-blur-sm">
-          <p className="max-w-md text-sm font-bold leading-relaxed text-rose-300">{error}</p>
-          <p className="max-w-md text-xs leading-relaxed text-slate-400">
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-ik-bg/85 p-6 text-center backdrop-blur-sm">
+          <p className="max-w-md text-sm font-bold leading-relaxed text-ik-danger">{error}</p>
+          <p className="max-w-md text-xs leading-relaxed text-ik-muted">
             می‌توانید موقتاً از نقشهٔ جایگزین آنلاین استفاده کنید:
-            <code className="mx-1 rounded bg-black/40 px-1.5 py-0.5 font-mono text-[11px] text-cyan-300" dir="ltr">
+            <code className="mx-1 rounded bg-ik-wash px-1.5 py-0.5 font-mono text-[11px] text-ik-accent" dir="ltr">
               ?mapsource=online
             </code>
           </p>
@@ -410,7 +424,7 @@ export default function MapNeshan({
           <button
             type="button"
             onClick={handleRetry}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/10"
+            className="rounded-xl border border-ik-border bg-ik-wash px-4 py-2 text-xs font-semibold text-ik-text transition-colors hover:bg-ik-wash-hover"
           >
             تلاش مجدد
           </button>

@@ -15,39 +15,48 @@ const STORAGE_KEY = "incart-theme";
 
 function normalizeStored(value: string | null): Theme {
   // "light" is the legacy key from the first warm-theme iteration.
-  return value === "warm" || value === "light" ? "warm" : "dark";
+  if (value === "dark") return "dark";
+  if (value === "warm" || value === "light") return "warm";
+  // Nothing persisted yet → the client-approved Warm Editorial default, so
+  // the Search UI and the User Panel open on the same palette by default.
+  return "warm";
 }
 
 const ThemeContext = createContext<{
   theme: Theme;
   setTheme: (t: Theme) => void;
-}>({ theme: "dark", setTheme: () => {} });
+}>({ theme: "warm", setTheme: () => {} });
 
 /**
  * Dashboard-scoped theme state. Never touches <html> — the active theme is
  * exposed as `data-theme` so the dashboard root div (`.dashboard-shell`)
  * can carry it; tokens in globals.css resolve per-shell, which keeps the
  * warm/dark switch confined to the dashboard.
+ *
+ * The default is «گرم» (Warm Editorial) — the client-approved palette shared
+ * by the Search UI and the User Panel so they read as one product. A user who
+ * explicitly picks «تیره» keeps it (persisted); the dark theme stays a
+ * first-class choice via the ThemeToggle.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // First render is always "dark" so the client output matches the SSR HTML
+  // First render is always "warm" so the client output matches the SSR HTML
   // (no hydration mismatch). The persisted choice is restored right after
   // mount — the shell cross-fades to it, so there is no jarring flash.
-  const [theme, setThemeState] = useState<Theme>("dark");
+  const [theme, setThemeState] = useState<Theme>("warm");
   // Guards against stacking transition timers on rapid toggles.
   const moving = useRef(false);
 
   // Restore the persisted theme once, after hydration.
   // react-hooks/set-state-in-effect flags this one-shot restore, but it is
   // the sanctioned hydration-safe pattern for reading an external store
-  // (localStorage): the first render is always "dark" so the client output
+  // (localStorage): the first render is always "warm" so the client output
   // matches the SSR HTML, and the persisted choice lands right after mount.
   // (The lint-clean long-term shape is useSyncExternalStore with a
-  // "dark"-returning server snapshot — kept as-is until that refactor.)
+  // "warm"-returning server snapshot — kept as-is until that refactor.)
   useEffect(() => {
     const stored = normalizeStored(window.localStorage.getItem(STORAGE_KEY));
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration-safe external-store read, see comment above
-    if (stored !== "dark") setThemeState(stored);
+    setThemeState(stored);
   }, []);
 
   useEffect(() => {

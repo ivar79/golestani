@@ -63,7 +63,9 @@ class UnclaimedBusinessSeederTest extends TestCase
     {
         $this->seed(UnclaimedBusinessSeeder::class);
 
-        $rows = collect($this->getJson('/api/search/businesses?city=تهران')->assertOk()->json('data'))
+        // Phase 3 result-set separation: unclaimed rows are map-only, so they
+        // surface in the dedicated `unclaimed` key — never in `data`.
+        $rows = collect($this->getJson('/api/search/businesses?city=تهران')->assertOk()->json('unclaimed'))
             ->keyBy('slug');
 
         $this->assertGreaterThan(0, $rows->count());
@@ -77,5 +79,13 @@ class UnclaimedBusinessSeederTest extends TestCase
             $this->assertFalse($row['license_verified']);
             $this->assertNull($row['license_tracking_code']);
         });
+
+        // And they never leak into the listable set.
+        $claimed = collect($this->getJson('/api/search/businesses?city=تهران')->assertOk()->json('data'));
+        $this->assertSame(
+            0,
+            $claimed->filter(fn ($row) => $row['is_claimed'] === false)->count(),
+            'data must not contain unclaimed rows'
+        );
     }
 }

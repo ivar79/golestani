@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Business;
+use App\Models\Designer;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -178,5 +179,67 @@ class BusinessTest extends TestCase
         $this->assertStringContainsString("<svg", $bytes);
         $this->assertStringNotContainsString('Bearer', $bytes);
         $this->assertNotNull($business->slug);
+    }
+
+    /**
+     * Phase 3 security contract: the protected flags / identity fields are
+     * NEVER client-controllable through the owner-facing create/update
+     * endpoints (BusinessRequest is an allowlist). Proven behaviorally with
+     * malicious payloads on BOTH store and update: protected values survive
+     * unchanged while legitimate edit fields still apply.
+     */
+    public function test_phase3_protected_fields_cannot_be_mass_assigned_by_owner(): void
+    {
+        $owner = $this->user('business_owner');
+        $designer = Designer::create([
+            'user_id' => $this->user('designer')->id,
+            'display_name' => 'طراح مرجع',
+            'slug' => 'ref-designer-'.fake()->unique()->numerify('######'),
+            'referral_code' => 'DES-REF001',
+            'status' => 'approved',
+        ]);
+        $malicious = [
+            'is_promoted' => true,
+            'is_claimed' => false,
+            'verification_level' => 9,
+            'license_tracking_code' => 'FAKE-123456',
+            'designer_id' => $designer->id,
+            'status' => 'approved',
+        ];
+
+        $created = $this->actingAs($owner)->postJson('/api/businesses', $this->data() + $malicious)->assertCreated();
+        $business = Business::findOrFail($created->json('id'));
+
+        $this->assertFalse($business->is_promoted);
+        $this->assertTrue($business->is_claimed);
+        $this->assertSame(0, $business->verification_level);
+        $this->assertNull($business->license_tracking_code);
+        $this->assertNull($business->designer_id);
+        $this->assertSame('pending', $business->status, 'status stays server-controlled');
+
+        // Same attack on the update endpoint — and a legitimate edit applies.
+        $this->actingAs($owner)->putJson('/api/businesses/'.$business->id, $this->data('ویرایش مشروع') + $malicious)->assertOk();
+
+        $fresh = $business->fresh();
+        $this->assertSame('ویرایش مشروع', $fresh->name, 'legitimate edit must still apply');
+        $this->assertFalse($fresh->is_promoted);
+        $this->assertTrue($fresh->is_claimed);
+        $this->assertSame(0, $fresh->verification_level);
+        $this->assertNull($fresh->license_tracking_code);
+        $this->assertNull($fresh->designer_id);
+        // A real content edit re-submits to moderation; it can never jump to approved.
+        $this->assertSame('pending', $fresh->status);
+    }
+
+    /** The admin-only promote route stays admin-only end-to-end (route level). */
+    public function test_owner_cannot_reach_admin_promote_route(): void
+    {
+        $owner = $this->user('business_owner');
+        $business = $owner->businesses()->create($this->data() + ['slug' => 'owner-route', 'status' => 'approved']);
+
+        $this->actingAs($owner)
+            ->patchJson('/api/admin/businesses/'.$business->id.'/promote', ['is_promoted' => true])
+            ->assertForbidden();
+        $this->assertFalse($business->fresh()->is_promoted);
     }
 }

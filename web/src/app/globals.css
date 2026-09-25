@@ -181,6 +181,63 @@ body {
   background: var(--ik-border);
 }
 
+/* Leaflet renders its popups in a pane that lives INSIDE the shell, so the
+   --ik-* custom properties inherit. Theme the popup wrapper/tip so the whole
+   popup follows the active palette instead of leaflet's default white card —
+   our popup content already uses the same tokens, so the two stay coherent
+   in both the Warm Editorial and the dark theme. */
+.dashboard-shell .leaflet-popup-content-wrapper {
+  background-color: var(--ik-panel);
+  color: var(--ik-text);
+  border: 1px solid var(--ik-border);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+}
+.dashboard-shell .leaflet-popup-tip {
+  background-color: var(--ik-panel);
+  border: 1px solid var(--ik-border);
+}
+.dashboard-shell .leaflet-popup-content {
+  margin: 0;
+}
+.dashboard-shell .leaflet-container a.leaflet-popup-close-button {
+  color: var(--ik-muted);
+}
+.dashboard-shell .leaflet-container a.leaflet-popup-close-button:hover {
+  color: var(--ik-text);
+}
+
+/* Mobile touch target: Leaflet's default zoom +/- buttons are 30×30px, under
+   the ~44px touch floor. Bump them only below the sm breakpoint; the desktop
+   map keeps the standard compact controls (mouse precision). */
+@media (max-width: 639.98px) {
+  .dashboard-shell .leaflet-control-zoom a {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+    font-size: 18px;
+  }
+}
+
+/* MapLibre (Neshan engine) popups are also appended inside the shell, so the
+   same theming applies. The SDK ships a default white card; these overrides
+   bring it onto the active palette to match the Leaflet popups. */
+.dashboard-shell .maplibregl-popup-content {
+  background-color: var(--ik-panel);
+  color: var(--ik-text);
+  border: 1px solid var(--ik-border);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+}
+.dashboard-shell .maplibregl-popup-tip {
+  border-top-color: var(--ik-panel);
+  border-bottom-color: var(--ik-panel);
+}
+.dashboard-shell .maplibregl-popup-close-button {
+  color: var(--ik-muted);
+}
+.dashboard-shell .maplibregl-popup-close-button:hover {
+  color: var(--ik-text);
+}
+
 @keyframes float-soft {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-0.5rem); }

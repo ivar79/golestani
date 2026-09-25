@@ -59,17 +59,17 @@ function RoutingButtons({ lat, lng, name }: { lat: number; lng: number; name: st
   ];
   return (
     <div className="flex items-center gap-1.5">
-      <Route className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+      <Route className="h-3.5 w-3.5 text-ik-muted" aria-hidden="true" />
       {apps.map((a) => (
-        <a
-          key={a.key}
-          href={routingUrl(a.key, lat, lng, name)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
-        >
-          {a.label}
-        </a>
+          <a
+            key={a.key}
+            href={routingUrl(a.key, lat, lng, name)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-[44px] items-center rounded-md border border-ik-border bg-ik-wash px-2 text-[10px] font-medium text-ik-muted transition-colors hover:border-ik-accent/40 hover:text-ik-accent lg:min-h-[24px]"
+          >
+            {a.label}
+          </a>
       ))}
     </div>
   );
@@ -78,14 +78,15 @@ function RoutingButtons({ lat, lng, name }: { lat: number; lng: number; name: st
 /**
  * MiniCard — Phase 3.1 (Stitch: mini_business_card / high_density_mini_cards).
  *
- * Glassmorphism card on the dark public theme, states:
+ * Card on the search theme (same --ik-* token system as the User Panel),
+ * states:
  *  - default / verified / with distance / featured (ویژه)
  *  - quick actions (task 8): direct call (tel:) + routing to
- *    نیشان / بلد / گوگل‌مپس when the API returns coordinates & phone
+ *    نشان / بلد / گوگل‌مپس when the API returns coordinates & phone
  *
  * Data source: real search API payload only. No image field exists in the
  * API yet, so the image slot renders the No-Image placeholder state from the
- * same Stitch set (storefront glyph on surface-container).
+ * same Stitch set (storefront glyph on a soft surface).
  */
 export default function MiniCard({ business }: { business: MiniCardData }) {
   const verified = business.verification_badge === true;
@@ -105,8 +106,8 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
   const body = (
     <>
       {/* Image slot — API has no image field yet → Stitch "بدون تصویر" state */}
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-surface-container-high shadow-inner">
-        <HomeIcon name="storefront" className="h-8 w-8 text-surface-tint opacity-50" />
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-ik-panel-soft">
+        <HomeIcon name="storefront" className="h-8 w-8 text-ik-muted opacity-50" />
       </div>
 
       <div className="flex min-w-0 grow flex-col justify-between">
@@ -114,22 +115,26 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
           <div className="flex items-center gap-2">
             <h3
               className={`truncate text-base font-semibold ${
-                featured ? "text-secondary" : "text-white"
+                featured ? "text-ik-accent" : "text-ik-text"
               }`}
             >
               {business.name}
             </h3>
-            {verified && <HomeIcon name="verified" className="h-4 w-4 shrink-0 text-secondary" />}
+            {verified && <HomeIcon name="verified" className="h-4 w-4 shrink-0 text-ik-success" />}
             {licenseVerified &&
               (() => {
                 // Phase 3 approved behavior: the badge links to the official
                 // license tracking system so visitors can verify the permit.
                 const trackUrl = buildLicenseTrackUrl(business.license_tracking_code);
-                const icon = <ShieldCheck className="h-4 w-4 text-emerald-400" aria-hidden="true" />;
+                const icon = <ShieldCheck className="h-4 w-4 text-ik-success" aria-hidden="true" />;
                 const title = "تاییدیه پروانه کسب — مشاهده در سامانه پیگیری مجوز";
+                // Mobile: a 44px hit box around the icon-only badge (the icon
+                // itself stays 16px); desktop restores the natural inline box.
+                const hitBox =
+                  "flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg lg:min-h-0 lg:min-w-0";
                 if (!trackUrl) {
                   return (
-                    <span title={title} aria-label={title} className="flex shrink-0">
+                    <span title={title} aria-label={title} className={hitBox}>
                       {icon}
                     </span>
                   );
@@ -141,25 +146,25 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
                     rel="noopener noreferrer nofollow"
                     title={title}
                     aria-label={title}
-                    className="flex shrink-0 transition-opacity hover:opacity-75"
+                    className={`${hitBox} transition-opacity hover:opacity-75`}
                   >
                     {icon}
                   </a>
                 );
               })()}
           </div>
-          <p className="mt-1 text-sm text-on-surface-variant">{business.category ?? "کسب‌وکار محلی"}</p>
+          <p className="mt-1 text-sm text-ik-muted">{business.category ?? "کسب‌وکار محلی"}</p>
         </div>
 
         <div className="mt-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
             {hasDistance ? (
-              <span className="flex items-center gap-1 rounded-md bg-surface-container-highest px-2 py-1 text-white">
-                <HomeIcon name="location" className="h-3.5 w-3.5 text-secondary" />
+              <span className="flex items-center gap-1 rounded-md bg-ik-panel-soft px-2 py-1 text-ik-text">
+                <HomeIcon name="location" className="h-3.5 w-3.5 text-ik-accent" />
                 <span className="text-[10px] font-bold">{formatDistance(business.distance as number)}</span>
               </span>
             ) : location ? (
-              <span className="flex items-center gap-1 text-on-surface-variant">
+              <span className="flex items-center gap-1 text-ik-muted">
                 <HomeIcon name="location" className="h-4 w-4" />
                 <span className="text-[10px]">{location}</span>
               </span>
@@ -169,10 +174,10 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
 
             <Link
               href={`/b/${business.slug}`}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`min-h-[44px] rounded-full px-4 py-1.5 text-sm font-medium transition-colors lg:min-h-[32px] ${
                 featured
-                  ? "bg-secondary text-white shadow-md shadow-secondary/30 hover:bg-secondary/90"
-                  : "bg-surface-container-highest text-white hover:bg-surface-container"
+                  ? "bg-ik-accent text-ik-accent-contrast shadow-sm hover:bg-ik-accent-hover"
+                  : "bg-ik-panel-soft text-ik-text hover:bg-ik-panel-hover"
               }`}
             >
               مشاهده
@@ -181,11 +186,11 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
 
           {/* Quick actions: call + routing (rendered only with real API data) */}
           {(hasPhone || hasCoords) && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ik-border pt-2">
               {hasPhone ? (
                 <a
                   href={`tel:${encodeURIComponent((business.phone as string).trim())}`}
-                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition-colors hover:border-emerald-400/60 hover:bg-emerald-500/20"
+                  className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-ik-success/30 bg-ik-success/10 px-2.5 text-[11px] font-semibold text-ik-success transition-colors hover:bg-ik-success/20 lg:min-h-[28px]"
                 >
                   <Phone className="h-3 w-3" />
                   <span dir="ltr">{business.phone}</span>
@@ -208,24 +213,21 @@ export default function MiniCard({ business }: { business: MiniCardData }) {
   );
 
   if (featured) {
-    // Stitch featured state: glowing gradient border + corner ribbon.
+    // Featured state: quiet accent border + ribbon — restrained, no gradients.
     return (
-      <div className="relative overflow-hidden rounded-[20px] bg-panel-deep/80 p-[1px] shadow-lg shadow-secondary/20">
-        <div className="absolute inset-0 bg-gradient-to-br from-secondary via-panel-deep to-secondary opacity-50" />
-        <div className="relative rounded-[19px] bg-panel-deep/90">
-          <span className="absolute right-4 top-0 z-10 rounded-b-md bg-secondary px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
-            ویژه
-          </span>
-          <div className="flex h-full gap-4 p-4 pt-6">{body}</div>
-        </div>
+      <div className="relative overflow-hidden rounded-[20px] border border-ik-accent/40 bg-ik-panel shadow-md shadow-ik-accent/10">
+        <span className="absolute right-4 top-0 z-10 rounded-b-md bg-ik-accent px-2 py-0.5 text-[10px] font-bold text-ik-accent-contrast shadow-sm">
+          ویژه
+        </span>
+        <div className="flex h-full gap-4 p-4 pt-6">{body}</div>
       </div>
     );
   }
 
   return (
     <div
-      className={`flex gap-4 rounded-[20px] border border-white/10 bg-panel/60 p-4 shadow-md backdrop-blur-xl transition-transform hover:scale-[1.02] ${
-        verified ? "border-secondary/30" : ""
+      className={`flex gap-4 rounded-[20px] border border-ik-border bg-ik-panel/80 p-4 shadow-sm transition-transform hover:scale-[1.02] ${
+        verified ? "border-ik-success/30" : ""
       }`}
     >
       {body}

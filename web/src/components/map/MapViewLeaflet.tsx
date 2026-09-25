@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import type { LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -18,7 +19,6 @@ import {
   osmRasterUrl,
   recordTileFailure,
   resetTileFailureWindow,
-  TILE_FAILURE_WINDOW_MS,
   type FailureKind,
 } from "@/lib/mapEngine";
 
@@ -209,7 +209,7 @@ export default function MapViewLeaflet({
         center={defaultCenter}
         zoom={zoom ?? 12}
         scrollWheelZoom
-        className="h-full w-full rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-[#0e1726] shadow-sm"
+        className="h-full w-full rounded-2xl sm:rounded-3xl border border-ik-border bg-ik-panel shadow-sm"
       >
         <TileLayer url={rasterUrl} attribution={attribution} maxZoom={19} eventHandlers={{ tileerror: handleTileError }} />
 
@@ -223,7 +223,7 @@ export default function MapViewLeaflet({
             }}
           >
             <Popup>
-              <div dir="rtl" className="p-1 text-xs font-bold text-blue-600 text-center">
+              <div dir="rtl" className="p-1 text-xs font-bold text-ik-accent text-center">
                 📍 موقعیت مکانی شما
               </div>
             </Popup>
@@ -256,25 +256,25 @@ export default function MapViewLeaflet({
                      OTP login+signup page); the real claim flow is a later
                      phase, so this link intentionally leads to the generic
                      entry point. */
-                  <div dir="rtl" className="p-2 min-w-[200px] max-w-[240px] text-right font-sans">
-                    <strong className="block text-sm text-slate-900 font-bold mb-1">
+                  <div dir="rtl" className="p-2 min-w-[200px] max-w-[240px] text-right font-sans bg-ik-panel">
+                    <strong className="block text-sm text-ik-text font-bold mb-1">
                       {m.title}
                     </strong>
                     {m.category && (
-                      <span className="text-xs text-slate-500 mb-2 block">{m.category}</span>
+                      <span className="text-xs text-ik-muted mb-2 block">{m.category}</span>
                     )}
-                    <p className="text-[11px] leading-relaxed text-slate-600 mb-2">
+                    <p className="text-[11px] leading-relaxed text-ik-muted mb-2">
                       این کسب‌وکار هنوز در اینکارت فعال نشده است.
                     </p>
-                    <a
+                    <Link
                       href="/login"
-                      className="block w-full py-1.5 px-2 bg-[#0b1626] hover:bg-[#00c98d] hover:text-[#0b1626] text-white text-[11px] font-bold rounded-lg text-center transition-colors"
+                      className="block w-full py-1.5 px-2 bg-ik-accent hover:bg-ik-accent-hover text-ik-accent-contrast text-[11px] font-bold rounded-lg text-center transition-colors"
                     >
                       صاحب این کسب‌وکار هستید؟ ثبت مالکیت رایگان
-                    </a>
+                    </Link>
                   </div>
                 ) : (
-                <div dir="rtl" className="p-2 min-w-[200px] max-w-[260px] text-right font-sans">
+                <div dir="rtl" className="p-2 min-w-[200px] max-w-[260px] text-right font-sans bg-ik-panel">
                   <div className="flex items-center gap-2 mb-1">
                     {m.logoUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
@@ -285,24 +285,24 @@ export default function MapViewLeaflet({
                         loading="lazy"
                       />
                     ) : null}
-                    <strong className="block text-sm text-slate-900 font-bold">
+                    <strong className="block text-sm text-ik-text font-bold">
                       {m.title}
                     </strong>
                   </div>
                   {m.category && (
-                    <span className="inline-block text-xs text-slate-500 mb-1">
+                    <span className="inline-block text-xs text-ik-muted mb-1">
                       {m.category}
                     </span>
                   )}
                   {m.distance != null && (
-                    <div className="text-xs text-emerald-700 font-medium my-1">
+                    <div className="text-xs text-ik-success font-medium my-1">
                       فاصله: {m.distance < 1000 ? `${Math.round(m.distance)} متر` : `${(m.distance / 1000).toFixed(1)} کیلومتر`}
                     </div>
                   )}
                   {m.href && (
                     <a
                       href={m.href}
-                      className="mt-2 block w-full py-1 px-2.5 bg-[#0b1626] hover:bg-[#00c98d] hover:text-[#0b1626] text-white text-xs font-bold rounded-lg text-center transition-colors"
+                      className="mt-2 block w-full py-1 px-2.5 bg-ik-accent hover:bg-ik-accent-hover text-ik-accent-contrast text-xs font-bold rounded-lg text-center transition-colors"
                     >
                       مشاهده کارت ویزیت
                     </a>
