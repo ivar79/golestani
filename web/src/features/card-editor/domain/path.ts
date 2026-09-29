@@ -1,3 +1,5 @@
+import { curveLineD } from "./curveLine";
+
 export type PathPoint = {
   x: number;
   y: number;
@@ -5,27 +7,197 @@ export type PathPoint = {
   hOut?: { x: number; y: number } | null;
 };
 
+/**
+ * Auto-smooth an entire path by computing smooth continuous Bézier handles
+ * for every anchor using Catmull-Rom spline interpolation (Adobe Illustrator Curvature Tool standard).
+ */
+export function autoSmoothPoints(points: PathPoint[], closed = false, tension = 0.28): PathPoint[] {
+  if (points.length < 2) return points.map((p) => ({ ...p }));
+  const n = points.length;
+  const result: PathPoint[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const curr = points[i];
+    let prev: PathPoint;
+    let next: PathPoint;
+
+    if (closed) {
+      prev = points[(i - 1 + n) % n];
+      next = points[(i + 1) % n];
+    } else {
+      prev = i === 0 ? curr : points[i - 1];
+      next = i === n - 1 ? curr : points[i + 1];
+    }
+
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+
+    // Distances
+    const dPrev = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const dNext = Math.hypot(next.x - curr.x, next.y - curr.y);
+    const dTotal = dPrev + dNext || 1;
+
+    // Scale handles proportionally
+    const hInLen = (dPrev / dTotal) * tension * 2;
+    const hOutLen = (dNext / dTotal) * tension * 2;
+
+    const hIn =
+      closed || i > 0
+        ? { x: curr.x - dx * hInLen, y: curr.y - dy * hInLen }
+        : null;
+
+    const hOut =
+      closed || i < n - 1
+        ? { x: curr.x + dx * hOutLen, y: curr.y + dy * hOutLen }
+        : null;
+
+    result.push({
+      x: curr.x,
+      y: curr.y,
+      hIn,
+      hOut,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Straighten all anchors (remove all handles, converting to sharp corner points).
+ */
+export function straightenAllPoints(points: PathPoint[]): PathPoint[] {
+  return points.map((p) => ({
+    x: p.x,
+    y: p.y,
+    hIn: null,
+    hOut: null,
+  }));
+}
+
+/**
+ * Turn an individual anchor into a smooth continuous point by calculating
+ * tangent handles based on its previous and next anchors.
+ */
+export function smoothAnchorAt(points: PathPoint[], index: number, closed = false, tension = 0.28): PathPoint[] {
+  if (index < 0 || index >= points.length) return points;
+  const n = points.length;
+  const curr = points[index];
+  let prev: PathPoint;
+  let next: PathPoint;
+
+  if (closed) {
+    prev = points[(index - 1 + n) % n];
+    next = points[(index + 1) % n];
+  } else {
+    prev = index === 0 ? curr : points[index - 1];
+    next = index === n - 1 ? curr : points[index + 1];
+  }
+
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  const dPrev = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+  const dNext = Math.hypot(next.x - curr.x, next.y - curr.y);
+  const dTotal = dPrev + dNext || 1;
+
+  const hInLen = (dPrev / dTotal) * tension * 2;
+  const hOutLen = (dNext / dTotal) * tension * 2;
+
+  const nextPoints = points.slice();
+  nextPoints[index] = {
+    ...curr,
+    hIn: closed || index > 0 ? { x: curr.x - dx * hInLen, y: curr.y - dy * hInLen } : null,
+    hOut: closed || index < n - 1 ? { x: curr.x + dx * hOutLen, y: curr.y + dy * hOutLen } : null,
+  };
+  return nextPoints;
+}
+
+/**
+ * Turn an individual anchor into a sharp corner (straight segment endpoint)
+ * by removing its incoming and outgoing control handles.
+ */
+export function cornerAnchorAt(points: PathPoint[], index: number): PathPoint[] {
+  if (index < 0 || index >= points.length) return points;
+  const nextPoints = points.slice();
+  nextPoints[index] = {
+    ...points[index],
+    hIn: null,
+    hOut: null,
+  };
+  return nextPoints;
+}
+
+/**
+ * Toggle an anchor between Smooth (Curved with handles) and Corner (Straight sharp point).
+ */
+export function toggleAnchorAt(points: PathPoint[], index: number, closed = false): PathPoint[] {
+  if (index < 0 || index >= points.length) return points;
+  const pt = points[index];
+  const isSmooth = Boolean(pt.hIn || pt.hOut);
+  if (isSmooth) {
+    return cornerAnchorAt(points, index);
+  }
+  return smoothAnchorAt(points, index, closed);
+}
+
+/**
+ * Ramer-Douglas-Peucker algorithm to simplify noisy/jittery hand-drawn points.
+ */
+function perpendicularDistance(p: { x: number; y: number }, p1: { x: number; y: number }, p2: { x: number; y: number }) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const norm = Math.hypot(dx, dy);
+  if (norm === 0) return Math.hypot(p.x - p1.x, p.y - p1.y);
+  return Math.abs(dy * p.x - dx * p.y + p2.x * p1.y - p2.y * p1.x) / norm;
+}
+
+export function ramerDouglasPeucker(points: { x: number; y: number }[], epsilon = 3): { x: number; y: number }[] {
+  if (points.length <= 2) return points;
+  let dmax = 0;
+  let index = 0;
+  const last = points.length - 1;
+
+  for (let i = 1; i < last; i++) {
+    const d = perpendicularDistance(points[i], points[0], points[last]);
+    if (d > dmax) {
+      index = i;
+      dmax = d;
+    }
+  }
+
+  if (dmax > epsilon) {
+    const left = ramerDouglasPeucker(points.slice(0, index + 1), epsilon);
+    const right = ramerDouglasPeucker(points.slice(index), epsilon);
+    return left.slice(0, -1).concat(right);
+  }
+  return [points[0], points[last]];
+}
+
 /** Distance formula */
 const dist = (p1: { x: number; y: number }, p2: { x: number; y: number }) =>
   Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
 
 /**
- * Decimate and smooth a raw pointer stroke using Catmull-Rom to Bezier conversion.
+ * Decimate and smooth a raw pointer stroke with anti-jitter RDP filtering
+ * and Catmull-Rom to Bezier conversion (Procreate/Illustrator quality).
  */
 export function createFreehandPath(
   rawPoints: { x: number; y: number }[],
-  options: { tension?: number; minDist?: number } = {}
+  options: { tension?: number; minDist?: number; simplifyEpsilon?: number } = {}
 ): PathPoint[] {
-  const { tension = 0.2, minDist = 2 } = options;
+  const { tension = 0.25, minDist = 3, simplifyEpsilon = 2.5 } = options;
   if (rawPoints.length === 0) return [];
 
-  // Decimate
-  const pts = [rawPoints[0]];
+  // Decimate basic spacing
+  const ptsRaw = [rawPoints[0]];
   for (let i = 1; i < rawPoints.length; i++) {
-    if (dist(pts[pts.length - 1], rawPoints[i]) >= minDist) {
-      pts.push(rawPoints[i]);
+    if (dist(ptsRaw[ptsRaw.length - 1], rawPoints[i]) >= minDist) {
+      ptsRaw.push(rawPoints[i]);
     }
   }
+
+  // Apply anti-jitter curve simplification (reduces 21 shaky points to 4-5 clean key points)
+  const pts = ptsRaw.length > 3 ? ramerDouglasPeucker(ptsRaw, simplifyEpsilon) : ptsRaw;
+
   // If only 1 point, make it a dot by duplicating
   if (pts.length === 1) {
     pts.push({ x: pts[0].x + 0.1, y: pts[0].y + 0.1 });
@@ -79,6 +251,23 @@ export function pathD(points: PathPoint[], closed = false): string {
     d += ` C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${curr.x} ${curr.y} Z`;
   }
   return d;
+}
+
+/**
+ * Resolve the SVG path 'd' string for any PathLayer, supporting rawD, circular Arc bend, and Bezier anchors.
+ */
+export function resolveLayerPathD(layer: { points: PathPoint[]; closed?: boolean; rawD?: string; bend?: number }): string {
+  if (layer.rawD) return layer.rawD;
+  if (layer.bend !== undefined && layer.points && layer.points.length === 2) {
+    return curveLineD({
+      x1: layer.points[0].x,
+      y1: layer.points[0].y,
+      x2: layer.points[1].x,
+      y2: layer.points[1].y,
+      bend: layer.bend,
+    });
+  }
+  return pathD(layer.points || [], layer.closed ?? false);
 }
 
 /**

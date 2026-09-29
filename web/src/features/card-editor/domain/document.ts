@@ -45,6 +45,10 @@ export type LayerBase = {
   z?: number;
   color: string | null;
   background: string | null;
+  /** Luxury material style or visual effect (Glassmorphism, Velvet, Gold Foil, Chrome Silver, Neon Glow). */
+  effect?: "glass" | "velvet" | "gold" | "silver" | "neon" | "none" | null;
+  /** Direct arc curvature for 2-point curved lines (-100 to +100). */
+  curvature?: number;
 };
 
 export type TextLayer = LayerBase & {
@@ -134,7 +138,19 @@ export type PathLayer = LayerBase & StrokeDecorations & {
   kind: "path";
   closed: boolean;
   points: PathPoint[];
-  stroke: string;
+  /**
+   * Optional raw SVG `d` string — used by catalog templates and the brush tool
+   * for curves that are authored directly as path data (ornaments) rather than
+   * as editable anchor lists. When present it wins over `points` (see
+   * resolveLayerPathD). Kept in the document so it round-trips untouched.
+   */
+  rawD?: string;
+  /**
+   * Arc curvature for a 2-point path as a signed sagitta ratio
+   * (±1 = semicircle; 0 = straight). See domain/curveLine.ts.
+   */
+  bend?: number;
+  stroke?: string | null;
   strokeWidth: number;
   fill: string | null;
 };

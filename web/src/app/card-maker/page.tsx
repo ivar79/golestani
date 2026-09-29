@@ -597,9 +597,51 @@ export default function CardMakerPage() {
           </div>
         )}
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_1.35fr]">
-          {/* ============ Controls ============ */}
-          <div className="order-2 min-w-0 space-y-6 lg:order-1">
+        {editorMode && editorAllowed && selectedBusiness ? (
+          <div className="mt-8 w-full">
+            <div className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-4 sm:p-6 backdrop-blur-xl">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditorMode(false)}
+                    className="flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition shadow-sm"
+                  >
+                    ← بازگشت به قالب‌های ساده
+                  </button>
+                  <span className="text-xs text-slate-400">
+                    استودیوی طراحی پیشرفته برای: <strong className="text-white">{selectedBusiness.name}</strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <CardExportMenu
+                    capabilities={entitlements.capabilities}
+                    artboardSize={artboard}
+                    busy={exporting}
+                    onExport={(format, scale) => void exportCard(format, scale)}
+                  />
+                </div>
+              </div>
+
+              <CardStudio
+                key={selectedBusiness.id}
+                business={selectedBusiness}
+                template={template}
+                theme={theme}
+                fontFamily={fontFamily}
+                designJson={designJson}
+                onSaved={handleSaveDesign}
+                onUploadImage={handleUploadCardImage}
+                onDocumentChange={handleDocumentChange}
+                exportRef={canvas}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_1.35fr]">
+            {/* ============ Controls ============ */}
+            <div className="order-2 min-w-0 space-y-6 lg:order-1">
             <form onSubmit={handleSaveSettings} className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-6 backdrop-blur-xl space-y-5">
               <h2 className="text-lg font-bold text-white border-b border-white/10 pb-3">۱. انتخاب قالب</h2>
 
@@ -945,6 +987,7 @@ export default function CardMakerPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Delete confirmation modal */}

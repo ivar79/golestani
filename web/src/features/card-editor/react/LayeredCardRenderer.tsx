@@ -43,6 +43,23 @@ import { gradientLine, gradientRadius, type SvgGradientSpec } from "../domain/sv
  * their own hit areas on top.
  */
 export function layerStyle(layer: CardLayer, z: number): CSSProperties {
+  let backdropFilter: string | undefined;
+  let boxShadow: string | undefined;
+  let filter: string | undefined;
+
+  if (layer.effect === "glass") {
+    backdropFilter = "blur(12px)";
+    boxShadow = "0 8px 32px 0 rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.25)";
+  } else if (layer.effect === "neon") {
+    filter = "drop-shadow(0 0 6px #00f2fe) drop-shadow(0 0 18px rgba(0, 242, 254, 0.6))";
+  } else if (layer.effect === "velvet") {
+    boxShadow = "inset 0 0 35px rgba(0, 0, 0, 0.6), 0 4px 15px rgba(0, 0, 0, 0.35)";
+  } else if (layer.effect === "gold") {
+    filter = "drop-shadow(0 2px 8px rgba(191, 149, 63, 0.45))";
+  } else if (layer.effect === "silver") {
+    filter = "drop-shadow(0 2px 8px rgba(200, 200, 200, 0.35))";
+  }
+
   return {
     position: "absolute",
     left: layer.x,
@@ -53,6 +70,10 @@ export function layerStyle(layer: CardLayer, z: number): CSSProperties {
     transform: layer.angle ? `rotate(${layer.angle}deg)` : undefined,
     zIndex: z,
     pointerEvents: "none",
+    backdropFilter,
+    WebkitBackdropFilter: backdropFilter,
+    boxShadow,
+    filter,
   };
 }
 

@@ -19,6 +19,7 @@ import type { ReactNode } from "react";
 import type { PathPoint } from "../domain/document";
 import type { PathLayer } from "../domain/document";
 import { pathD, nearestSegmentParam } from "../domain/path";
+import { curveBendHandlePos, bendFromPointer } from "../domain/curveLine";
 import type { EditorEngine } from "../engine/EditorEngine";
 
 /** Screen-pixel metrics (converted to design px by dividing by the zoom). */
@@ -128,6 +129,13 @@ function DragNode({
     engine.commitPathEdit(layer.id);
   };
 
+  const handleDoubleClick = (event: React.MouseEvent<SVGGElement>) => {
+    event.stopPropagation();
+    if (kind === "anchor") {
+      engine.toggleAnchorType(layer.id, index);
+    }
+  };
+
   return (
     <g
       style={{ pointerEvents: "auto", cursor }}
@@ -135,6 +143,7 @@ function DragNode({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
+      onDoubleClick={handleDoubleClick}
     >
       {children}
     </g>
@@ -351,6 +360,92 @@ export function PenDraftOverlay({
 
 function handleSizeFor(scale: number): number {
   return HANDLE_VISUAL * scale;
+}
+
+export function ArcBendHandleOverlay({
+  engine,
+  layer,
+  zoom,
+}: {
+  engine: EditorEngine;
+  layer: PathLayer;
+  zoom: number;
+}) {
+  if (layer.points.length !== 2) return null;
+  const lSpec = {
+    x1: layer.points[0].x,
+    y1: layer.points[0].y,
+    x2: layer.points[1].x,
+    y2: layer.points[1].y,
+    bend: layer.bend ?? 0.4,
+  };
+  const h = curveBendHandlePos(lSpec);
+  const isTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+  const HIT = (isTouch ? 22 : 12) / zoom;
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const target = e.currentTarget as Element;
+    target.setPointerCapture(e.pointerId);
+
+    const onPointerMove = (me: PointerEvent) => {
+      const stage = target.closest("[data-stage-inner]") as HTMLElement | null;
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const pt = {
+        x: (me.clientX - rect.left) / zoom,
+        y: (me.clientY - rect.top) / zoom,
+      };
+      const localPt = toLayerLocal(pt, layer);
+      const newBend = bendFromPointer(lSpec, localPt, zoom);
+      engine.updateLayer(layer.id, { bend: newBend });
+    };
+
+    const onPointerUp = (ue: PointerEvent) => {
+      target.releasePointerCapture(ue.pointerId);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  return (
+    <svg
+      className="pointer-events-none absolute left-0 top-0 z-[1600] overflow-visible"
+      style={{
+        left: layer.x,
+        top: layer.y,
+        width: layer.width,
+        height: layer.height,
+        transform: layer.angle ? `rotate(${layer.angle}deg)` : undefined,
+        transformOrigin: "center center",
+      }}
+      viewBox={`0 0 ${layer.width} ${layer.height}`}
+    >
+      <g className="handles-overlay pointer-events-auto">
+        <circle
+          cx={h.x}
+          cy={h.y}
+          r={HIT}
+          fill="transparent"
+          style={{ cursor: "grab" }}
+          onPointerDown={onPointerDown}
+        />
+        <circle
+          cx={h.x}
+          cy={h.y}
+          r={6 / zoom}
+          fill="#ffffff"
+          stroke="#7c3aed"
+          strokeWidth={2 / zoom}
+          pointerEvents="none"
+        />
+      </g>
+    </svg>
+  );
 }
 
 export default PathEditOverlay;

@@ -178,9 +178,9 @@ export function snapCoordinate(
   return { value: best, guide: { axis, at: best, edge: "start" } };
 }
 
-/** Zoom limits shared by every stage control (buttons and wheel). */
+/** Zoom limits shared by every stage control (buttons, slider, and wheel). */
 export const MIN_ZOOM = 0.1;
-export const MAX_ZOOM = 4;
+export const MAX_ZOOM = 2.0;
 
 export function clampZoom(zoom: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(zoom.toFixed(3))));

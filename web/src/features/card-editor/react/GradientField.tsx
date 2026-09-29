@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
+import { Trash2 } from "lucide-react";
 import {
   createGradient,
   gradientToCss,
@@ -27,8 +28,6 @@ type Props = {
   onChange: (css: string) => void;
   /**
    * The gesture ended (pointer up / blur / discrete click): commit once.
-   * When omitted, every change the caller receives is already final on its
-   * own (the legacy per-change contract, e.g. the shape fill section).
    */
   onGestureEnd?: () => void;
 };
@@ -47,9 +46,6 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
   const [editingStop, setEditingStop] = useState<number | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Close the stop-color popover on click-outside (pointerdown anywhere that
-  // is not the popover itself). The color drags commit on pointerUp, so by the
-  // time a press lands outside the popover the edit is already final.
   useEffect(() => {
     if (editingStop === null) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -61,8 +57,6 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [editingStop]);
 
-  // The working gradient model — derived from the current CSS value, or the
-  // default two-stop when the field is still solid/empty.
   const gradient: Gradient =
     mode === "linear" || mode === "radial"
       ? parseGradientCss(value ?? "", mode)
@@ -72,19 +66,10 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
     onChange(gradientToCss(next));
   };
 
-  /**
-   * End the pending gesture. A caller that doesn't model transient state
-   * (no `onGestureEnd`) has its `onChange` commit on every change already, so
-   * this is a no-op there and the legacy behaviour is preserved exactly.
-   */
   const commit = (): void => {
     onGestureEnd?.();
   };
 
-  /**
-   * A DISCRETE action (mode switch, add/remove stop): the change goes out as
-   * transient state and is then committed as exactly ONE history record.
-   */
   const emitCommitted = (next: Gradient): void => {
     emit(next);
     commit();
@@ -93,7 +78,6 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
   const switchMode = (next: Mode): void => {
     if (next === mode) return;
     if (next === "solid") {
-      // Committing back to solid uses the gradient's first stop color.
       onChange(gradient.stops[0]?.color ?? "#ffffff");
       commit();
       return;
@@ -102,33 +86,64 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-3">
       {/* Mode switch */}
-      <div className="mb-3 flex gap-1.5">
+      <div className="flex gap-1.5 rounded-lg border border-white/10 bg-white/5 p-1">
         {(["solid", "linear", "radial"] as const).map((m) => (
           <button
             key={m}
             type="button"
             onClick={() => switchMode(m)}
-            className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold ${
-              mode === m ? "border-cyan-400 bg-cyan-500/15 text-cyan-200" : "border-white/10 bg-white/5 text-slate-400"
+            className={`flex-1 rounded-md py-1.5 text-[11px] font-bold transition ${
+              mode === m ? "bg-cyan-500/25 text-cyan-300 shadow-sm" : "text-slate-400 hover:text-white"
             }`}
           >
-            {m === "solid" ? "یکدست" : m === "linear" ? "خطی" : "دایره‌ای"}
+            {m === "solid" ? "یکدست" : m === "linear" ? "گرادیان خطی" : "گرادیان شعاعی"}
           </button>
         ))}
       </div>
 
       {mode === "solid" ? (
-        <p className="text-[10px] leading-4 text-slate-500">
-          پس‌زمینه یکدست است. برای ساخت طلق رنگی، «خطی» یا «دایره‌ای» را انتخاب کنید.
-        </p>
+        <div className="space-y-2">
+          <p className="text-[11px] text-slate-400">
+            رنگ زمینه یکدست انتخاب شده است. برای تغییر رنگ، از پالت زیر یا حالت گرادیان استفاده کنید.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingStop(editingStop === 0 ? null : 0)}
+              className="h-9 w-12 rounded-lg border border-white/20 shadow-inner"
+              style={{ background: gradient.stops[0]?.color ?? "#ffffff" }}
+              title="انتخاب رنگ یکدست"
+            />
+            <span className="font-mono text-xs text-slate-300">
+              {gradient.stops[0]?.color ?? "#ffffff"}
+            </span>
+          </div>
+          {editingStop === 0 && (
+            <div
+              ref={popoverRef}
+              className="relative z-50 mt-2 rounded-xl border border-white/15 bg-[#0a1424] p-3 shadow-2xl"
+            >
+              <HexColorPicker
+                color={gradient.stops[0]?.color ?? "#ffffff"}
+                onChange={(c) => {
+                  onChange(c);
+                  commit();
+                }}
+              />
+            </div>
+          )}
+        </div>
       ) : (
         <>
           {/* Angle (linear only) */}
           {mode === "linear" && (
-            <label className="mb-2 block">
-              <span className="mb-1 block text-[10px] text-slate-500">زاویه: {Math.round(gradient.angle)}°</span>
+            <label className="block rounded-lg border border-white/5 bg-white/[0.02] p-2">
+              <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                <span className="text-slate-400">زاویه تابش گرادیان</span>
+                <span className="font-mono font-bold text-cyan-300">{Math.round(gradient.angle)}°</span>
+              </div>
               <input
                 type="range"
                 min={0}
@@ -137,82 +152,99 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
                 onChange={(e) => emit({ ...gradient, angle: Number(e.target.value) })}
                 onPointerUp={commit}
                 onBlur={commit}
-                className="w-full accent-cyan-400"
+                className="w-full accent-cyan-400 h-1.5 bg-white/10 rounded-lg cursor-pointer"
               />
             </label>
           )}
 
           {/* Live preview strip */}
           <div
-            className="mb-2 h-10 w-full rounded-lg border border-white/10"
+            className="h-10 w-full rounded-xl border border-white/15 shadow-inner"
             style={{ background: gradientToCss(gradient) }}
           />
 
           {/* Stop list */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
+            <div className="text-[11px] font-semibold text-slate-300">نقاط رنگ گرادیان:</div>
             {gradient.stops.map((stop, index) => (
               <div
                 key={index}
-                className="relative flex items-center gap-2"
+                className="relative rounded-xl border border-white/10 bg-white/[0.02] p-2.5 space-y-2"
                 onKeyDown={(e) => {
                   if (e.key === "Escape" && editingStop === index) setEditingStop(null);
                 }}
               >
-                <button
-                  type="button"
-                  title="رنگ این نقطه"
-                  onClick={() => setEditingStop(editingStop === index ? null : index)}
-                  className="h-6 w-6 shrink-0 rounded-md border border-white/20"
-                  style={{ background: stop.color }}
-                />
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round(stop.offset)}
-                  onChange={(e) => emit(updateStop(gradient, index, { offset: Number(e.target.value) }))}
-                  onPointerUp={commit}
-                  onBlur={commit}
-                  className="flex-1 accent-cyan-400"
-                  aria-label="موقعیت نقطه رنگ"
-                />
-                <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-slate-400">
-                  {Math.round(stop.offset)}٪
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round(stop.opacity * 100)}
-                  onChange={(e) => emit(updateStop(gradient, index, { opacity: Number(e.target.value) / 100 }))}
-                  onPointerUp={commit}
-                  onBlur={commit}
-                  className="w-14 accent-cyan-400"
-                  aria-label="شفافیت نقطه رنگ"
-                />
-                <button
-                  type="button"
-                  title="حذف نقطه"
-                  disabled={gradient.stops.length <= 2}
-                  onClick={() => emitCommitted(removeStop(gradient, index))}
-                  className="shrink-0 rounded-md px-1 text-rose-400 hover:bg-rose-500/15 disabled:opacity-30"
-                >
-                  −
-                </button>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      title="تغییر رنگ نقطه"
+                      onClick={() => setEditingStop(editingStop === index ? null : index)}
+                      className="h-7 w-7 shrink-0 rounded-lg border border-white/30 shadow-sm transition hover:scale-105"
+                      style={{ background: stop.color }}
+                    />
+                    <span className="font-mono text-xs text-slate-300">{stop.color}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    title="حذف این نقطه"
+                    disabled={gradient.stops.length <= 2}
+                    onClick={() => emitCommitted(removeStop(gradient, index))}
+                    className="flex items-center justify-center h-6 w-6 rounded-md border border-rose-500/30 text-rose-400 hover:bg-rose-500/15 disabled:opacity-20 transition"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* Offset & Opacity sliders with explicit labels */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5 text-[10px]">
+                  <div>
+                    <div className="flex justify-between text-slate-400 mb-1">
+                      <span>موقعیت</span>
+                      <span className="font-mono text-cyan-300">{Math.round(stop.offset)}٪</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(stop.offset)}
+                      onChange={(e) => emit(updateStop(gradient, index, { offset: Number(e.target.value) }))}
+                      onPointerUp={commit}
+                      onBlur={commit}
+                      className="w-full accent-cyan-400 h-1 bg-white/10 rounded cursor-pointer"
+                      aria-label="موقعیت نقطه رنگ"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-slate-400 mb-1">
+                      <span>شفافیت</span>
+                      <span className="font-mono text-cyan-300">{Math.round(stop.opacity * 100)}٪</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(stop.opacity * 100)}
+                      onChange={(e) => emit(updateStop(gradient, index, { opacity: Number(e.target.value) / 100 }))}
+                      onPointerUp={commit}
+                      onBlur={commit}
+                      className="w-full accent-cyan-400 h-1 bg-white/10 rounded cursor-pointer"
+                      aria-label="شفافیت نقطه رنگ"
+                    />
+                  </div>
+                </div>
+
                 {editingStop === index && (
                   <div
                     ref={popoverRef}
-                    // Anchored INSIDE this row (relative) so it can never escape the
-                    // panel: it drops below the row, hugs the row's inline-end edge
-                    // and is capped at the row width.
-                    className="absolute end-0 top-full z-50 mt-1 w-64 max-w-full rounded-lg border border-white/10 bg-[#0c1626] p-2 shadow-xl"
+                    className="relative z-50 mt-2 rounded-xl border border-white/15 bg-[#0a1424] p-3 shadow-2xl"
                   >
-                    <div onPointerUp={commit}>
-                      <HexColorPicker
-                        color={stop.color}
-                        onChange={(c) => emit(updateStop(gradient, index, { color: c }))}
-                      />
-                    </div>
+                    <HexColorPicker
+                      color={stop.color}
+                      onChange={(c) => emit(updateStop(gradient, index, { color: c }))}
+                    />
                   </div>
                 )}
               </div>
@@ -223,9 +255,9 @@ export function GradientField({ value, onChange, onGestureEnd }: Props) {
             <button
               type="button"
               onClick={() => emitCommitted(addStop(gradient, 50))}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-white"
+              className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition"
             >
-              + افزودن نقطه رنگ
+              + افزودن نقطه رنگ جدید
             </button>
           )}
         </>
@@ -288,3 +320,4 @@ function splitTopLevel(input: string): string[] {
   if (current.trim() !== "") out.push(current);
   return out;
 }
+

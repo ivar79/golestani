@@ -11,16 +11,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, X, PenTool as PenToolIcon, Pencil as PencilIcon } from "lucide-react";
 import type { CardDocument, CardLayer, PathLayer, TextLayer } from "../domain/document";
 import { layerZ } from "../domain/document";
 import { EditorEngine, type ResizeHandle } from "../engine/EditorEngine";
 import { useCardEditor } from "./useCardEditor";
 import { LayerBox, LayeredCard } from "./LayeredCardRenderer";
 import { SelectionOverlay } from "./SelectionOverlay";
-import { pathD, createFreehandPath } from "../domain/path";
 import { shouldBeginHandleDrag } from "../domain/penGesture";
-import { dashArrayFor } from "../domain/stroke";
-import { PenDraftOverlay, PathEditOverlay, CLOSE_SLOP } from "./BezierOverlays";
+import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
+import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import {
   clampZoom,
   keepInside,
@@ -43,6 +43,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const state = useCardEditor(engine);
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const isManualZoomRef = useRef(false);
+  const lastWidthRef = useRef(0);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
@@ -50,33 +52,61 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const [spaceDown, setSpaceDown] = useState(false);
   const panRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isEditingZoom, setIsEditingZoom] = useState(false);
+  const [zoomInputValue, setZoomInputValue] = useState("");
 
   const fitToContainer = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const available = el.clientWidth;
-    const target = Math.min(1, (available - 8) / doc.artboard.width);
+    lastWidthRef.current = available;
+    const target = Math.min(1, Math.max(0.2, (available - 24) / doc.artboard.width));
     setZoom(clampZoom(target));
+    setPan({ x: 0, y: 0 });
+    isManualZoomRef.current = false;
   }, [doc.artboard.width]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     fitToContainer();
-    const ro = new ResizeObserver(fitToContainer);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        if (Math.abs(width - lastWidthRef.current) > 25) {
+          lastWidthRef.current = width;
+          if (!isManualZoomRef.current) {
+            fitToContainer();
+          }
+        }
+      }
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [fitToContainer]);
 
-  const zoomIn = useCallback(() => setZoom((z) => clampZoom(z * 1.25)), []);
-  const zoomOut = useCallback(() => setZoom((z) => clampZoom(z / 1.25)), []);
-  const zoomFit = useCallback(() => fitToContainer(), [fitToContainer]);
+  const zoomIn = useCallback(() => {
+    isManualZoomRef.current = true;
+    setZoom((z) => clampZoom(z * 1.25));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    isManualZoomRef.current = true;
+    setZoom((z) => clampZoom(z / 1.25));
+  }, []);
+
+  const zoomFit = useCallback(() => {
+    fitToContainer();
+  }, [fitToContainer]);
+
+  const setZoomPreset = useCallback((val: number) => {
+    isManualZoomRef.current = true;
+    setZoom(clampZoom(val));
+  }, []);
 
   /**
    * Wheel zoom at the cursor (Ctrl/Cmd): the artboard point UNDER the pointer
-   * stays exactly put, like Figma/Photoshop. The pan correction is derived from
-   * the scaled artboard's current visual origin, so it is exact regardless of
-   * the container's centring or margins.
+   * stays exactly put, like Figma/Photoshop.
    */
   const onStageWheel = (event: React.WheelEvent) => {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -89,6 +119,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     const next = clampZoom(event.deltaY < 0 ? current * 1.1 : current / 1.1);
     if (next === current) return;
 
+    isManualZoomRef.current = true;
     const rect = inner.getBoundingClientRect();
     setPan(
       panForZoomAtPoint(
@@ -133,6 +164,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   }, [zoom]);
 
   const isDrawingRef = useRef(false);
+  const brushPtsRef = useRef<FreehandPoint[]>([]);
+  const brushSmoothRef = useRef<FreehandPoint | null>(null);
+  const liveBrushRef = useRef<SVGPathElement>(null);
+  const brushRafRef = useRef(0);
+  const isPenInputRef = useRef(false);
   /** True only once the pen click has crossed PEN_DRAG_THRESHOLD_PX (domain/penGesture). */
   const penDragRef = useRef(false);
   /** Where the current pen pointer-down landed (artboard coords) — the threshold base. */
@@ -177,10 +213,15 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       const id = state.selection.layerId;
       const layer = id ? doc.layers.find((l) => l.id === id) : null;
       if (e.key === "Escape") {
-        // Esc unwinds the most specific thing FIRST: a live pen draft, then
-        // point-editing, then the layer selection.
+        // Esc commits draft if 2+ anchors exist (Figma/Illustrator contract),
+        // drops draft if 1 anchor, leaves point-editing, or deselects.
         if (state.penDraft) {
-          engine.cancelPen();
+          if (state.penDraft.length >= 2) {
+            engine.finishPen(false);
+          } else {
+            engine.cancelPen();
+          }
+          engine.setTool("select");
           return;
         }
         if (state.editingPathId) {
@@ -192,7 +233,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       }
       if (e.key === "Enter" && state.penDraft) {
         e.preventDefault();
-        engine.finishPen(false);
+        if (state.penDraft.length >= 2) {
+          engine.finishPen(false);
+        } else {
+          engine.cancelPen();
+        }
+        engine.setTool("select");
         return;
       }
       const anchor = state.selectedAnchor;
@@ -340,14 +386,32 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     }
     if (state.tool === "draw") {
       event.stopPropagation();
-      const pos = pointerPos(event);
+      (event.target as Element).setPointerCapture?.(event.pointerId);
       isDrawingRef.current = true;
-      engine.beginFreehandStroke(pos);
-      (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+      isPenInputRef.current = event.pointerType === "pen";
+      const pos = pointerPos(event);
+      const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
+      brushPtsRef.current = [pt];
+      brushSmoothRef.current = pt;
     } else {
       if (state.editingPathId) engine.setPathEditing(null);
       engine.select(null);
     }
+  };
+
+  const STREAMLINE = 0.45;
+
+  const renderLiveBrush = () => {
+    brushRafRef.current = 0;
+    const outline = getBrushStrokeOutline(brushPtsRef.current, {
+      size: state.brushWidth || 14,
+      thinning: 0.55,
+      smoothing: 0.6,
+      streamline: 0.35,
+      simulatePressure: !isPenInputRef.current,
+      last: false,
+    });
+    liveBrushRef.current?.setAttribute("d", outlineToD(outline));
   };
 
   const onStagePointerMove = (event: React.PointerEvent) => {
@@ -358,13 +422,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     }
     const pos = pointerPos(event);
     if (state.tool === "pen") {
-      // Track the rubber band only once a draft exists (hovering with nothing
-      // to rubber-band to would re-render the whole stage for no reason); pull
-      // handles only while a click is held.
       if (state.penDraft) setPenCursor(pos);
-      // Click ↔ drag threshold: the drag begins only when the pointer has
-      // travelled > PEN_DRAG_THRESHOLD_PX SCREEN px from where it went down —
-      // anything less is a click and leaves the anchor handle-less (corner).
       if (!penDragRef.current && penStartRef.current && shouldBeginHandleDrag(penStartRef.current, pos, zoom)) {
         penDragRef.current = true;
       }
@@ -372,7 +430,24 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       return;
     }
     if (isDrawingRef.current && state.tool === "draw") {
-      engine.extendFreehandStroke(pos);
+      const evs = (event.nativeEvent as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [event.nativeEvent];
+      for (const ev of evs) {
+        const raw = pointerPos(ev);
+        const s = brushSmoothRef.current ?? { x: raw.x, y: raw.y, p: ev.pressure || 0.5 };
+        const t = 1 - STREAMLINE;
+        const np: FreehandPoint = {
+          x: s.x + (raw.x - s.x) * t,
+          y: s.y + (raw.y - s.y) * t,
+          p: ev.pressure || 0.5,
+        };
+        const last = brushPtsRef.current[brushPtsRef.current.length - 1];
+        if (last && Math.hypot(np.x - last.x, np.y - last.y) * zoom < 1) continue;
+        brushSmoothRef.current = np;
+        brushPtsRef.current.push(np);
+      }
+      if (!brushRafRef.current) {
+        brushRafRef.current = requestAnimationFrame(renderLiveBrush);
+      }
       return;
     }
     const transform = transformRef.current;
@@ -440,14 +515,28 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     }
     if (isDrawingRef.current) {
       isDrawingRef.current = false;
-      engine.commitFreehandStroke({
-        color: state.brushColor,
-        width: state.brushWidth,
-        style: state.brushStyle,
-        linecap: state.brushLinecap,
-        linejoin: state.brushLinejoin,
-        opacity: state.brushOpacity,
-      });
+      if (brushRafRef.current) {
+        cancelAnimationFrame(brushRafRef.current);
+        brushRafRef.current = 0;
+      }
+      const pts = brushPtsRef.current;
+      if (pts.length > 1) {
+        const outline = getBrushStrokeOutline(pts, {
+          size: state.brushWidth || 14,
+          thinning: 0.55,
+          smoothing: 0.6,
+          streamline: 0.35,
+          simulatePressure: !isPenInputRef.current,
+          last: true,
+        });
+        const d = outlineToD(outline);
+        if (d) {
+          engine.addBrushLayer(d, state.brushColor || "#0ea5e9");
+        }
+      }
+      brushPtsRef.current = [];
+      brushSmoothRef.current = null;
+      liveBrushRef.current?.setAttribute("d", "");
       return;
     }
     const transform = transformRef.current;
@@ -479,7 +568,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   return (
     <div
       ref={containerRef}
-      className={`relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0a1220] ${
+      dir="ltr"
+      className={`relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#070e1a] ${
         state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""
       } ${spaceDown ? "cursor-grab" : ""}`}
       onPointerDown={onStagePointerDown}
@@ -487,19 +577,107 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       onPointerUp={onStagePointerUp}
       onWheel={onStageWheel}
       style={{
-        height: Math.round(doc.artboard.height * zoom) + 24,
+        minHeight: 480,
+        height: Math.max(480, Math.round(doc.artboard.height * zoom) + 40),
       }}
     >
+      {/* Floating Toolbar for Pen and Drawing tools */}
+      {(state.tool === "pen" || state.tool === "draw") && !preview && (
+        <div
+          dir="rtl"
+          className="absolute top-4 inset-x-0 mx-auto z-[3500] flex max-w-md items-center justify-between gap-3 rounded-2xl border border-cyan-400/50 bg-[#0c1626]/95 px-4 py-2.5 shadow-2xl backdrop-blur"
+        >
+          <div className="flex items-center gap-2">
+            {state.tool === "pen" ? (
+              <PenToolIcon className="h-4 w-4 text-cyan-400" />
+            ) : (
+              <PencilIcon className="h-4 w-4 text-cyan-400" />
+            )}
+            <span className="text-xs font-bold text-white">
+              {state.tool === "pen" ? "ابزار رسم منحنی (Curvature)" : "قلم آزاد"}
+            </span>
+          </div>
+
+          {state.tool === "pen" && (
+            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+              <button
+                type="button"
+                onClick={() => engine.setPenMode("curvature")}
+                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                  state.penMode === "curvature"
+                    ? "bg-cyan-500/30 text-cyan-200 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="حالت انحنای روان: هر کلیک یک قوس نرم و زیبا ایجاد می‌کند"
+              >
+                〰️ منحنی روان
+              </button>
+              <button
+                type="button"
+                onClick={() => engine.setPenMode("corner")}
+                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                  state.penMode === "corner"
+                    ? "bg-cyan-500/30 text-cyan-200 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="حالت گوشه‌دار: خطوط مستقیم و چندضلعی"
+              >
+                📐 گوشه‌دار
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400">ضخامت:</span>
+            <input
+              type="range"
+              min={2}
+              max={24}
+              value={state.brushWidth}
+              onChange={(e) => engine.setBrushWidth(Number(e.target.value))}
+              className="w-16 accent-cyan-400 h-1 bg-white/20 rounded cursor-pointer"
+            />
+            <span className="font-mono text-[11px] text-cyan-300">{state.brushWidth}px</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (state.tool === "pen") engine.finishPen(false);
+                engine.setTool("select");
+              }}
+              title="اتمام و ذخیره ترسیم (Enter)"
+              className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition shadow-sm"
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span>اتمام</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (state.tool === "pen") engine.cancelPen();
+                engine.setTool("select");
+              }}
+              title="انصراف و لغو ترسیم (Esc)"
+              className="flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-rose-500/20 hover:text-rose-300 transition"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Scaled-fit wrapper: layout size equals the SCALED artboard, so
           auto-centering works in RTL too (the inner layout box overflows the
           wrapper on purpose but its scaled visual exactly fills it). */}
       <div
-        className="relative mx-auto"
+        className="relative mx-auto flex items-center justify-center"
         style={{
           width: Math.round(doc.artboard.width * zoom),
           height: Math.round(doc.artboard.height * zoom),
-          marginTop: 12,
-          marginBottom: 12,
+          marginTop: 16,
+          marginBottom: 16,
         }}
       >
       <div
@@ -607,6 +785,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
           />
         ) : null}
 
+        {/* ARC BEND HANDLE OVERLAY (Canva-style curved lines) */}
+        {selectedLayer?.kind === "path" && (selectedLayer as PathLayer).points?.length === 2 ? (
+          <ArcBendHandleOverlay engine={engine} layer={selectedLayer as PathLayer} zoom={zoom} />
+        ) : null}
+
         {/* Visual rendering — the SHARED document projection (`LayerBox`).
             The stage, the export surface and the public card all render this
             same code, so they cannot drift apart. Every layer is rendered
@@ -638,25 +821,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
           </div>
         ) : null}
 
-        {/* Working Stroke Preview */}
-        {state.workingStroke && state.workingStroke.length > 0 && (
-          <div className="pointer-events-none absolute inset-0 z-[2000]">
-            <svg style={{ width: "100%", height: "100%", overflow: "visible" }} viewBox={`0 0 ${doc.artboard.width} ${doc.artboard.height}`}>
-              <path
-                d={pathD(createFreehandPath(state.workingStroke))}
-                fill="none"
-                stroke={state.brushColor}
-                strokeWidth={state.brushWidth}
-                strokeLinecap={state.brushStyle === "dotted" ? "round" : state.brushLinecap}
-                strokeLinejoin={state.brushLinejoin}
-                strokeOpacity={state.brushOpacity}
-                // The SAME dash function the committed layer uses (domain/stroke),
-                // so the live preview can never drift from the final stroke.
-                strokeDasharray={dashArrayFor(state.brushStyle, state.brushWidth)}
-              />
-            </svg>
-          </div>
-        )}
+        {/* Working Stroke Preview (perfect-freehand live ref + rAF) */}
+        <div className="pointer-events-none absolute inset-0 z-[2000]">
+          <svg style={{ width: "100%", height: "100%", overflow: "visible" }} viewBox={`0 0 ${doc.artboard.width} ${doc.artboard.height}`}>
+            <path ref={liveBrushRef} fill={state.brushColor || "#0ea5e9"} pointerEvents="none" />
+          </svg>
+        </div>
 
         {/* PEN DRAFT — the live Bezier path while the pen tool is drawing. */}
         {state.tool === "pen" && state.penDraft && state.penDraft.length > 0 ? (
@@ -722,32 +892,111 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         </div>
       ) : null}
 
-      {/* Zoom controls (bottom-left, always reachable; RTL-safe) */}
+      {/* Zoom controls (bottom-right, always reachable; RTL-safe, 10% to 200% range) */}
       {preview ? null : (
-        <div className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1 rounded-xl border border-white/10 bg-[#0c1626]/90 p-1.5 text-slate-200 backdrop-blur">
+        <div className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
           <button
             type="button"
             onClick={zoomOut}
-            className="rounded-lg px-2 py-1 text-sm hover:bg-white/10"
-            title="کوچک‌نمایی"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 text-base font-bold text-slate-300 hover:bg-white/10 hover:text-white transition"
+            title="کوچک‌نمایی (−)"
           >
             −
+          </button>
+
+          {isEditingZoom ? (
+            <div className="flex items-center gap-0.5">
+              <input
+                type="number"
+                min={10}
+                max={200}
+                autoFocus
+                value={zoomInputValue}
+                onChange={(e) => setZoomInputValue(e.target.value)}
+                onBlur={() => {
+                  const parsed = parseInt(zoomInputValue, 10);
+                  if (!isNaN(parsed)) {
+                    setZoomPreset(Math.min(2.0, Math.max(0.1, parsed / 100)));
+                  }
+                  setIsEditingZoom(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const parsed = parseInt(zoomInputValue, 10);
+                    if (!isNaN(parsed)) {
+                      setZoomPreset(Math.min(2.0, Math.max(0.1, parsed / 100)));
+                    }
+                    setIsEditingZoom(false);
+                  } else if (e.key === "Escape") {
+                    setIsEditingZoom(false);
+                  }
+                }}
+                className="w-14 rounded-md border border-cyan-400 bg-white/10 px-1 py-0.5 text-center text-xs font-mono font-bold text-cyan-200 outline-none"
+              />
+              <span className="text-xs font-mono text-cyan-300">%</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setZoomInputValue(String(Math.round(zoom * 100)));
+                setIsEditingZoom(true);
+              }}
+              className="min-w-[56px] rounded-lg px-2 py-1 text-xs font-mono font-bold tabular-nums text-cyan-300 hover:bg-cyan-500/20 transition"
+              title="برای تغییر دستی و تایپ درصد زوم کلیک کنید (۱۰٪ تا ۲۰۰٪)"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={zoomIn}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 text-base font-bold text-slate-300 hover:bg-white/10 hover:text-white transition"
+            title="بزرگ‌نمایی (+)"
+          >
+            +
+          </button>
+
+          <div className="mx-0.5 h-4 w-px bg-white/10" />
+
+          <button
+            type="button"
+            onClick={() => setZoomPreset(0.5)}
+            className={`rounded-lg px-1.5 py-1 text-[10px] font-bold transition hover:bg-white/10 ${
+              Math.round(zoom * 100) === 50 ? "bg-cyan-500/20 text-cyan-300" : "text-slate-400"
+            }`}
+            title="نمای ۵۰٪"
+          >
+            ۵۰٪
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoomPreset(1)}
+            className={`rounded-lg px-1.5 py-1 text-[10px] font-bold transition hover:bg-white/10 ${
+              Math.round(zoom * 100) === 100 ? "bg-cyan-500/20 text-cyan-300" : "text-slate-400"
+            }`}
+            title="اندازه واقعی ۱۰۰٪"
+          >
+            ۱۰۰٪
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoomPreset(2)}
+            className={`rounded-lg px-1.5 py-1 text-[10px] font-bold transition hover:bg-white/10 ${
+              Math.round(zoom * 100) === 200 ? "bg-cyan-500/20 text-cyan-300" : "text-slate-400"
+            }`}
+            title="بزرگ‌نمایی ۲۰۰٪"
+          >
+            ۲۰۰٪
           </button>
           <button
             type="button"
             onClick={zoomFit}
-            className="min-w-[52px] rounded-lg px-2 py-1 text-xs tabular-nums hover:bg-white/10"
-            title="جا دادن در صفحه"
+            className="rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-white/10 hover:text-white transition"
+            title="تناسب خودکار با صفحه"
           >
-            {Math.round(zoom * 100)}%
-          </button>
-          <button
-            type="button"
-            onClick={zoomIn}
-            className="rounded-lg px-2 py-1 text-sm hover:bg-white/10"
-            title="بزرگ‌نمایی"
-          >
-            +
+            تناسب
           </button>
         </div>
       )}

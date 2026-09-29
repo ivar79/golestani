@@ -34,9 +34,11 @@ import {
   PenTool,
   Plus,
   QrCode,
+  Sparkles,
   Square,
   Trash2,
   Type,
+  Waves,
 } from "lucide-react";
 import type { CardDocument, CardLayer, BadgeLayer, LayerKind, QrLayer, ShapeKind } from "../domain/document";
 import { LAYER_KIND_LABELS, SHAPE_KIND_LABELS } from "../domain/document";
@@ -66,18 +68,98 @@ import {
   layerLimitState,
 } from "@/lib/entitlements";
 
-/** Toolbox entries: a layer kind, or one of the two DRAWING tools. */
-type ToolboxEntry = LayerKind | "pointer" | "pen";
+/** Toolbox entries: a layer kind, or one of the two DRAWING tools or direct curved line. */
+type ToolboxEntry = LayerKind | "pointer" | "pen" | "curved_line";
 
 const TOOLBOX: { kind: ToolboxEntry; icon: typeof Type; label: string }[] = [
   { kind: "pointer", icon: MousePointer2, label: "انتخاب" },
   { kind: "text", icon: Type, label: "متن" },
   { kind: "shape", icon: Square, label: "شکل" },
-  { kind: "pen", icon: PenTool, label: "قلم منحنی" },
+  { kind: "curved_line", icon: Waves, label: "خط منحنی" },
+  { kind: "pen", icon: PenTool, label: "قلم انحنا" },
   { kind: "path", icon: Pencil, label: "قلم آزاد" },
   { kind: "image", icon: ImagePlus, label: "تصویر / لوگو" },
   { kind: "qr", icon: QrCode, label: "کد QR" },
   { kind: "badge", icon: BadgeCheck, label: "نشان" },
+];
+
+const SHAPE_PRESETS: {
+  kind: ShapeKind;
+  label: string;
+  icon: React.ReactNode;
+  radius?: number;
+  partial?: Partial<CardLayer>;
+}[] = [
+  {
+    kind: "ellipse",
+    label: "دایره توپر",
+    icon: <div className="h-5 w-5 bg-cyan-400 rounded-full" />,
+  },
+  {
+    kind: "ellipse",
+    label: "دایره توخالی",
+    icon: <div className="h-5 w-5 border-2 border-cyan-400 rounded-full" />,
+    partial: { background: null, stroke: "#0ea5e9", strokeWidth: 3 },
+  },
+  {
+    kind: "rect",
+    label: "مستطیل توپر",
+    icon: <div className="h-4 w-6 bg-cyan-400 rounded-sm" />,
+  },
+  {
+    kind: "rect",
+    label: "کادر توخالی",
+    icon: <div className="h-4 w-6 border-2 border-cyan-400 rounded-sm" />,
+    partial: { background: null, stroke: "#0ea5e9", strokeWidth: 3 },
+  },
+  {
+    kind: "rect",
+    label: "مستطیل گرد",
+    radius: 16,
+    icon: <div className="h-4 w-6 border-2 border-current rounded-lg" />,
+  },
+  {
+    kind: "triangle",
+    label: "مثلث",
+    icon: (
+      <svg className="h-5 w-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+        <polygon points="12,3 22,21 2,21" />
+      </svg>
+    ),
+  },
+  {
+    kind: "star",
+    label: "ستاره",
+    icon: (
+      <svg className="h-5 w-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+        <polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" />
+      </svg>
+    ),
+  },
+  {
+    kind: "polygon",
+    label: "شش‌ضلعی",
+    icon: (
+      <svg className="h-5 w-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+        <polygon points="12,2 21,7 21,17 12,22 3,17 3,7" />
+      </svg>
+    ),
+  },
+  {
+    kind: "line",
+    label: "خط ساده",
+    icon: <div className="h-0.5 w-6 bg-current" />,
+  },
+  {
+    kind: "arrow",
+    label: "فلش",
+    icon: (
+      <svg className="h-5 w-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <polyline points="12,5 19,12 12,19" />
+      </svg>
+    ),
+  },
 ];
 
 /**
@@ -101,6 +183,7 @@ export function Toolbox({
   const state = useCardEditor(engine);
   const entitlements = useEntitlements();
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [showShapePicker, setShowShapePicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -111,6 +194,19 @@ export function Toolbox({
   function activate(kind: ToolboxEntry) {
     if (kind === "pointer") {
       engine.setTool("select");
+      setShowShapePicker(false);
+      return;
+    }
+    if (kind === "shape") {
+      if (addBlocked || !layerKindAllowed(entitlements.capabilities, "shape")) return;
+      setShowShapePicker((v) => !v);
+      return;
+    }
+    setShowShapePicker(false);
+    if (kind === "curved_line") {
+      if (addBlocked || !layerKindAllowed(entitlements.capabilities, "path")) return;
+      engine.setTool("select");
+      engine.addCurvedLine(40);
       return;
     }
     // Both DRAWING tools create a `path` layer, so both answer to the same
@@ -122,13 +218,13 @@ export function Toolbox({
       return;
     }
 
-    if (addBlocked || !layerKindAllowed(entitlements.capabilities, kind)) return;
+    if (addBlocked || !layerKindAllowed(entitlements.capabilities, kind as LayerKind)) return;
     if (kind === "image") {
       imageInputRef.current?.click();
       return;
     }
     engine.setTool("select");
-    engine.addLayer(kind);
+    engine.addLayer(kind as LayerKind);
   }
 
   async function onImagePicked(file: File | null) {
@@ -157,7 +253,7 @@ export function Toolbox({
       <div className="grid grid-cols-3 gap-2">
         {TOOLBOX.map(({ kind, icon: Icon, label }) => {
           const isPointer = kind === "pointer";
-          const isDrawingTool = kind === "path" || kind === "pen";
+          const isDrawingTool = kind === "path" || kind === "pen" || kind === "curved_line";
           const kindAllowed = isPointer
             ? true
             : isDrawingTool
@@ -202,6 +298,93 @@ export function Toolbox({
           );
         })}
       </div>
+
+      {showShapePicker && (
+        <div className="mt-3 rounded-2xl border border-cyan-400/40 bg-[#081220] p-3 shadow-2xl space-y-3">
+          <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-xs font-bold text-cyan-300">
+            <span>اشکال هندسی پایه:</span>
+            <button
+              type="button"
+              onClick={() => setShowShapePicker(false)}
+              className="text-slate-400 hover:text-white text-xs font-normal"
+            >
+              ✕ بستن
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {SHAPE_PRESETS.map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  engine.setTool("select");
+                  engine.addShape(item.kind, {
+                    ...(item.radius !== undefined ? { radius: item.radius } : {}),
+                    ...(item.partial ?? {}),
+                  });
+                  setShowShapePicker(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white transition group"
+              >
+                <div className="transition-transform group-hover:scale-110">
+                  {item.icon}
+                </div>
+                <span className="text-[10px] truncate max-w-full font-medium">{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="border-t border-white/10 pt-2.5">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                <Waves className="h-3.5 w-3.5" />
+                <span>خطوط منحنی و امواج تبلیغاتی:</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  engine.setTool("select");
+                  engine.addCurvedLine(40);
+                  setShowShapePicker(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-2 text-cyan-200 hover:border-cyan-400 hover:bg-cyan-500/25 transition group"
+              >
+                <div className="h-4 w-6 border-t-2 border-cyan-400 rounded-t-full transition-transform group-hover:scale-110" />
+                <span className="text-[10px] font-bold">خط کمانی</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  engine.setTool("select");
+                  engine.addWavePreset("wave");
+                  setShowShapePicker(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-500/10 p-2 text-amber-200 hover:border-amber-400 hover:bg-amber-500/25 transition group"
+              >
+                <Waves className="h-4 w-4 text-amber-400 transition-transform group-hover:scale-110" />
+                <span className="text-[10px] font-bold">موج جداکننده</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  engine.setTool("select");
+                  engine.addWavePreset("swoosh");
+                  setShowShapePicker(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-500/10 p-2 text-sky-200 hover:border-sky-400 hover:bg-sky-500/25 transition group"
+              >
+                <Sparkles className="h-4 w-4 text-sky-400 transition-transform group-hover:scale-110" />
+                <span className="text-[10px] font-bold">روبان گوشه</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {addBlocked && (
         <p className="mt-2 text-[10px] font-semibold text-amber-300">
           سقف لایه‌های پلن شما پر شده است — برای افزودن لایهٔ جدید، لایه‌ای را حذف کنید یا پلن را ارتقا دهید.
@@ -236,12 +419,70 @@ export function Toolbox({
  */
 export function BackgroundPanel({ engine }: { engine: EditorEngine }) {
   const state = useCardEditor(engine);
+  const entitlements = useEntitlements();
+  const isPro = entitlements.plan !== "Free" && entitlements.plan !== "free";
   const bg = state.doc.background;
 
+  const BG_LUXURY_PRESETS = [
+    { label: "مخملی رویال", value: "linear-gradient(135deg, #090d16 0%, #111827 50%, #060910 100%)", preview: "#090d16" },
+    { label: "طلایی متالیک", value: "linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%)", preview: "#BF953F" },
+    { label: "نقره‌ای کروم", value: "linear-gradient(135deg, #8a8a8a 0%, #e0e0e0 25%, #ffffff 50%, #cccccc 75%, #757575 100%)", preview: "#e0e0e0" },
+    { label: "زرشکی مات", value: "linear-gradient(135deg, #2b0914 0%, #4a0e23 50%, #1a050c 100%)", preview: "#2b0914" },
+    { label: "سرمه‌ای نئون", value: "linear-gradient(135deg, #0b1c33 0%, #082444 60%, #0284c7 100%)", preview: "#0b1c33" },
+    { label: "شیشه‌ای تیره", value: "linear-gradient(135deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.98) 100%)", preview: "#1e293b" },
+  ];
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-4">
-      <h3 className="mb-3 text-sm font-bold text-white">پس‌زمینه کارت</h3>
-      <div className="mb-3 h-12 w-full rounded-lg border border-white/10" style={{ background: bg }} />
+    <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-4 space-y-3">
+      <h3 className="text-sm font-bold text-white">پس‌زمینه کارت</h3>
+      <div className="h-12 w-full rounded-lg border border-white/10" style={{ background: bg }} />
+
+      {/* Luxury Background Presets */}
+      <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.04] p-2.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-amber-300">
+            <Sparkles className="h-3 w-3" />
+            <span>متریال‌های پس‌زمینه لوکس</span>
+            <PremiumBadge label="حرفه‌ای" />
+          </span>
+          {!isPro && (
+            <span className="text-[9px] font-bold text-amber-400/90 flex items-center gap-0.5">
+              <Lock className="h-2.5 w-2.5" />
+              پلن پرو
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-1.5">
+          {BG_LUXURY_PRESETS.map((preset, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                if (!isPro) return;
+                engine.setBackground(preset.value);
+              }}
+              className={`relative flex items-center gap-1.5 rounded-lg border p-1.5 text-[10px] font-semibold transition ${
+                bg === preset.value
+                  ? "border-amber-400 bg-amber-500/20 text-amber-200"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:border-amber-400/40 hover:text-white"
+              } ${!isPro ? "opacity-60" : ""}`}
+            >
+              <div
+                className="h-3.5 w-3.5 rounded-full border border-white/30 shrink-0"
+                style={{ background: preset.value }}
+              />
+              <span className="truncate">{preset.label}</span>
+              {!isPro && (
+                <span className="absolute -top-1 -right-1">
+                  <Lock className="h-2.5 w-2.5 text-amber-300" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <GradientField
         value={bg}
         onChange={(css) => engine.transientBackground(css)}
@@ -417,11 +658,49 @@ export function InspectorPanel({
 
   return (
     <div className="space-y-4 rounded-2xl border border-white/10 bg-[#0c1626]/80 p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-white">
-          ویژگی‌های لایه — {LAYER_KIND_LABELS[selected.kind]}
-        </h3>
-        {selected.locked && <span className="rounded-md bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">قفل</span>}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+        <div>
+          <h3 className="text-sm font-bold text-white">
+            ویژگی‌های لایه — {LAYER_KIND_LABELS[selected.kind]}
+          </h3>
+          <span className="text-[10px] text-slate-400">شناسه: {selected.name || selected.kind}</span>
+        </div>
+
+        {/* Action buttons: Delete / Duplicate / Lock */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => engine.duplicateLayer(selected.id)}
+            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+            title="کپی / همانندسازی لایه (Ctrl+D)"
+          >
+            <Copy className="h-3 w-3" />
+            <span>کپی</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => engine.toggleLocked(selected.id)}
+            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+              selected.locked
+                ? "border-amber-400/40 bg-amber-500/20 text-amber-200"
+                : "border-white/10 bg-white/5 text-slate-300 hover:text-white"
+            }`}
+            title={selected.locked ? "باز کردن قفل" : "قفل کردن لایه"}
+          >
+            {selected.locked ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => engine.deleteLayer(selected.id)}
+            className="flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-300 shadow-sm transition hover:border-rose-500/60 hover:bg-rose-500/30 hover:text-rose-100"
+            title="حذف این لایه (کلید Delete یا Backspace)"
+          >
+            <Trash2 className="h-3 w-3" />
+            <span>حذف لایه</span>
+          </button>
+        </div>
       </div>
 
       {selected.kind === "text" && (

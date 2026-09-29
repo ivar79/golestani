@@ -13,9 +13,9 @@ import { ARTBOARD, type BadgeLayer, type CardDocument, type ImageLayer, type QrL
 export type TemplateKey = "classic" | "midnight" | "emerald" | "local" | "creative";
 
 const THEME_PALETTES: Record<string, { bg: string; text: string; accent: string; muted: string }> = {
-  navy: { bg: "#f6f8fb", text: "#0b1c33", accent: "#0ea5e9", muted: "#64748b" },
-  emerald: { bg: "#f4faf7", text: "#052e22", accent: "#10b981", muted: "#4b6359" },
-  warm: { bg: "#fbf7f1", text: "#3a1c05", accent: "#d97706", muted: "#8a6d4f" },
+  navy: { bg: "#f6f8fb", text: "#0b1c33", accent: "#0ea5e9", muted: "#94a3b8" },
+  emerald: { bg: "#f4faf7", text: "#052e22", accent: "#10b981", muted: "#6ee7b7" },
+  warm: { bg: "#fbf7f1", text: "#3a1c05", accent: "#f59e0b", muted: "#fcd34d" },
 };
 
 function uid(kind: string): string {
@@ -46,81 +46,91 @@ export function createDocumentFromBusiness(
   const dark = options.template === "midnight" || options.template === "emerald" || options.template === "creative";
   const bg = dark
     ? options.template === "creative"
-      ? palette.text
+      ? "linear-gradient(135deg, #0b1c33 0%, #153a6b 100%)"
       : options.template === "emerald"
-        ? "#0a1a2e"
-        : "#081528"
+        ? "linear-gradient(135deg, #04241b 0%, #064635 50%, #0d6b53 100%)"
+        : "linear-gradient(135deg, #081528 0%, #0d2342 50%, #153a6b 100%)"
     : palette.bg;
   const fg = dark ? "#ffffff" : palette.text;
-  const sub = dark ? "rgba(255,255,255,0.75)" : palette.muted;
+  const sub = dark ? "rgba(255,255,255,0.85)" : palette.muted;
 
+  // Elegant top accent strip instead of an obscuring giant rectangle
   if (dark) {
     layers.push({
       id: uid("shape"), kind: "shape", shape: "rect",
-      x: 0, y: 0, width: ARTBOARD.width, height: 220, angle: 0, opacity: 0.9,
-      locked: false, hidden: false, color: palette.accent, background: palette.accent, radius: 0,
+      x: 0, y: 0, width: ARTBOARD.width, height: 6, angle: 0, opacity: 1,
+      locked: true, hidden: false, color: palette.accent, background: palette.accent, radius: 0,
     } satisfies ShapeLayer);
   }
 
+  // Business Name
   layers.push({
     id: uid("text"), kind: "text",
-    x: 64, y: 88, width: 620, height: 90, angle: 0, opacity: 1,
-    locked: false, hidden: false,     color: fg, background: null,
+    x: 64, y: 68, width: 640, height: 76, angle: 0, opacity: 1,
+    locked: false, hidden: false, color: fg, background: null,
     text: business.name || "نام کسب‌وکار",
-    fontSize: 56, fontWeight: 800, align: "start", fontFamily: options.fontFamily,
+    fontSize: 48, fontWeight: 800, align: "start", fontFamily: options.fontFamily,
   } satisfies TextLayer);
 
+  // Business Category / Slogan
   layers.push({
     id: uid("text"), kind: "text",
-    x: 64, y: 196, width: 620, height: 48, angle: 0, opacity: 1,
-    locked: false, hidden: false,     color: dark ? palette.accent : palette.accent, background: null,
+    x: 64, y: 154, width: 640, height: 44, angle: 0, opacity: 1,
+    locked: false, hidden: false, color: palette.accent, background: null,
     text: business.category || "کسب‌وکار حرفه‌ای",
-    fontSize: 28, fontWeight: 600, align: "start", fontFamily: options.fontFamily,
+    fontSize: 24, fontWeight: 600, align: "start", fontFamily: options.fontFamily,
   } satisfies TextLayer);
 
-  layers.push({
-    id: uid("text"), kind: "text",
-    x: 64, y: 410, width: 620, height: 48, angle: 0, opacity: 1,
-    locked: false, hidden: false,     color: sub, background: null,
-    text: business.phone ? `☎ ${business.phone}` : "",
-    fontSize: 24, fontWeight: 500, align: "start", fontFamily: "sans",
-  } satisfies TextLayer);
-
-  if (addressText) {
+  // Phone
+  if (business.phone) {
     layers.push({
       id: uid("text"), kind: "text",
-      x: 64, y: 470, width: 620, height: 48, angle: 0, opacity: 1,
-      locked: false, hidden: false,       color: sub, background: null,
-      text: addressText,
-      fontSize: 20, fontWeight: 400, align: "start", fontFamily: options.fontFamily,
+      x: 64, y: 390, width: 640, height: 40, angle: 0, opacity: 1,
+      locked: false, hidden: false, color: fg, background: null,
+      text: `☎ ${business.phone}`,
+      fontSize: 22, fontWeight: 500, align: "start", fontFamily: "sans",
     } satisfies TextLayer);
   }
 
+  // Address
+  if (addressText) {
+    layers.push({
+      id: uid("text"), kind: "text",
+      x: 64, y: 442, width: 640, height: 42, angle: 0, opacity: 1,
+      locked: false, hidden: false, color: sub, background: null,
+      text: addressText,
+      fontSize: 18, fontWeight: 400, align: "start", fontFamily: options.fontFamily,
+    } satisfies TextLayer);
+  }
+
+  // Socials / Web
   if (instagram || telegram || website) {
     const handles = [instagram, telegram, website].filter(Boolean).join("  ·  ");
     layers.push({
       id: uid("text"), kind: "text",
-      x: 64, y: 528, width: 620, height: 40, angle: 0, opacity: 1,
-      locked: false, hidden: false,       color: sub, background: null,
+      x: 64, y: 494, width: 640, height: 38, angle: 0, opacity: 1,
+      locked: false, hidden: false, color: sub, background: null,
       text: handles,
-      fontSize: 18, fontWeight: 400, align: "start", fontFamily: "sans",
+      fontSize: 16, fontWeight: 400, align: "start", fontFamily: "sans",
     } satisfies TextLayer);
   }
 
+  // Logo (if available)
   if (business.logo) {
     layers.push({
       id: uid("image"), kind: "image",
-      x: 850, y: 80, width: 136, height: 136, angle: 0, opacity: 1,
-      locked: false, hidden: false,       color: null, background: null,
+      x: 846, y: 64, width: 140, height: 140, angle: 0, opacity: 1,
+      locked: false, hidden: false, color: null, background: null,
       src: business.logo, radius: 24, objectFit: "contain",
     } satisfies ImageLayer);
   }
 
+  // Verification Badge
   if (business.license_verified || business.verification_badge) {
     layers.push({
       id: uid("badge"), kind: "badge",
-      x: 838, y: 236, width: 160, height: 40, angle: 0, opacity: 1,
-      locked: false, hidden: false,       color: "#ffffff", background: palette.accent,
+      x: 836, y: business.logo ? 218 : 64, width: 160, height: 40, angle: 0, opacity: 1,
+      locked: false, hidden: false, color: "#ffffff", background: palette.accent,
       style: "verified", text: "تأییدشده",
     } satisfies BadgeLayer);
   }
@@ -128,16 +138,17 @@ export function createDocumentFromBusiness(
   if (business.is_promoted) {
     layers.push({
       id: uid("badge"), kind: "badge",
-      x: 64, y: 32, width: 110, height: 36, angle: 0, opacity: 1,
-      locked: false, hidden: false,       color: "#3a1c05", background: "#fbbf24",
+      x: 64, y: 24, width: 110, height: 34, angle: 0, opacity: 1,
+      locked: false, hidden: false, color: "#3a1c05", background: "#fbbf24",
       style: "promoted", text: "ویژه",
     } satisfies BadgeLayer);
   }
 
+  // QR Code
   layers.push({
     id: uid("qr"), kind: "qr",
     x: 856, y: 396, width: 130, height: 130, angle: 0, opacity: 1,
-    locked: false, hidden: false,     color: null, background: null,
+    locked: false, hidden: false, color: null, background: null,
     payload: business.slug || "",
     dark: "#000000", light: "#ffffff",
   } satisfies QrLayer);

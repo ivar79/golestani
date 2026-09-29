@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { ARTBOARD, type CardDocument } from "../document";
-import { clampZoom, fitZoom, framesBounds, keepInside, panForZoomAtPoint, snapCenter, snapCoordinate, snapLayerPosition } from "../geometry";
+import { clampZoom, fitZoom, framesBounds, keepInside, MAX_ZOOM, MIN_ZOOM, panForZoomAtPoint, snapCenter, snapCoordinate, snapLayerPosition } from "../geometry";
 
 function makeDoc(layers: { x: number; y: number; width: number; height: number }[]): CardDocument {
   return {
@@ -195,8 +195,8 @@ describe("framesBounds", () => {
  */
 describe("zoom", () => {
   it("clamps zoom to the shared limits", () => {
-    expect(clampZoom(99)).toBe(4);
-    expect(clampZoom(0)).toBe(0.1);
+    expect(clampZoom(99)).toBe(MAX_ZOOM);
+    expect(clampZoom(0)).toBe(MIN_ZOOM);
     expect(clampZoom(1.23456)).toBe(1.235);
   });
 

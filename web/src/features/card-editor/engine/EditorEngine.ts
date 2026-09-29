@@ -1,4 +1,4 @@
-﻿/**
+/**
  * EditorEngine — the pure-TS state machine for the layered card editor.
  *
  * Architecture (research blueprint section G/J):
@@ -23,6 +23,8 @@ import type {
 import { ARTBOARD } from "../domain/document";
 import { HistoryStack } from "../domain/history";
 import {
+  autoSmoothPoints,
+  cornerAnchorAt,
   createFreehandPath,
   insertAnchor,
   moveAnchor,
@@ -30,10 +32,21 @@ import {
   normalizePathLayer,
   pathPadding,
   removeAnchor,
+  smoothAnchorAt,
+  straightenAllPoints,
+  toggleAnchorAt,
 } from "../domain/path";
 import { clampStrokeWidth } from "../domain/stroke";
 import { POLYGON_DEFAULT_SIDES } from "../domain/shapes";
 import { framesBounds } from "../domain/geometry";
+import {
+  calculateArcHandles,
+  createCurvedLineLayer,
+  createWaveDividerLayer,
+  createCornerSwooshLayer,
+  LUXURY_MATERIALS,
+  type LuxuryMaterialKey,
+} from "../domain/luxuryMaterials";
 
 /** 8 resize handles (corners + edges), plus the rotation handle. */
 export type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -69,6 +82,8 @@ export type EngineState = {
   workingStroke: { x: number; y: number }[] | null;
   /** Live anchors for the Pen tool (transient, never persisted). */
   penDraft: PathPoint[] | null;
+  /** Curvature tool mode: curvature (auto-smooth natural spline) vs corner (sharp polygons). */
+  penMode: "curvature" | "corner";
   /**
    * The anchor/handle under edit on a COMMITTED path layer. View state, like
    * `selection`: it lives in the engine but never in undo history.
@@ -103,6 +118,7 @@ export class EditorEngine {
       brushOpacity: 1,
       workingStroke: null,
       penDraft: null,
+      penMode: "curvature",
       selectedAnchor: null,
       editingPathId: null,
       canUndo: false,
@@ -225,6 +241,21 @@ export class EditorEngine {
   }
 
   /**
+   * Apply an entire template design to the card document (with undo support).
+   */
+  applyTemplateDoc(background: string, layers: CardLayer[]): void {
+    this.pushHistory();
+    this.emit({
+      doc: {
+        ...this.state.doc,
+        background,
+        layers,
+      },
+      selection: { layerId: null, ids: [] },
+    });
+  }
+
+  /**
    * Add a vector shape with defaults that match the shape's own nature.
    *
    * A LINE is the special case: it carries a REAL stroke width and colour (it
@@ -253,6 +284,115 @@ export class EditorEngine {
       ...(shape === "polygon" ? { sides: POLYGON_DEFAULT_SIDES } : {}),
       ...(partial as object),
     } as Partial<CardLayer>);
+  }
+
+  /**
+   * Add a freehand brush stroke as a pristine filled vector path layer.
+   */
+  addBrushLayer(d: string, color = "#0ea5e9"): string {
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer: PathLayer = {
+      id,
+      kind: "path",
+      name: "قلم آزاد",
+      points: [],
+      rawD: d,
+      closed: true,
+      fill: color,
+      stroke: null,
+      strokeWidth: 0,
+      x: 0,
+      y: 0,
+      width: ARTBOARD.width,
+      height: ARTBOARD.height,
+      angle: 0,
+      opacity: 1,
+      locked: false,
+      hidden: false,
+      color,
+      background: null,
+    };
+    this.pushHistory();
+    const layers = [...this.state.doc.layers, layer];
+    this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(id) });
+    return id;
+  }
+
+  /**
+   * Add a smooth curved line / arc (Canva-like curved line).
+   */
+  addCurvedLine(curvature = 40): string {
+    const layer = createCurvedLineLayer(100, 280, 500, 80, curvature);
+    this.pushHistory();
+    const layers = [...this.state.doc.layers, layer];
+    this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(layer.id) });
+    return layer.id;
+  }
+
+  /**
+   * Add an advertising wave or ribbon preset (like IranTarh / Karan Gostar designs).
+   */
+  addWavePreset(kind: "wave" | "swoosh"): string {
+    let layer: PathLayer;
+    if (kind === "wave") {
+      layer = createWaveDividerLayer(ARTBOARD.width, 240);
+    } else {
+      layer = createCornerSwooshLayer(600, 320, 420, 260);
+    }
+    this.pushHistory();
+    const layers = [...this.state.doc.layers, layer];
+    this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(layer.id) });
+    return layer.id;
+  }
+
+  /**
+   * Adjust arc curvature of a 2-point path layer in real-time.
+   */
+  setPathCurvature(layerId: string, curvature: number): void {
+    const target = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!target || target.kind !== "path" || target.points.length !== 2) return;
+    const p0 = target.points[0];
+    const p1 = target.points[1];
+    const { h0, h1 } = calculateArcHandles(p0, p1, curvature);
+    const nextPoints: PathPoint[] = [
+      { x: p0.x, y: p0.y, hIn: null, hOut: h0 },
+      { x: p1.x, y: p1.y, hIn: h1, hOut: null },
+    ];
+    this.transientPatch(layerId, { points: nextPoints, curvature } as Partial<CardLayer>);
+  }
+
+  /**
+   * Apply a luxury material (Glass, Velvet, Gold Foil, Chrome Silver, Neon Glow).
+   */
+  applyLuxuryMaterial(layerId: string, materialKey: LuxuryMaterialKey): void {
+    const target = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!target) return;
+    if (materialKey === "none") {
+      this.updateLayer(layerId, { effect: "none" } as Partial<CardLayer>);
+      return;
+    }
+    const mat = LUXURY_MATERIALS.find((m) => m.key === materialKey);
+    if (!mat) return;
+
+    const patch: Record<string, unknown> = {
+      effect: mat.effect,
+    };
+    if (target.kind === "shape") {
+      patch.background = mat.fillCss;
+      if (mat.effect === "glass") {
+        patch.stroke = mat.strokeCss;
+        patch.strokeWidth = Math.max(target.strokeWidth || 0, 1.5);
+      }
+    } else if (target.kind === "path") {
+      if (target.closed) {
+        patch.fill = mat.fillCss;
+      } else {
+        patch.stroke = mat.strokeCss;
+      }
+    } else if (target.kind === "text") {
+      patch.color = mat.effect === "gold" ? "#BF953F" : mat.effect === "silver" ? "#d1d5db" : mat.effect === "neon" ? "#00f2fe" : "#ffffff";
+    }
+    this.updateLayer(layerId, patch as Partial<CardLayer>);
   }
 
   deleteLayer(layerId: string): void {
@@ -940,13 +1080,23 @@ export class EditorEngine {
    * reaches the document until it is committed, so an abandoned draft leaves no
    * trace behind.
    */
+  setPenMode(mode: "curvature" | "corner"): void {
+    this.emit({ penMode: mode });
+  }
+
   penStart(point: { x: number; y: number }): void {
     this.emit({ penDraft: [{ x: point.x, y: point.y, hIn: null, hOut: null }] });
   }
 
   penAddAnchor(point: { x: number; y: number }): void {
     const draft = this.state.penDraft ?? [];
-    this.emit({ penDraft: [...draft, { x: point.x, y: point.y, hIn: null, hOut: null }] });
+    const raw = [...draft, { x: point.x, y: point.y, hIn: null, hOut: null }];
+    const hasExplicitHandles = draft.some((p) => p.hIn !== null || p.hOut !== null);
+    const smoothed =
+      this.state.penMode === "curvature" && !hasExplicitHandles && raw.length >= 2
+        ? autoSmoothPoints(raw, false)
+        : raw;
+    this.emit({ penDraft: smoothed });
   }
 
   /**
@@ -1049,40 +1199,35 @@ export class EditorEngine {
 
   /**
    * Give an anchor SMOOTH handles derived from its neighbours.
-   *
-   * The tangent is the direction between the previous and the next anchor, so
-   * the point becomes a C1-continuous "smooth" node — the one-click way to turn
-   * a corner into a flowing curve (Figma's "smooth" / Illustrator's anchor-point
-   * conversion).
    */
   smoothAnchor(layerId: string, index: number): void {
     const layer = this.editablePath(layerId);
-    const current = layer?.points[index];
-    if (!layer || !current) return;
-    const count = layer.points.length;
-    const prevIndex = index === 0 ? (layer.closed ? count - 1 : 0) : index - 1;
-    const nextIndex = index === count - 1 ? (layer.closed ? 0 : count - 1) : index + 1;
-    const prev = layer.points[prevIndex];
-    const next = layer.points[nextIndex];
-    const dx = (next.x - prev.x) / 4;
-    const dy = (next.y - prev.y) / 4;
-    const points = layer.points.slice();
-    points[index] = {
-      ...current,
-      hIn: { x: current.x - dx, y: current.y - dy },
-      hOut: { x: current.x + dx, y: current.y + dy },
-    };
-    this.applyPathPoints(layer, points);
+    if (!layer || index < 0 || index >= layer.points.length) return;
+    const smoothed = smoothAnchorAt(layer.points, index, layer.closed);
+    this.applyPathPoints(layer, smoothed);
   }
 
   /** Turn an anchor back into a corner by dropping both of its handles. */
-  straightenAnchor(layerId: string, index: number): void {
+  cornerAnchor(layerId: string, index: number): void {
     const layer = this.editablePath(layerId);
-    const current = layer?.points[index];
-    if (!layer || !current) return;
-    const points = layer.points.slice();
-    points[index] = { ...current, hIn: null, hOut: null };
-    this.applyPathPoints(layer, points);
+    if (!layer || index < 0 || index >= layer.points.length) return;
+    const cornered = cornerAnchorAt(layer.points, index);
+    this.applyPathPoints(layer, cornered);
+  }
+
+  /** Alias for cornerAnchor. */
+  straightenAnchor(layerId: string, index: number): void {
+    this.cornerAnchor(layerId, index);
+  }
+
+  /**
+   * Toggle a specific anchor between smooth curve and sharp corner (Illustrator standard).
+   */
+  toggleAnchorType(layerId: string, index: number): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || index < 0 || index >= layer.points.length) return;
+    const toggled = toggleAnchorAt(layer.points, index, layer.closed);
+    this.applyPathPoints(layer, toggled);
   }
 
   /** The path layer behind `layerId`, or null when it is not an editable path. */
@@ -1176,6 +1321,26 @@ export class EditorEngine {
       width: normalized.width,
       height: normalized.height,
     } as Partial<CardLayer>);
+  }
+
+  /**
+   * Automatically convert all points of a path into a continuous, smooth, organic curve.
+   */
+  autoSmoothLayer(layerId: string): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2) return;
+    const smoothed = autoSmoothPoints(layer.points, layer.closed);
+    this.applyPathPoints(layer, smoothed);
+  }
+
+  /**
+   * Straighten all anchors of a path into sharp corner points.
+   */
+  straightenLayer(layerId: string): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2) return;
+    const straight = straightenAllPoints(layer.points);
+    this.applyPathPoints(layer, straight);
   }
 
   /** Replace a path's points in ONE history record, with the box re-derived. */

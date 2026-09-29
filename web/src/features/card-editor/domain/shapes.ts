@@ -170,10 +170,14 @@ export type ShapePaint = {
   stroke: ResolvedStroke;
 };
 
-/** The fill of a shape: a solid color, an editor gradient, or nothing (line). */
+/** The fill of a shape: a solid color, an editor gradient, or nothing (line/hollow). */
 export function resolveShapeFill(layer: ShapeLayer): FillPaint {
   if (layer.shape === "line") return { kind: "none" };
   const raw = layer.background ?? layer.color ?? null;
+  if (raw === "none" || raw === "transparent" || (raw === null && Number(layer.strokeWidth ?? 0) > 0)) {
+    // Explicitly transparent or null with an active stroke = hollow shape
+    return { kind: "none" };
+  }
   if (!raw) return { kind: "solid", color: DEFAULT_SHAPE_FILL };
   if (isGradientCss(raw)) {
     const spec = parseGradientCss(raw);
