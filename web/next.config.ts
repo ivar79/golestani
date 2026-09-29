@@ -1,10 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  allowedDevOrigins: [
+    "ais-dev-4j3qhbpgwxe32f47n7ayk6-951411460327.europe-west2.run.app",
+    "ais-pre-4j3qhbpgwxe32f47n7ayk6-951411460327.europe-west2.run.app",
+    "aistudio.google.com",
+    "*.run.app",
+  ],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**" },
-      { protocol: "http", hostname: "localhost", port: "8020" },
       { protocol: "http", hostname: "127.0.0.1", port: "8020" },
     ],
   },
@@ -14,7 +20,6 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" },
         ],
