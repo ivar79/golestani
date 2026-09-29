@@ -32,7 +32,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { Business } from "@/lib/businesses";
-import { mediaUrl } from "@/lib/phase2";
+// Same-origin media path: this canvas is rasterized for export (html-to-image),
+// and cross-origin pixels cannot be read without CORS — which static storage
+// files never send. See lib/media.ts.
+import { mediaSrc } from "@/lib/media";
 import api from "@/lib/api";
 
 function InstagramIcon({ className = "h-3.5 w-3.5" }: { className?: string }): ReactElement {
@@ -151,11 +154,6 @@ const fontFamilies = {
 /* Data helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-/** Latin/URL content is read better LTR even inside the RTL card. */
-function dirLtr(value: string): string {
-  return /^[\u0600-\u06FF\u200c\s]/.test(value) ? "rtl" : "ltr";
-}
-
 function socialHandle(value: string, host: RegExp): string {
   const handle = value.replace(host, "").replace(/^@/, "").replace(/\/+$/, "");
   return handle ? `@${handle}` : value;
@@ -229,8 +227,7 @@ const CardCanvas = forwardRef<HTMLDivElement, CardCanvasProps>(function CardCanv
 
   const isVerified = Boolean(business.license_verified || business.verification_badge);
   const isPromoted = Boolean(business.is_promoted);
-  const logoUrl = business.logo ? mediaUrl(business.logo) : null;
-  const coverUrl = business.cover_image ? mediaUrl(business.cover_image) : null;
+  const logoUrl = mediaSrc(business.logo);
 
   const social: Record<string, string> =
     business.social_links && !Array.isArray(business.social_links) && typeof business.social_links === "object"
@@ -293,7 +290,7 @@ const CardCanvas = forwardRef<HTMLDivElement, CardCanvasProps>(function CardCanv
             </div>
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
               {logoUrl ? (
-                <img src={logoUrl} alt={business.name} crossOrigin="anonymous" className="h-full w-full object-cover" />
+                <img src={logoUrl} alt={business.name} className="h-full w-full object-cover" />
               ) : (
                 <span className="text-sm font-black text-slate-300">{initials(business.name)}</span>
               )}
@@ -371,7 +368,7 @@ const CardCanvas = forwardRef<HTMLDivElement, CardCanvasProps>(function CardCanv
             </div>
             {logoUrl && (
               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/20 bg-white/5 p-1 backdrop-blur-md">
-                <img src={logoUrl} alt={business.name} crossOrigin="anonymous" className="h-full w-full object-contain" />
+                <img src={logoUrl} alt={business.name} className="h-full w-full object-contain" />
               </div>
             )}
           </div>
@@ -463,7 +460,7 @@ const CardCanvas = forwardRef<HTMLDivElement, CardCanvasProps>(function CardCanv
               )}
             </div>
             {logoUrl && (
-              <img src={logoUrl} alt={business.name} crossOrigin="anonymous" className="h-10 w-10 shrink-0 rounded-lg border border-white/15 object-cover" />
+              <img src={logoUrl} alt={business.name} className="h-10 w-10 shrink-0 rounded-lg border border-white/15 object-cover" />
             )}
           </div>
         </div>
@@ -479,7 +476,7 @@ const CardCanvas = forwardRef<HTMLDivElement, CardCanvasProps>(function CardCanv
           <div className="flex items-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
               {logoUrl ? (
-                <img src={logoUrl} alt={business.name} crossOrigin="anonymous" className="h-full w-full object-cover" />
+                <img src={logoUrl} alt={business.name} className="h-full w-full object-cover" />
               ) : (
                 <Building2 className="h-7 w-7 text-slate-300" />
               )}
@@ -573,7 +570,7 @@ const CardCanvas = forwardRef<HTMLDivElement, CardCanvasProps>(function CardCanv
           </div>
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/20 bg-white/10 backdrop-blur-md">
             {logoUrl ? (
-              <img src={logoUrl} alt={business.name} crossOrigin="anonymous" className="h-full w-full object-contain p-1" />
+              <img src={logoUrl} alt={business.name} className="h-full w-full object-contain p-1" />
             ) : (
               <Sparkles className="h-7 w-7 text-white/80" />
             )}

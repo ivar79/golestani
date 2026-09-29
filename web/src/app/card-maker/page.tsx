@@ -11,11 +11,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toPng, toJpeg } from "html-to-image";
 import {
-  Download,
   FileText,
-  Upload,
   Trash2,
   CheckCircle2,
   AlertCircle,
@@ -47,18 +44,26 @@ import {
   PremiumBadge,
   LockedOverlay,
   UsageMeter,
-  useCardEntitlements,
 } from "@/components/cards/FeatureGate";
 import {
   FREE_TIER_FALLBACK,
+  describeEntitlementErrors,
   extractEntitlementErrors,
   isAllowedValue,
   type EntitlementPayload,
   type CardLockState,
-  type CapabilityMap,
 } from "@/lib/entitlements";
+import CardStudio from "@/features/card-editor/react/CardStudio";
+import CardExportMenu from "@/components/cards/CardExportMenu";
+import { parseDocument } from "@/features/card-editor/domain/factory";
+import type { CardDocument } from "@/features/card-editor/domain/document";
+import {
+  exportCardFile,
+  type ExportFormat,
+  type RasterScale,
+} from "@/features/card-editor/export/exportCard";
 
-type BusinessCardResponse = {
+export type BusinessCardResponse = {
   id?: number;
   template?: CardTemplate;
   theme?: CardTheme;
@@ -69,6 +74,10 @@ type BusinessCardResponse = {
   print_file_mime?: string | null;
   print_file_url?: string | null;
   has_print_file?: boolean;
+  /** Layered editor document (null = template renderer governs this card). */
+  design_json?: CardDocument | null;
+  /** Card front image — system /storage/… path after a multipart upload. */
+  front_image?: string | null;
   /** Server-resolved capability contract (UX mirror — backend is authoritative). */
   entitlements?: EntitlementPayload;
   locked?: CardLockState;
@@ -76,13 +85,6 @@ type BusinessCardResponse = {
 
 const MAX_PRINT_FILE_BYTES = 10 * 1024 * 1024; // matches backend max:10240 (KB)
 const ALLOWED_PRINT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
-
-/** Which templates are premium-only per the CURRENT server contract (undefined until loaded). */
-function premiumTemplates(caps: CapabilityMap | null, allowed: string[] | null): Set<CardTemplate> {
-  if (!caps || !allowed) return new Set();
-  const universe: CardTemplate[] = ["classic", "midnight", "emerald", "local", "creative"];
-  return new Set(universe.filter((t) => !allowed.includes(t)));
-}
 
 const TEMPLATE_OPTIONS: { key: CardTemplate; label: string; desc: string; swatch: string }[] = [
   { key: "classic", label: "مینیمال حرفه‌ای", desc: "روشن، تایپوگرافی قوی، رسمی", swatch: "bg-[#f6f8fb] border-[#dbe4f0]" },
@@ -92,7 +94,6 @@ const TEMPLATE_OPTIONS: { key: CardTemplate; label: string; desc: string; swatch
   { key: "creative", label: "خلاقانه", desc: "بلوک‌های مورب رنگی، جسورانه", swatch: "bg-gradient-to-bl from-[#0ea5e9] to-[#081528]" },
 ];
 
-const THEME_LABELS: Record<CardTheme, string> = { navy: "سرمه‌ای", emerald: "زمردی", warm: "گرم" };
 const FONT_LABELS: Record<CardFontFamily, string> = { sans: "مدرن Sans", vazir: "وزیرمتن", serif: "رسمی Serif" };
 
 const THEME_OPTIONS: { key: CardTheme; label: string; colorClass: string }[] = [
@@ -109,6 +110,15 @@ export default function CardMakerPage() {
   const canvas = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /**
+   * The editor's live document. Held in a REF, not state, on purpose: it
+   * changes on every editor keystroke, and re-rendering this whole page that
+   * often would be wasteful. Only the artboard SIZE is mirrored into state
+   * (changing it is rare), so the export menu can show real output pixels
+   * without subscribing to the document.
+   */
+  const liveDocRef = useRef<CardDocument | null>(null);
+  const [artboard, setArtboard] = useState<{ width: number; height: number } | null>(null);
 
   const [businesses, setBusinesses] = useState<Business[] | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
@@ -123,7 +133,7 @@ export default function CardMakerPage() {
   // re-authorized server-side; a 403 here falls back to the upgrade UI).
   const [entitlements, setEntitlements] = useState<EntitlementPayload>(FREE_TIER_FALLBACK);
   const [locked, setLocked] = useState<CardLockState | null>(null);
-  const [cardCount, setCardCount] = useState(0);
+  const [cardCount] = useState(0);
   const [staleError, setStaleError] = useState<string | null>(null);
   const [printFile, setPrintFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -137,6 +147,12 @@ export default function CardMakerPage() {
   const [device, setDevice] = useState<DeviceKey>("desktop");
   const [fullZoom, setFullZoom] = useState(false);
   const [fitScale, setFitScale] = useState(1);
+
+  // PHASE 4: layered editor mode. design_json drives the layered renderer;
+  // null keeps the existing template renderer (legacy cards unaffected).
+  const [designJson, setDesignJson] = useState<CardDocument | null>(null);
+  const [editorMode, setEditorMode] = useState(false);
+  const editorAllowed = entitlements.capabilities.card_editor === true;
 
   // Unsaved-changes tracking: last saved snapshot vs current selection.
   // State (not a ref) so that saving re-renders and clears the dirty bar.
@@ -164,11 +180,16 @@ export default function CardMakerPage() {
   // Load card settings for selected business
   useEffect(() => {
     if (!selectedBusiness) return;
-    setCardLoading(true);
+    // Deferred flag-set (project pattern): setState leaves the effect body
+    // (react-hooks/set-state-in-effect) while the loading UI shows one extra
+    // frame at most — behavior is unchanged.
+    const t = window.setTimeout(() => setCardLoading(true), 0);
     api
       .get<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`)
       .then(({ data }) => {
         setCardData(data);
+        setDesignJson(parseDocument(JSON.stringify(data.design_json ?? null)));
+        setEditorMode(Boolean(data.design_json));
         if (data.entitlements) setEntitlements(data.entitlements);
         if (data.locked) setLocked(data.locked);
         setStaleError(null);
@@ -185,7 +206,10 @@ export default function CardMakerPage() {
       .catch(() => {
         setSavedSnapshot("classic|navy|medium|sans");
       })
-      .finally(() => setCardLoading(false));
+      .finally(() => {
+        window.clearTimeout(t);
+        setCardLoading(false);
+      });
   }, [selectedBusiness]);
 
   // Warn before leaving with unsaved changes
@@ -311,6 +335,53 @@ export default function CardMakerPage() {
     }
   }
 
+  /** PHASE 4: persist the layered editor document (entitlement-gated server-side). */
+  async function handleSaveDesign(doc: CardDocument) {
+    if (!selectedBusiness) throw new Error("کسب‌وکاری انتخاب نشده است.");
+    const res = await api.put<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`, {
+      template,
+      theme,
+      font_size: fontSize,
+      font_family: fontFamily,
+      design_json: doc,
+    });
+    setCardData(res.data);
+    setDesignJson(doc);
+    if (res.data.entitlements) setEntitlements(res.data.entitlements);
+    if (res.data.locked) setLocked(res.data.locked);
+    setSavedSnapshot(`${template}|${theme}|${fontSize}|${fontFamily}`);
+  }
+
+  /**
+   * PHASE 4 media: persist a picked image through the card endpoint's
+   * EXISTING multipart flow (`front_image` → public disk). Resolves to the
+   * system `/storage/…` path the design whitelist accepts — the layer
+   * round-trips on save/reload (blob URLs never persist).
+   */
+  async function handleUploadCardImage(file: File): Promise<string> {
+    if (!selectedBusiness) throw new Error("کسب‌وکاری انتخاب نشده است.");
+    const form = new FormData();
+    // PHP parses multipart bodies only for POST (PUT bodies stay unparsed),
+    // so file-bearing saves go through the standard Laravel method-spoofing
+    // field — same proven flow as the print-file upload in this file.
+    form.append("_method", "PUT");
+    form.append("front_image", file);
+    form.append("template", template);
+    form.append("theme", theme);
+    form.append("font_size", fontSize);
+    form.append("font_family", fontFamily);
+    // design_json is deliberately NOT sent here: multipart carries it as a
+    // string (fails the `array` rule) and the controller only updates keys
+    // present in the request, so the stored document stays untouched.
+    const res = await api.post<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`, form);
+    setCardData(res.data);
+    if (res.data.entitlements) setEntitlements(res.data.entitlements);
+    if (res.data.locked) setLocked(res.data.locked);
+    const path = res.data.front_image;
+    if (!path) throw new Error("آپلود تصویر ثبت نشد.");
+    return path.startsWith("/") ? path : `/storage/${path.replace(/^storage\//, "")}`;
+  }
+
   async function handleDownloadPrintFile() {
     if (!selectedBusiness) return;
     setDownloadingFile(true);
@@ -329,23 +400,37 @@ export default function CardMakerPage() {
     }
   }
 
-  async function exportCard(format: "png" | "jpg") {
-    if (!canvas.current || !selectedBusiness) return;
+  /**
+   * Publish the editor's live document. Called from an effect inside CardStudio
+   * on every COMMITTED change, so an export always matches what the user sees —
+   * including edits that have not been autosaved yet.
+   */
+  const handleDocumentChange = useCallback((doc: CardDocument) => {
+    liveDocRef.current = doc;
+    setArtboard((prev) =>
+      prev && prev.width === doc.artboard.width && prev.height === doc.artboard.height
+        ? prev
+        : { width: doc.artboard.width, height: doc.artboard.height },
+    );
+  }, []);
+
+  async function exportCard(format: ExportFormat, scale: RasterScale) {
+    if (!selectedBusiness) return;
     setExporting(true);
     setMessage(null);
 
     try {
-      const exportOptions = { quality: 0.98, pixelRatio: 2.5 };
-      const dataUrl =
-        format === "png"
-          ? await toPng(canvas.current, exportOptions)
-          : await toJpeg(canvas.current, exportOptions);
+      await exportCardFile({
+        format,
+        // Vector formats are serialized from the document; raster from the DOM.
+        doc: editorMode && editorAllowed ? liveDocRef.current : null,
+        node: canvas.current,
+        slug: selectedBusiness.slug || "card",
+        scale,
+      });
 
-      const link = document.createElement("a");
-      link.download = `inkart-${selectedBusiness.slug || "card"}.${format}`;
-      link.href = dataUrl;
-      link.click();
-
+      // Existing contract: record the chosen format so the backend entitlement
+      // audit keeps seeing every export (unchanged behaviour, four formats now).
       await api.put(`/businesses/${selectedBusiness.id}/card`, {
         template,
         theme,
@@ -358,7 +443,11 @@ export default function CardMakerPage() {
     } catch (err) {
       const entitlementErrors = extractEntitlementErrors(err);
       if (entitlementErrors) {
-        setStaleError("خروجی گرفتن با این تنظیمات در پلن فعلی شما فعال نیست.");
+        // Name the locked capability the server refused, don't just say "failed".
+        setStaleError(
+          describeEntitlementErrors(entitlementErrors) ??
+            "خروجی گرفتن با این تنظیمات در پلن فعلی شما فعال نیست.",
+        );
         setMessage({ text: "برای خروجی گرفتن با این تنظیمات، اشتراک فعال لازم است.", error: true });
       } else {
         setMessage({ text: "تولید خروجی کارت با خطا مواجه شد. لطفاً دوباره تلاش کنید.", error: true });
@@ -745,6 +834,22 @@ export default function CardMakerPage() {
                   <p className="text-xs text-slate-400">QR اختصاصی متصل به صفحه کسب‌وکار شما</p>
                 </div>
 
+                {/* PHASE 4: layered editor toggle (entitlement-gated server-side too) */}
+                <button
+                  type="button"
+                  onClick={() => setEditorMode((v) => !v)}
+                  disabled={!editorAllowed || !selectedBusiness}
+                  title={editorAllowed ? "ویرایشگر پیشرفته لایه‌ای" : "ویرایشگر پیشرفته در پلن فعلی فعال نیست"}
+                  aria-pressed={editorMode}
+                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    editorMode
+                      ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-200"
+                      : "border-white/10 bg-white/5 text-slate-300 hover:text-white disabled:opacity-40"
+                  }`}
+                >
+                  {editorMode ? "بازگشت به قالب‌ها" : "ویرایشگر پیشرفته"}
+                </button>
+
                 {/* Device sizes + zoom */}
                 <div className="flex items-center gap-2">
                   <div className="flex rounded-xl border border-white/10 bg-white/5 p-1">
@@ -781,41 +886,36 @@ export default function CardMakerPage() {
                   >
                     {fullZoom ? <Scan className="h-4 w-4" /> : <ZoomIn className="h-4 w-4" />}
                   </button>
-                  {([
-                    { format: "png" as const, primary: true },
-                    { format: "jpg" as const, primary: false },
-                  ]).map(({ format, primary }) => {
-                    const allowed = isAllowedValue(entitlements.capabilities, "card_exports", format);
-                    return (
-                      <button
-                        key={format}
-                        type="button"
-                        onClick={() => { if (allowed) void exportCard(format); }}
-                        disabled={exporting || !selectedBusiness || !allowed}
-                        title={allowed ? `خروجی ${format.toUpperCase()}` : `خروجی ${format.toUpperCase()} در پلن فعلی فعال نیست`}
-                        className={`relative flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                          primary
-                            ? "bg-gradient-to-r from-cyan-500 to-teal-500 text-slate-950 hover:opacity-90"
-                            : "hidden border border-white/15 bg-white/5 text-white hover:bg-white/10 sm:flex"
-                        }`}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span>{format.toUpperCase()}</span>
-                        {!allowed && (
-                          <span className="absolute -top-2 -left-2"><PremiumBadge /></span>
-                        )}
-                      </button>
-                    );
-                  })}
+                  <CardExportMenu
+                    capabilities={entitlements.capabilities}
+                    artboardSize={editorMode && editorAllowed ? artboard : null}
+                    busy={exporting}
+                    onExport={(format, scale) => void exportCard(format, scale)}
+                  />
                 </div>
               </div>
 
-              {/* Scaled preview stage */}
+              {/* Scaled preview stage — two render paths (plan decision):
+                  editorMode + design_json → layered studio; otherwise the
+                  legacy template renderer (existing cards unchanged). */}
               <div ref={previewWrapRef} className="mt-5 w-full">
                 {cardLoading || !selectedBusiness ? (
                   <div className="flex aspect-[1.586/1] w-full items-center justify-center rounded-2xl border border-white/5 bg-white/[0.03]">
                     <div className="h-full w-full max-w-2xl animate-pulse rounded-2xl bg-white/5" />
                   </div>
+                ) : editorMode && editorAllowed ? (
+                  <CardStudio
+                    key={selectedBusiness.id}
+                    business={selectedBusiness}
+                    template={template}
+                    theme={theme}
+                    fontFamily={fontFamily}
+                    designJson={designJson}
+                    onSaved={handleSaveDesign}
+                    onUploadImage={handleUploadCardImage}
+                    onDocumentChange={handleDocumentChange}
+                    exportRef={canvas}
+                  />
                 ) : (
                   <div className="flex justify-center overflow-hidden py-2">
                     <div

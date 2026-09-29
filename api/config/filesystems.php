@@ -71,6 +71,28 @@ return [
             'report' => false,
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Subscription Receipts (Phase 5 — private)
+        |----------------------------------------------------------------------
+        |
+        | Payment receipts are confidential financial documents. Like print
+        | files they live OUTSIDE the public disk (no "serve", no storage:link
+        | pointer) and are served ONLY through the authorized download endpoint
+        | (SubscriptionController@receipt) after owner/admin checks. Legacy
+        | public copies are migrated by the idempotent command
+        | `php artisan receipts:move-to-private` — deliberately NOT inside a
+        | schema migration (filesystem ops must not block deployments).
+        |
+        */
+
+        'receipts' => [
+            'driver' => 'local',
+            'root' => env('RECEIPTS_DISK_ROOT', storage_path('app/private/receipts')),
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

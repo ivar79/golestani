@@ -2,10 +2,18 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { cms, useHomepageContent } from "@/lib/homepage";
-import SearchModal from "@/components/search/SearchModal";
 import HeroVideo from "./HeroVideo";
+
+// Phase 3.5 perf: SearchModal (و زنجیرهٔ iranGeo/taxonomies/axios) فقط روی تعامل
+// کاربر لازم است — dynamic import آن را از initial bundle صفحهٔ اصلی خارج می‌کند
+// (هم‌الگوی AppTaskbar). خود مودال دست‌نخورده است.
+const SearchModal = dynamic(
+  () => import("@/components/search/SearchModal"),
+  { ssr: false, loading: () => null },
+);
 
 /** Render the hero title with the accent word (from CMS) highlighted in emerald. */
 function Title({ content }: { content: Record<string, string> }) {
@@ -124,14 +132,14 @@ export default function HomeHero() {
             <div className="flex flex-wrap items-center gap-4">
               <Link
                 href={primaryHref}
-                className="btn btn-primary btn-lg"
+                className="group inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-transparent px-8 py-3.5 text-lg font-semibold leading-none text-white transition-[transform,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [background-image:linear-gradient(120deg,#0d9488_0%,#0891b2_100%)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(2,6,23,0.4),0_10px_24px_-12px_rgba(13,148,136,0.55),0_0_20px_-8px_rgba(8,145,178,0.35)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(16,185,129,0.35)] hover:-translate-y-px [background-image:linear-gradient(120deg,#0f766e_0%,#0e7490_100%)] hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.3),0_2px_4px_rgba(2,6,23,0.35),0_16px_36px_-14px_rgba(13,148,136,0.65),0_0_30px_-8px_rgba(8,145,178,0.5)] active:translate-y-0 active:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(2,6,23,0.4),0_6px_18px_-10px_rgba(16,185,129,0.5)] disabled:cursor-not-allowed disabled:opacity-55 disabled:transform-none disabled:[box-shadow:none]"
               >
                 {primaryLabel}
-                <svg className="btn-arrow h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 12H4m6-6-6 6 6 6" /></svg>
+                <svg className="h-6 w-6 transition-transform duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-x-[3px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 12H4m6-6-6 6 6 6" /></svg>
               </Link>
               <Link
                 href={secondaryHref}
-                className="btn btn-secondary btn-lg"
+                className="inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/12 bg-white/[0.06] px-8 py-3.5 text-lg font-semibold leading-none text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-[8px] transition-[transform,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:border-white/20 hover:bg-white/[0.12] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] active:translate-y-0 focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(16,185,129,0.35)] disabled:cursor-not-allowed disabled:opacity-55 disabled:transform-none disabled:[box-shadow:none]"
               >
                 {secondaryLabel}
               </Link>

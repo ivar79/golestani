@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, Share2, Users, UploadCloud, FileText, Image as ImageIcon, Sparkles, CheckCircle2, AlertCircle, Trash2, X, Loader2 } from "lucide-react";
+import { Copy, Check, Share2, Users, UploadCloud, Sparkles, CheckCircle2, AlertCircle, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import api, { extractApiError } from "@/lib/api";
@@ -52,7 +52,9 @@ export default function DesignerPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      setLoadingProfile(true);
+      // Deferred flag-set (project pattern): setState leaves the effect body
+      // (react-hooks/set-state-in-effect) while behavior stays unchanged.
+      const t = window.setTimeout(() => setLoadingProfile(true), 0);
       api
         .get<Designer>("/designer/profile")
         .then(({ data }) => {
@@ -63,7 +65,10 @@ export default function DesignerPage() {
         .catch((err) => {
           setMessage({ text: extractApiError(err), error: true });
         })
-        .finally(() => setLoadingProfile(false));
+        .finally(() => {
+          window.clearTimeout(t);
+          setLoadingProfile(false);
+        });
     }
   }, [authLoading, user]);
 

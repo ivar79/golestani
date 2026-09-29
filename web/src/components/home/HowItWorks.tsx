@@ -1,12 +1,11 @@
-"use client";
-import { cms, cmsList, useHomepageContent } from "@/lib/homepage";
+import { cms, cmsList, type HomepageContent } from "@/lib/homepageContent";
 import HomeIcon, { type HomeIconName } from "./HomeIcon";
 
 type Step = { icon?: string; title: string; description: string };
 const FALLBACK_ICONS: HomeIconName[] = ["storefront", "badge", "groups"];
 
-export default function HowItWorks() {
-  const content = useHomepageContent();
+// Phase 3.5 perf: Server Component — محتوا به‌صورت prop از صفحهٔ اصلی می‌آید.
+export default function HowItWorks({ content }: { content: HomepageContent }) {
   const title = cms(content, "howitworks.title");
   const steps = cmsList<Step>(content, "howitworks.steps").map((s, i) => ({
     icon: (s.icon as HomeIconName) || FALLBACK_ICONS[i % 3],
@@ -21,7 +20,7 @@ export default function HowItWorks() {
       {/* Neon wave */}
       <div className="pointer-events-none absolute inset-0 top-32 opacity-40">
         <svg className="h-32 w-full" preserveAspectRatio="none" viewBox="0 0 1000 200">
-          <path className="animate-dash" d="M0,100 Q250,0 500,100 T1000,100" fill="none" stroke="url(#neon-grad)" strokeDasharray="10 5" strokeWidth="3" />
+          <path className="animate-[dash_20s_linear_infinite]" d="M0,100 Q250,0 500,100 T1000,100" fill="none" stroke="url(#neon-grad)" strokeDasharray="10 5" strokeWidth="3" />
           <defs>
             <linearGradient id="neon-grad" x1="0%" x2="100%" y1="0%" y2="0%">
               <stop offset="0%" stopColor="#006c4a" stopOpacity="0" />

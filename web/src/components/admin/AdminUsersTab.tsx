@@ -307,7 +307,4 @@ export default function AdminUsersTab() {
     </div>
   );
 
-  async function handleAction(u: AdminUser) {
-    await handleToggleStatus(u);
-  }
 }

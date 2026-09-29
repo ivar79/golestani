@@ -1,0 +1,106 @@
+
+> web@0.1.0 dev
+> next dev
+
+▲ Next.js 16.3.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://169.254.83.107:3000
+- Environments: .env.local
+✓ Ready in 2.1s
+✓ Running next.config.ts took 91ms
+
+○ Compiling /login ...
+ GET /login 200 in 9.9s (next.js: 9.2s, proxy.ts: 10ms, application-code: 656ms)
+○ Compiling /search ...
+ GET /search 200 in 4.4s (next.js: 3.9s, application-code: 431ms)
+ GET /login 200 in 357ms (next.js: 19ms, proxy.ts: 15ms, application-code: 324ms)
+ GET /admin/login 200 in 1173ms (next.js: 1028ms, proxy.ts: 14ms, application-code: 131ms)
+ GET /card-maker 200 in 2.9s (next.js: 2.4s, application-code: 434ms)
+ GET /designer 200 in 1145ms (next.js: 990ms, application-code: 154ms)
+○ Compiling /pricing ...
+ GET /pricing 200 in 6.1s (next.js: 5.1s, application-code: 1048ms)
+ GET / 200 in 1178ms (next.js: 865ms, application-code: 313ms)
+ GET / 200 in 452ms (next.js: 264ms, application-code: 188ms)
+ GET /login 200 in 336ms (next.js: 131ms, proxy.ts: 28ms, application-code: 178ms)
+○ Compiling /api/ads/[slot] ...
+ GET /api/ads/taskbar 200 in 19.7s (next.js: 15.2s, application-code: 4.5s)
+○ Compiling /otp ...
+ GET /otp 200 in 5.0s (next.js: 4.7s, application-code: 296ms)
+ GET /dashboard 200 in 2.9s (next.js: 2.7s, proxy.ts: 23ms, application-code: 225ms)
+ GET /api/qr/e2e-test-biz 200 in 5.7s (next.js: 4.3s, application-code: 1340ms)
+ GET /card-maker 200 in 77ms (next.js: 33ms, application-code: 44ms)
+ GET /login 200 in 322ms (next.js: 127ms, proxy.ts: 14ms, application-code: 181ms)
+ GET /search 200 in 338ms (next.js: 187ms, application-code: 151ms)
+ GET /pricing 200 in 314ms (next.js: 144ms, application-code: 170ms)
+ GET / 200 in 335ms (next.js: 94ms, application-code: 241ms)
+ GET /api/ads/taskbar 200 in 223ms (next.js: 116ms, application-code: 106ms)
+ GET / 200 in 105ms (next.js: 30ms, application-code: 75ms)
+ GET / 200 in 1325ms (next.js: 104ms, application-code: 1221ms)
+ GET /admin/login 200 in 233ms (next.js: 84ms, proxy.ts: 26ms, application-code: 123ms)
+ GET /admin/login 200 in 87ms (next.js: 11ms, proxy.ts: 12ms, application-code: 63ms)
+ POST /api/admin/login 404 in 2.1s (next.js: 2.0s, application-code: 123ms)
+ GET /admin/login 200 in 263ms (next.js: 89ms, proxy.ts: 32ms, application-code: 142ms)
+ GET /admin/login 200 in 116ms (next.js: 15ms, proxy.ts: 15ms, application-code: 86ms)
+ GET /admin 200 in 3.1s (next.js: 2.9s, proxy.ts: 16ms, application-code: 109ms)
+ GET /admin 200 in 100ms (next.js: 16ms, proxy.ts: 13ms, application-code: 71ms)
+ GET /admin 200 in 143ms (next.js: 23ms, proxy.ts: 16ms, application-code: 104ms)
+ GET /admin/businesses 200 in 1350ms (next.js: 1271ms, proxy.ts: 15ms, application-code: 64ms)
+ GET /admin/login 200 in 355ms (next.js: 209ms, proxy.ts: 30ms, application-code: 116ms)
+ GET /admin 200 in 199ms (next.js: 118ms, proxy.ts: 14ms, application-code: 67ms)
+ GET /admin 200 in 103ms (next.js: 33ms, proxy.ts: 14ms, application-code: 56ms)
+ GET /login 200 in 247ms (next.js: 58ms, proxy.ts: 29ms, application-code: 160ms)
+ GET / 200 in 452ms (next.js: 179ms, application-code: 273ms)
+ GET /api/ads/taskbar 200 in 176ms (next.js: 75ms, application-code: 102ms)
+ GET / 307 in 16ms
+ GET / 200 in 34ms (next.js: 15ms, application-code: 19ms)
+ GET /login 200 in 262ms (next.js: 12ms, proxy.ts: 12ms, application-code: 237ms)
+ GET /otp 200 in 261ms (next.js: 101ms, application-code: 160ms)
+ GET /dashboard 200 in 263ms (next.js: 161ms, proxy.ts: 17ms, application-code: 85ms)
+ GET /card-maker 200 in 140ms (next.js: 95ms, application-code: 45ms)
+ GET /dashboard 200 in 160ms (next.js: 22ms, proxy.ts: 38ms, application-code: 99ms)
+ GET /dashboard 200 in 159ms (next.js: 36ms, proxy.ts: 15ms, application-code: 108ms)
+ GET /dashboard 200 in 85ms (next.js: 12ms, proxy.ts: 10ms, application-code: 63ms)
+ GET /dashboard 200 in 104ms (next.js: 19ms, proxy.ts: 11ms, application-code: 74ms)
+ GET /dashboard 200 in 113ms (next.js: 23ms, proxy.ts: 10ms, application-code: 80ms)
+ GET /dashboard 200 in 103ms (next.js: 26ms, proxy.ts: 10ms, application-code: 68ms)
+ GET /dashboard 200 in 103ms (next.js: 21ms, proxy.ts: 12ms, application-code: 70ms)
+ GET /dashboard 200 in 87ms (next.js: 16ms, proxy.ts: 12ms, application-code: 59ms)
+ GET /dashboard 200 in 274ms (next.js: 18ms, proxy.ts: 11ms, application-code: 245ms)
+ GET /dashboard 200 in 153ms (next.js: 47ms, proxy.ts: 10ms, application-code: 96ms)
+ GET /dashboard 200 in 157ms (next.js: 29ms, proxy.ts: 13ms, application-code: 116ms)
+ GET /dashboard 200 in 118ms (next.js: 18ms, proxy.ts: 12ms, application-code: 88ms)
+ GET /dashboard 200 in 77ms (next.js: 11ms, proxy.ts: 9ms, application-code: 57ms)
+ GET /dashboard 200 in 83ms (next.js: 15ms, proxy.ts: 9ms, application-code: 59ms)
+ GET /dashboard 200 in 118ms (next.js: 28ms, proxy.ts: 11ms, application-code: 78ms)
+ GET /dashboard 200 in 98ms (next.js: 20ms, proxy.ts: 10ms, application-code: 68ms)
+ GET /dashboard 200 in 139ms (next.js: 17ms, proxy.ts: 12ms, application-code: 111ms)
+ GET /dashboard 200 in 142ms (next.js: 31ms, proxy.ts: 14ms, application-code: 97ms)
+ GET /dashboard 200 in 118ms (next.js: 18ms, proxy.ts: 16ms, application-code: 85ms)
+ GET /dashboard 200 in 95ms (next.js: 15ms, proxy.ts: 12ms, application-code: 68ms)
+ GET /dashboard 200 in 155ms (next.js: 13ms, proxy.ts: 12ms, application-code: 130ms)
+ GET /dashboard 200 in 88ms (next.js: 16ms, proxy.ts: 11ms, application-code: 62ms)
+✓ Compiled in 678ms
+ GET /dashboard 200 in 124ms (next.js: 28ms, proxy.ts: 14ms, application-code: 83ms)
+ GET /dashboard 200 in 140ms (next.js: 41ms, proxy.ts: 12ms, application-code: 88ms)
+✓ Compiled in 770ms
+ GET /dashboard 200 in 115ms (next.js: 32ms, proxy.ts: 13ms, application-code: 69ms)
+ GET /dashboard 200 in 94ms (next.js: 27ms, proxy.ts: 9ms, application-code: 58ms)
+ GET /dashboard 200 in 92ms (next.js: 18ms, proxy.ts: 12ms, application-code: 63ms)
+ GET /dashboard 200 in 91ms (next.js: 15ms, proxy.ts: 13ms, application-code: 63ms)
+ GET /dashboard 200 in 87ms (next.js: 20ms, proxy.ts: 12ms, application-code: 56ms)
+ GET /dashboard 200 in 91ms (next.js: 20ms, proxy.ts: 11ms, application-code: 60ms)
+ GET /dashboard 200 in 182ms (next.js: 65ms, proxy.ts: 18ms, application-code: 99ms)
+ GET /dashboard 200 in 89ms (next.js: 17ms, proxy.ts: 11ms, application-code: 61ms)
+ GET /dashboard 200 in 101ms (next.js: 23ms, proxy.ts: 13ms, application-code: 66ms)
+ GET /dashboard 200 in 145ms (next.js: 30ms, proxy.ts: 15ms, application-code: 99ms)
+ GET /dashboard 200 in 116ms (next.js: 20ms, proxy.ts: 12ms, application-code: 84ms)
+ GET /dashboard 200 in 145ms (next.js: 42ms, proxy.ts: 11ms, application-code: 92ms)
+✓ Compiled in 357ms
+✓ Compiled in 401ms
+ GET /card-maker 200 in 2.6s (next.js: 1381ms, application-code: 1209ms)
+ GET /card-maker 200 in 528ms (next.js: 182ms, application-code: 346ms)
+ GET / 200 in 812ms (next.js: 67ms, application-code: 745ms)
+ GET /otp 200 in 828ms (next.js: 590ms, application-code: 238ms)
+ GET /dashboard 200 in 309ms (next.js: 182ms, proxy.ts: 25ms, application-code: 101ms)
+ GET /card-maker 200 in 136ms (next.js: 96ms, application-code: 39ms)
+ GET /api/ads/taskbar 200 in 323ms (next.js: 150ms, application-code: 174ms)

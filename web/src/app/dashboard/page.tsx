@@ -8,6 +8,8 @@ import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { downloadPrintFile } from "@/lib/phase4";
+import { type EntitlementPayload } from "@/lib/entitlements";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { avatarUrl } from "@/lib/auth";
 import { getQrUrl } from "@/lib/businesses";
 import { getPublicTaxonomies } from "@/lib/taxonomies";
@@ -17,12 +19,13 @@ import { DashboardFab } from "@/components/dashboard/DashboardFab";
 import { DashboardSidebar, type DashboardTab } from "@/components/dashboard/DashboardSidebar";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { SubscriptionPanel } from "@/components/dashboard/SubscriptionPanel";
+import { ShowcasePanel } from "@/components/dashboard/ShowcasePanel";
+import { AdsPanel } from "@/components/dashboard/AdsPanel";
 import LocationSearch, { type LocationSearchResult } from "@/components/dashboard/LocationSearch";
 import { ThemeProvider, useTheme } from "@/components/dashboard/ThemeProvider";
 import MapView from "@/components/map/MapView";
 import {
   addImage,
-  badgeLabel,
   getImages,
   getOwnedBusiness,
   getOwnedBusinesses,
@@ -51,9 +54,7 @@ import {
   UploadCloud,
   CheckCircle2,
   AlertTriangle,
-  Clock,
   QrCode,
-  Sparkles,
   LogOut,
   CreditCard,
   ChevronDown,
@@ -61,9 +62,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Share2,
-  Home,
   Store,
-  Layers,
   Menu,
 } from "lucide-react";
 
@@ -141,6 +140,13 @@ function DashboardInner() {
   const [cover, setCover] = useState<File | null>(null);
   const [deleteImage, setDeleteImage] = useState<number | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
+
+  // STANDARD entitlement contract (useEntitlements): fetches
+  // /businesses/{id}/entitlements and RE-SYNCS on mount + focus/visibility —
+  // after a successful payment the panels see the new plan immediately
+  // (stale-state fix: previously fetched once and never refreshed).
+  const { entitlements: liveEntitlements, subscription } = useEntitlements(editing?.id);
+  const entitlements: EntitlementPayload = liveEntitlements;
 
   // Responsive sidebar & tabs
   const [currentTab, setCurrentTab] = useState<DashboardTab>("overview");
@@ -466,7 +472,6 @@ function DashboardInner() {
           userPhone={user.phone}
           username={user.username}
           userAvatar={user.avatar ? avatarUrl(user.avatar) : null}
-          businessSlug={editing?.slug}
           status={editing?.status}
           completionRate={completionRate}
           onLogout={() => void logout()}
@@ -492,7 +497,6 @@ function DashboardInner() {
               userPhone={user.phone}
               username={user.username}
               userAvatar={user.avatar ? avatarUrl(user.avatar) : null}
-              businessSlug={editing?.slug}
               status={editing?.status}
               completionRate={completionRate}
               onLogout={() => void logout()}
@@ -612,7 +616,7 @@ function DashboardInner() {
             <DashboardOverview
               business={editing}
               completionRate={completionRate}
-              userPhone={user.phone}
+              username={user.username}
               hasLocation={validPoint}
               hasImages={images.length > 0 || !!editing?.logo}
               imagesCount={images.length}
@@ -623,6 +627,28 @@ function DashboardInner() {
           )}
 
           {currentTab === "subscriptions" && <SubscriptionPanel businessId={editing?.id} />}
+
+          {/* PAYMENT RESULT RETURN: the tab bar shows the live plan chip so a
+              user coming back from the result page SEES the applied plan
+              without hunting for it. Values come from the server snapshot. */}
+          {subscription && (
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-ik-border bg-ik-panel/70 px-4 py-3 text-xs">
+              <span className="font-semibold text-ik-text">
+                پلن فعلی: {subscription.plan_name ?? "—"}
+              </span>
+              <span className={
+                subscription.effective_status === "active"
+                  ? "rounded-lg border border-ik-success/30 bg-ik-success/10 px-2 py-0.5 font-bold text-ik-success"
+                  : "rounded-lg border border-ik-border px-2 py-0.5 font-bold text-ik-muted"
+              }>
+                {subscription.effective_status === "active" ? "فعال" : "غیرفعال"}
+              </span>
+            </div>
+          )}
+
+          {/* PHASE 5: showcase & ads owner panels (entitlement mirrors). */}
+          {currentTab === "showcase" && <ShowcasePanel businessId={editing?.id} entitlements={entitlements} />}
+          {currentTab === "ads" && <AdsPanel businessId={editing?.id} entitlements={entitlements} />}
 
           {/* TAB 2: BUSINESS INFO & CONTACT (مشخصات و تماس) */}
           {currentTab === "info" && (

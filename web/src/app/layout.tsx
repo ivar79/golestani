@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SITE_URL } from "@/lib/siteUrl";
 import "./globals.css";
 
 // Self-hosted Vazirmatn (وزیر) — loaded locally, no CDN dependency.
@@ -19,8 +20,14 @@ const vazirmatn = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "اینکارت | سامانه معرفی کسب‌وکارها",
   description: "سامانه معرفی و جست‌وجوی کسب‌وکارهای محلی",
+};
+
+// Phase 3.5 SEO: themeColor باید در export جداگانهٔ viewport باشد (Next 15+).
+export const viewport: Viewport = {
+  themeColor: "#020617",
 };
 
 export default function RootLayout({

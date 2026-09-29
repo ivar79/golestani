@@ -4,26 +4,28 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Advertisement;
+use App\Models\Article;
 use App\Models\Business;
+use App\Models\Media;
+use App\Models\PageContent;
 use App\Models\Portfolio;
+use App\Models\Role;
 use App\Models\Showcase;
+use App\Models\SiteSetting;
 use App\Models\Subscription;
 use App\Models\User;
-use App\Models\Media;
-use App\Models\Article;
-use App\Models\PageContent;
-use App\Models\SiteSetting;
-use App\Models\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 class AdminController extends Controller
 {
     /** Cache key for the public homepage CMS payload. */
     public const HOMEPAGE_CACHE_KEY = 'public_homepage_v1';
+
     /** Cache lifetime in seconds. */
     public const HOMEPAGE_CACHE_TTL = 300;
 
@@ -39,10 +41,10 @@ class AdminController extends Controller
     public function publicHomepage(): JsonResponse
     {
         $settings = Cache::get(self::HOMEPAGE_CACHE_KEY);
-        
+
         if ($settings === null) {
             $settings = $this->homepageSettings();
-            
+
             // Cache guard: an empty payload (unseeded database) is NEVER cached.
             // Caching it once blanked the whole homepage until the TTL expired —
             // even after seeding. Empty results stay uncached so the page
@@ -132,20 +134,85 @@ class AdminController extends Controller
             // SEO (original key preserved)
             'seo.homepage',
             'seo.pricing',
+            // Smart Greeting (additive) — dashboard welcome schedule JSON
+            'dashboard.greeting.schedule',
         ];
 
         return SiteSetting::whereIn('key', $keys)->pluck('value', 'key')->all();
     }
 
-    public function settings(): JsonResponse { return response()->json(SiteSetting::orderBy('key')->get()); }
-    public function saveSetting(Request $request, string $key): JsonResponse { abort_unless(preg_match('/^[A-Za-z0-9._-]+$/', $key) === 1, 422); $data=$request->validate(['value'=>['nullable','string','max:10000']]); $setting=SiteSetting::updateOrCreate(['key'=>$key],['value'=>$data['value'] ?? null]); self::flushHomepageCache(); return response()->json($setting); }
-    public function pages(): JsonResponse { return response()->json(PageContent::orderBy('slug')->get()); }
-    public function savePage(Request $request, string $slug): JsonResponse { $data=$request->validate(['title'=>['nullable','string','max:200'],'content'=>['nullable','string','max:50000'],'seo_title'=>['nullable','string','max:200'],'seo_description'=>['nullable','string','max:500']]); return response()->json(PageContent::updateOrCreate(['slug'=>$slug],$data)); }
-    public function articles(): JsonResponse { return response()->json(Article::latest()->paginate(25)); }
-    public function saveArticle(Request $request, Article $article = null): JsonResponse { $data=$request->validate(['title'=>['required','string','max:200'],'content'=>['required','string'],'status'=>['required','in:draft,published'],'slug'=>['nullable','string','max:220','regex:/^[a-z0-9-]+$/'],'cover_image'=>['nullable','image','mimes:jpg,jpeg,png,webp','max:5120'],'seo_title'=>['nullable','string','max:200'],'seo_description'=>['nullable','string','max:500'],'og_title'=>['nullable','string','max:200'],'og_description'=>['nullable','string','max:500']]); if(empty($data['slug'])) $data['slug']=\Illuminate\Support\Str::slug($data['title']); $slugQuery=Article::where('slug',$data['slug']); if($article) $slugQuery->whereKeyNot($article->getKey()); abort_if($slugQuery->exists(),422,'اسلاگ مقاله تکراری است.'); if($request->hasFile('cover_image')) $data['cover_path']=$request->file('cover_image')->store('media','public'); unset($data['cover_image']); if($article){$article->update($data);return response()->json($article->fresh());} return response()->json(Article::create($data),201); }
-    public function deleteArticle(Article $article): JsonResponse { $article->delete(); return response()->json(['message'=>'مقاله حذف شد.']); }
-    public function media(Request $request): JsonResponse { $request->validate(['file'=>['required','file','mimes:jpg,jpeg,png,webp,pdf,svg','max:10240']]); $file=$request->file('file'); return response()->json(Media::create(['path'=>$file->store('media','public'),'original_name'=>$file->getClientOriginalName(),'mime_type'=>$file->getMimeType(),'file_size'=>$file->getSize()]),201); }
-    public function mediaList(): JsonResponse { return response()->json(Media::orderByDesc('created_at')->get()); }
+    public function settings(): JsonResponse
+    {
+        return response()->json(SiteSetting::orderBy('key')->get());
+    }
+
+    public function saveSetting(Request $request, string $key): JsonResponse
+    {
+        abort_unless(preg_match('/^[A-Za-z0-9._-]+$/', $key) === 1, 422);
+        $data = $request->validate(['value' => ['nullable', 'string', 'max:10000']]);
+        $setting = SiteSetting::updateOrCreate(['key' => $key], ['value' => $data['value'] ?? null]);
+        self::flushHomepageCache();
+
+        return response()->json($setting);
+    }
+
+    public function pages(): JsonResponse
+    {
+        return response()->json(PageContent::orderBy('slug')->get());
+    }
+
+    public function savePage(Request $request, string $slug): JsonResponse
+    {
+        $data = $request->validate(['title' => ['nullable', 'string', 'max:200'], 'content' => ['nullable', 'string', 'max:50000'], 'seo_title' => ['nullable', 'string', 'max:200'], 'seo_description' => ['nullable', 'string', 'max:500']]);
+
+        return response()->json(PageContent::updateOrCreate(['slug' => $slug], $data));
+    }
+
+    public function articles(): JsonResponse
+    {
+        return response()->json(Article::latest()->paginate(25));
+    }
+
+    public function saveArticle(Request $request, ?Article $article = null): JsonResponse
+    {
+        $data = $request->validate(['title' => ['required', 'string', 'max:200'], 'content' => ['required', 'string'], 'status' => ['required', 'in:draft,published'], 'slug' => ['nullable', 'string', 'max:220', 'regex:/^[a-z0-9-]+$/'], 'cover_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'], 'seo_title' => ['nullable', 'string', 'max:200'], 'seo_description' => ['nullable', 'string', 'max:500'], 'og_title' => ['nullable', 'string', 'max:200'], 'og_description' => ['nullable', 'string', 'max:500']]);
+        if (empty($data['slug'])) {
+            $data['slug'] = Str::slug($data['title']);
+        } $slugQuery = Article::where('slug', $data['slug']);
+        if ($article) {
+            $slugQuery->whereKeyNot($article->getKey());
+        } abort_if($slugQuery->exists(), 422, 'اسلاگ مقاله تکراری است.');
+        if ($request->hasFile('cover_image')) {
+            $data['cover_path'] = $request->file('cover_image')->store('media', 'public');
+        } unset($data['cover_image']);
+        if ($article) {
+            $article->update($data);
+
+            return response()->json($article->fresh());
+        }
+
+return response()->json(Article::create($data), 201);
+    }
+
+    public function deleteArticle(Article $article): JsonResponse
+    {
+        $article->delete();
+
+        return response()->json(['message' => 'مقاله حذف شد.']);
+    }
+
+    public function media(Request $request): JsonResponse
+    {
+        $request->validate(['file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf,svg', 'max:10240']]);
+        $file = $request->file('file');
+
+        return response()->json(Media::create(['path' => $file->store('media', 'public'), 'original_name' => $file->getClientOriginalName(), 'mime_type' => $file->getMimeType(), 'file_size' => $file->getSize()]), 201);
+    }
+
+    public function mediaList(): JsonResponse
+    {
+        return response()->json(Media::orderByDesc('created_at')->get());
+    }
 
     public function health(): JsonResponse
     {
@@ -189,8 +256,13 @@ class AdminController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $query = DB::table('audit_events')->orderByDesc('id');
-        if (! empty($data['event'])) $query->where('event', $data['event']);
-        if (! empty($data['subject_type'])) $query->where('subject_type', $data['subject_type']);
+        if (! empty($data['event'])) {
+            $query->where('event', $data['event']);
+        }
+        if (! empty($data['subject_type'])) {
+            $query->where('subject_type', $data['subject_type']);
+        }
+
         return response()->json($query->paginate(50));
     }
 
@@ -242,6 +314,7 @@ class AdminController extends Controller
             }
             $user->roles()->sync($roleIds->values());
         }
+
         return response()->json($user->fresh('roles'));
     }
 
@@ -252,6 +325,7 @@ class AdminController extends Controller
             'moderation_note' => ['nullable', 'string', 'max:1000'],
         ]);
         $business->update($data);
+
         return response()->json($business->fresh('owner:id,phone'));
     }
 
@@ -259,6 +333,7 @@ class AdminController extends Controller
     {
         $data = $request->validate(['is_published' => ['required', 'boolean']]);
         $showcase->update($data);
+
         return response()->json($showcase->fresh('business:id,name'));
     }
 
@@ -269,6 +344,7 @@ class AdminController extends Controller
             'admin_note' => ['nullable', 'string', 'max:1000'],
         ]);
         $advertisement->update($data);
+
         return response()->json($advertisement->fresh('business:id,name'));
     }
 }

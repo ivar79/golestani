@@ -74,6 +74,10 @@ export const getPublicBusiness = (slug: string) =>
 export const getPublicShowcases = (slug: string) =>
   api.get<Showcase[]>(`/public/businesses/${slug}/showcases`).then((r) => r.data);
 
+/** Owner showcase list (Phase 5 panel). */
+export const getBusinessShowcases = (businessId: number) =>
+  api.get<Showcase[]>(`/businesses/${businessId}/showcases`).then((r) => r.data);
+
 export const uploadShowcase = (businessId: number, data: FormData) =>
   api.post<Showcase>(`/businesses/${businessId}/showcases`, data, {
     headers: { "Content-Type": "multipart/form-data" },

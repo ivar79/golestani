@@ -172,26 +172,25 @@ export default function LocationSearch({
   // in flight. `requestedSeq` tracks the effect schedule without setState.
   const searching = !tooShort && inflightSeq === requestedSeq && requestedSeq > 0;
 
+  // Runs a search immediately (Enter / button). Extracted so the wrapper is
+  // NOT a <form>: LocationSearch is embedded inside the dashboard's own
+  // <form> and HTML forbids nested forms (hydration error).
+  const submitQuery = () => {
+    const q = normalizeWs(query);
+    if (q.length < MIN_CHARS) return;
+    const seq = ++seqRef.current;
+    setInflightSeq(seq);
+    void runSearch(q).then((merged) => {
+      if (seq !== seqRef.current) return;
+      setRows(merged);
+      if (inflightSeq === seq) setInflightSeq(null);
+      setOpen(true);
+    });
+  };
+
   return (
     <div ref={rootRef} className="relative w-full">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          // Enter submits immediately (the debounce effect also covers it).
-          const q = normalizeWs(query);
-          if (q.length >= MIN_CHARS) {
-            const seq = ++seqRef.current;
-            setInflightSeq(seq);
-            void runSearch(q).then((merged) => {
-              if (seq !== seqRef.current) return;
-              setRows(merged);
-              if (inflightSeq === seq) setInflightSeq(null);
-              setOpen(true);
-            });
-          }
-        }}
-        className="flex items-stretch gap-2"
-      >
+      <div className="flex items-stretch gap-2" role="search">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ik-muted" />
           <input
@@ -201,14 +200,21 @@ export default function LocationSearch({
             disabled={disabled}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => rows && rows.length > 0 && setOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitQuery();
+              }
+            }}
             placeholder="جست‌وجوی شهر یا آدرس… (مثلاً شاهین‌شهر)"
             aria-label="جست‌وجوی شهر یا آدرس برای تعیین موقعیت"
             className="ik-field w-full rounded-xl border border-ik-border bg-ik-wash py-2.5 pr-9 pl-3 text-sm text-ik-text outline-none transition-colors placeholder:text-ik-muted focus:border-ik-accent disabled:opacity-50"
           />
         </div>
         <button
-          type="submit"
+          type="button"
           disabled={disabled || searching || normalizeWs(query).length < MIN_CHARS}
+          onClick={submitQuery}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-ik-accent/30 bg-ik-accent/10 px-4 py-2 text-xs font-semibold text-ik-accent transition-colors hover:bg-ik-accent/20 disabled:opacity-50"
           title="جست‌وجو"
         >
@@ -219,7 +225,7 @@ export default function LocationSearch({
           )}
           <span>{searching ? "در حال جست‌وجو…" : "جست‌وجو"}</span>
         </button>
-      </form>
+      </div>
 
       {unavailable && (
         <p className="mt-1.5 px-1 text-[11px] text-amber-600">

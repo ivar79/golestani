@@ -5,15 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Subscription\SubscriptionRequest;
 use App\Models\Business;
+use App\Models\InternalNotification;
 use App\Models\Plan;
 use App\Models\Subscription;
-use App\Models\InternalNotification;
 use App\Services\FeatureGate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SubscriptionController extends Controller
 {
@@ -89,6 +89,8 @@ class SubscriptionController extends Controller
             'duration_days' => ['required', 'integer', 'min:1'],
             'features' => ['nullable', 'array'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            // Upgrade/downgrade order (payment era). Null = fall back to price.
+            'tier' => ['nullable', 'integer', 'min:0', 'max:65535'],
             'is_featured' => ['sometimes', 'boolean'],
             'is_public' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
@@ -112,6 +114,7 @@ class SubscriptionController extends Controller
             'duration_days' => ['sometimes', 'integer', 'min:1'],
             'features' => ['sometimes', 'nullable', 'array'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:65535'],
+            'tier' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:65535'],
             'is_featured' => ['sometimes', 'boolean'],
             'is_public' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
@@ -198,7 +201,11 @@ class SubscriptionController extends Controller
 
         if ($request->hasFile('receipt')) {
             $file = $request->file('receipt');
-            $data['receipt_path'] = $file->store('subscriptions/receipts', 'public');
+            // PHASE 5 security: receipts are confidential financial documents —
+            // they live on the PRIVATE receipts disk (outside the public disk
+            // and outside any storage:link) and are served ONLY through the
+            // authorized download endpoint below. No public URL ever exists.
+            $data['receipt_path'] = $file->store('receipts', 'receipts');
             $data['receipt_name'] = $file->getClientOriginalName();
             $data['receipt_mime'] = $file->getMimeType();
         }
@@ -253,6 +260,17 @@ class SubscriptionController extends Controller
             $data['start_date'] = Carbon::today();
             $data['end_date'] = Carbon::today()->addDays($plan->duration_days);
 
+            // TIME LIFECYCLE — timestamp source of truth (same contract as
+            // the online-payment activation). started_at = the exact
+            // activation moment; expires_at = started_at + plan duration.
+            // Remaining time is always derived (expires_at − now) — FeatureGate
+            // checks expires_at, never a stale `active` flag alone.
+            $now = Carbon::now();
+            $subscription->forceFill([
+                'started_at' => $now,
+                'expires_at' => $now->copy()->addDays((int) $plan->duration_days),
+            ])->save();
+
             // Single-active invariant: supersede other active subscriptions.
             if (FeatureGate::policy('supersede_on_activation', true)) {
                 $subscription->business->subscriptions()
@@ -291,12 +309,58 @@ class SubscriptionController extends Controller
         return response()->json($notification->fresh());
     }
 
+    /**
+     * Authorized receipt download. Receipts live on the PRIVATE receipts
+     * disk: the legacy public path (and any stale public file left behind
+     * by a failed transfer) can NEVER satisfy this download — both disks are
+     * checked so a partially migrated row cannot silently leak the file.
+     * Missing files fail gracefully with 404 (never a 500).
+     */
     public function receipt(Request $request, Subscription $subscription)
     {
         abort_unless($request->user()?->hasRole('admin') || $subscription->business?->user_id === $request->user()?->id, 403);
-        abort_unless($subscription->receipt_path && Storage::disk('public')->exists($subscription->receipt_path), 404);
+        abort_unless((bool) $subscription->receipt_path, 404);
+
+        // A migrated row stores a receipts/… path; a not-yet-migrated legacy
+        // row may still point at the public disk. Either way the OTHER disk
+        // must not hold the file anymore (the transfer command deletes the
+        // public copy after a verified copy).
+        if (str_starts_with((string) $subscription->receipt_path, 'receipts/')) {
+            abort_if(Storage::disk('public')->exists($subscription->receipt_path), 403, 'فایل رسید در وضعیت انتقال ناقص است.');
+            abort_unless(Storage::disk('receipts')->exists($subscription->receipt_path), 404);
+
+            return Storage::disk('receipts')->download($subscription->receipt_path, $subscription->receipt_name ?: 'receipt');
+        }
+
+        // Legacy pre-migration path: still served until `receipts:move-to-private` runs.
+        abort_unless(Storage::disk('public')->exists($subscription->receipt_path), 404);
 
         return Storage::disk('public')->download($subscription->receipt_path, $subscription->receipt_name ?: 'receipt');
+    }
+
+    /**
+     * PHASE 6: admin subscription management. Filterable, paginated list
+     * with the plan + business context the moderation UI needs (including
+     * whether a receipt file exists so admins know what to review).
+     */
+    public function adminIndex(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->hasRole('admin'), 403);
+
+        $data = $request->validate([
+            'status' => ['nullable', 'in:pending_receipt,active,rejected,expired,scheduled'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $query = Subscription::with(['plan:id,name,price,currency', 'business:id,name,slug'])
+            ->latest();
+        if (! empty($data['status'])) {
+            $query->where('status', $data['status']);
+        }
+
+        return response()->json($query->paginate(25)->through(fn (Subscription $s) => $s->toArray() + [
+            'has_receipt' => (bool) $s->receipt_path,
+        ]));
     }
 
     /** Revenue reads the money SNAPSHOT — plan price edits never rewrite history. */

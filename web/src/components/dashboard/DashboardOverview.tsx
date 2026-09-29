@@ -1,29 +1,38 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Sparkles,
   CheckCircle2,
   Clock,
   AlertTriangle,
-  MapPin,
   QrCode,
-  Globe,
   ExternalLink,
   ChevronLeft,
-  Camera,
   Layers,
   ArrowUpRight,
-  TrendingUp,
 } from "lucide-react";
 import { statusLabel, badgeLabel, type Phase2Business } from "@/lib/phase2";
-import { getQrUrl } from "@/lib/businesses";
+import {
+  DEFAULT_GREETING_SCHEDULE,
+  GREETING_SCHEDULE_KEY,
+  parseGreetingSchedule,
+  resolveGreetingText,
+  type GreetingSchedule,
+} from "@/lib/greeting";
+import { startGreetingTicker, createDomGreetingTickerHost } from "@/lib/greetingTicker";
+import { API_URL } from "@/lib/api";
 import type { DashboardTab } from "./DashboardSidebar";
 
 interface DashboardOverviewProps {
   business: Phase2Business | null;
   completionRate: number;
-  userPhone?: string;
+  /**
+   * Username claimed via the one-time picker. non-null means the backend
+   * accepted and stored it (uniqueness + format rules) — it is a registered
+   * handle, NOT an identity-verification badge and is never shown as one.
+   */
+  username?: string | null;
   hasLocation: boolean;
   hasImages: boolean;
   imagesCount: number;
@@ -35,7 +44,7 @@ interface DashboardOverviewProps {
 export function DashboardOverview({
   business,
   completionRate,
-  userPhone,
+  username,
   hasLocation,
   hasImages,
   imagesCount,
@@ -43,14 +52,60 @@ export function DashboardOverview({
   onNavigateTab,
   onOpenQrModal,
 }: DashboardOverviewProps) {
-  // Current Persian Greeting based on time
-  const now = new Date();
-  const hours = now.getHours();
-  let greeting = "روز بخیر";
-  if (hours < 11) greeting = "صبح بخیر";
-  else if (hours < 16) greeting = "ظهر بخیر";
-  else if (hours < 20) greeting = "عصر بخیر";
-  else greeting = "شب بخیر";
+  // ─── Smart Greeting (hydration-safe + live) ─────────────────────────
+  // The greeting depends on wall-clock time, so it is NEVER computed during
+  // render on the server. SSR renders the neutral placeholder; after mount
+  // the client resolves it from the schedule (timezone from the CMS setting,
+  // default Asia/Tehran) and re-checks on: the initial tick, a minute-aligned
+  // 60s chain while visible, and every visibility/focus wake — so crossing a
+  // slot boundary or returning from sleep/background updates the text
+  // without waiting for the next interval.
+  const [schedule, setSchedule] = useState<GreetingSchedule>(DEFAULT_GREETING_SCHEDULE);
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const ticker = startGreetingTicker({
+      onTick: () => setNow(new Date()),
+      host: createDomGreetingTickerHost(window, document),
+    });
+    return () => ticker.stop(); // full cleanup: timers + both listeners
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${(API_URL ?? "").replace(/\/$/, "")}/public/homepage`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload: Record<string, string> | null) => {
+        if (!cancelled && payload?.[GREETING_SCHEDULE_KEY]) {
+          const { schedule: next, error } = parseGreetingSchedule(payload[GREETING_SCHEDULE_KEY]);
+          setSchedule(next);
+          if (error) {
+            // Invalid stored config: keep running on the repaired default,
+            // but never swallow the problem silently.
+            console.warn("[greeting] invalid stored schedule, using default:", error);
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        // Fetch failure must not crash the dashboard; keep the default
+        // schedule and make the failure diagnosable in dev tools.
+        console.warn("[greeting] homepage CMS fetch failed, keeping default schedule:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const greeting = useMemo(
+    () => (now ? resolveGreetingText(now, schedule) : null),
+    [now, schedule],
+  );
+
+  // Name precedence: business name → verified/registered username → generic.
+  // Username is shown only as supplementary info in parentheses; it is a
+  // registered handle, not an identity-verification status.
+  const displayName = business?.name?.trim() || (username ? `@${username}` : null);
+  const usernameSuffix = business?.name?.trim() && username ? ` (@${username})` : "";
 
   const status = business?.status || "draft";
 
@@ -75,7 +130,9 @@ export function DashboardOverview({
             </div>
 
             <h1 className="text-xl sm:text-3xl font-black text-ik-text tracking-tight">
-              {greeting}، {business ? business.name : "کاربر گرامی"} 👋
+              {greeting
+                ? `${greeting}، ${displayName ?? "کاربر گرامی"}${usernameSuffix} 👋`
+                : "پیش‌خوان کسب‌وکار"}
             </h1>
 
             <p className="text-xs sm:text-sm text-ik-muted max-w-xl leading-relaxed">

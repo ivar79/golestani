@@ -30,6 +30,11 @@ class EditorPlanSeeder extends Seeder
                 'currency' => 'IRR',
                 'duration_days' => 30,
                 'sort_order' => 1,
+                // Difficulty LEVEL, not billing period: plans sharing a tier are
+                // durations/SKUs of the same level, so re-buying one is a
+                // RENEWAL rather than an upgrade. Without it the payment
+                // classifier has to fall back to comparing prices.
+                'tier' => 1,
                 'is_public' => true,
                 'is_featured' => false,
                 'is_active' => true,
@@ -56,6 +61,7 @@ class EditorPlanSeeder extends Seeder
                 'currency' => 'IRR',
                 'duration_days' => 30,
                 'sort_order' => 2,
+                'tier' => 2,
                 'is_public' => true,
                 'is_featured' => true,
                 'is_active' => true,

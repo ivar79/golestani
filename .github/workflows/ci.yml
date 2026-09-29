@@ -90,6 +90,14 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      - name: Lint
+        run: npx eslint src
+
+      # The layered card editor's domain/engine suites live here. They were
+      # previously unguarded, which let a broken assertion sit on main.
+      - name: Frontend unit tests (vitest)
+        run: npx vitest run
+
       - name: Production build
         env:
           # Server-side fetch during build skips upstream CMS calls when the
@@ -98,5 +106,8 @@ jobs:
           NEXT_PUBLIC_API_URL: https://staging-api.invalid/api
         run: npm run build
 
-      - name: Frontend safety tests
-        run: node --test tests/phase2-safety.test.cjs
+      # Every contract suite, not just one — these assert cross-file invariants
+      # (entitlement contract, CSS contract, phase gates) that plain type checks
+      # cannot see.
+      - name: Frontend contract tests
+        run: node --test tests/*.test.cjs

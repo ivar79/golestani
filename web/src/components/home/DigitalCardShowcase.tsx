@@ -1,5 +1,4 @@
-"use client";
-import { cms, cmsList, useHomepageContent } from "@/lib/homepage";
+import { cms, cmsList, type HomepageContent } from "@/lib/homepageContent";
 import Link from "next/link";
 import HomeIcon from "./HomeIcon";
 
@@ -7,8 +6,8 @@ type ShowcaseCard = { title: string; subtitle: string };
 
 const FALLBACK_CARDS: ShowcaseCard[] = [];
 
-export default function DigitalCardShowcase() {
-  const content = useHomepageContent();
+// Phase 3.5 perf: Server Component — محتوا به‌صورت prop از صفحهٔ اصلی می‌آید.
+export default function DigitalCardShowcase({ content }: { content: HomepageContent }) {
   const title = cms(content, "showcase.title");
   const linkLabel = cms(content, "showcase.link");
   const linkHref = cms(content, "showcase.link_href") || "/search";

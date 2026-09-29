@@ -6,14 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Business\BusinessCardRequest;
 use App\Models\Business;
 use App\Models\BusinessCard;
+use App\Services\CardDesignValidator;
 use App\Services\FeatureGate;
 use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Card editor endpoints — the backend is the SINGLE authority on what a
@@ -51,6 +52,11 @@ class BusinessCardController extends Controller
     {
         $this->authorizeOwner($request, $business);
         $card = $business->cards()->latest()->first();
+
+        // PHASE 4 (layered editor): a null design_json means the template
+        // renderer governs this card — existing cards are returned verbatim
+        // and stay renderable/exportable exactly as before.
+        abort_unless((bool) $business->cards()->count() || $card === null || app(FeatureGate::class)->allows($business, 'card_editor'), 403);
 
         $created = false;
         if (! $card) {
@@ -149,6 +155,36 @@ class BusinessCardController extends Controller
             }
         }
 
+        // PHASE 4 layered editor document: whitelist-validated, size-capped,
+        // and gated behind the card_editor entitlement. Scalars remain the
+        // columns of record (entitlement/grandfathering contract unchanged).
+        if (array_key_exists('design_json', $data)) {
+            if (! $gate->allows($business, 'card_editor')) {
+                abort(response()->json([
+                    'message' => 'ویرایشگر پیشرفته کارت نیازمند اشتراک فعال است.',
+                    'entitlement_errors' => ['card_editor' => 'locked'],
+                    'entitlements' => $gate->payload($business),
+                ], 403));
+            }
+
+            // Phase 4 capability hardening: layer kinds / limits are
+            // ENTITLEMENT-gated here (the validator stays purely structural —
+            // it answers "is this a well-formed document", never "is this
+            // plan allowed this"). The stored document is the grandfathering
+            // baseline: re-saving it verbatim is always allowed; only GROWTH
+            // beyond the current capability set is blocked.
+            $designErrors = $this->designCapabilityViolations($business, $card, $data['design_json']);
+            if ($designErrors !== []) {
+                abort(response()->json([
+                    'message' => 'سند کارت شامل عناصری است که پلن شما مجاز نمی‌داند.',
+                    'entitlement_errors' => $designErrors,
+                    'entitlements' => $gate->payload($business),
+                ], 403));
+            }
+
+            $card->design_json = app(CardDesignValidator::class)->validate($data['design_json']);
+        }
+
         if (! empty($data['export_format'])) {
             $card->exported_at = Carbon::now();
         }
@@ -243,16 +279,195 @@ class BusinessCardController extends Controller
     }
 
     /**
+     * Phase 4 capability violations for a submitted design document.
+     *
+     * Three entitlements govern the LAYERED document (all from the same
+     * capability map as every other gate — never plan names):
+     *   card_layer_kinds       — list of allowed layer kinds
+     *   max_layers             — int cap on total layers (null = unlimited)
+     *   max_premium_elements   — int cap on premium-kind layers (null = unlimited)
+     *   card_premium_layer_kinds — list of kinds COUNTED as premium elements
+     *
+     * GRANDFATHERING (same contract as ENTITLED_LIST_FIELDS): the STORED
+     * document is the baseline. Re-saving it verbatim is always allowed;
+     * each violation is computed on the GROWTH over the stored state, so a
+     * design saved under a richer plan stays editable (POLICY
+     * expired_card_access=readonly) while any increase is rejected.
+     *
+     * @param  array<string, mixed>  $design  raw client document (pre-validation)
+     * @return array<string, string> machine-readable errors ([] = allowed)
+     */
+    private function designCapabilityViolations(Business $business, BusinessCard $card, array $design): array
+    {
+        $gate = app(FeatureGate::class);
+        $caps = $gate->payload($business)['capabilities'];
+
+        $allowedKinds = (array) ($caps['card_layer_kinds'] ?? []);
+        $premiumKinds = (array) ($caps['card_premium_layer_kinds'] ?? []);
+        $submitted = $this->summarizeDesign($design);
+
+        // Baseline counts from the STORED document (may predate the current
+        // capability configuration — that is exactly what grandfathering is).
+        $baseline = $card->exists && is_array($card->design_json)
+            ? $this->summarizeDesign($card->design_json)
+            : ['counts' => [], 'total' => 0];
+
+        $errors = [];
+
+        // 1. Disallowed layer kinds — only NEW occurrences violate. A stored
+        //    document that already contains a kind the plan no longer grants
+        //    keeps it (re-save), but adding MORE of it is rejected.
+        //    Structurally UNKNOWN kinds ("iframe"…) are skipped here — they
+        //    are a whitelist question, not an entitlement question, and fall
+        //    through to the validator's 422.
+        foreach ($submitted['counts'] as $kind => $count) {
+            if (! in_array($kind, $this->knownLayerKinds(), true)) {
+                continue;
+            }
+            $storedCount = $baseline['counts'][$kind] ?? 0;
+            if ($count > $storedCount && ! in_array($kind, $allowedKinds, true)) {
+                $errors['design_layer_kinds'] = 'locked';
+                break;
+            }
+        }
+
+        // 2. Total layer cap — only growth over the stored total is measured.
+        $maxLayers = array_key_exists('max_layers', $caps) ? $caps['max_layers'] : null;
+        if (is_numeric($maxLayers)
+            && $submitted['total'] > (int) $maxLayers
+            && $submitted['total'] > $baseline['total']) {
+            $errors['max_layers'] = 'limit_reached';
+        }
+
+        // 3. Premium element cap — growth in premium-kind occurrences.
+        if ($premiumKinds !== [] && is_numeric($caps['max_premium_elements'] ?? null)) {
+            $premiumOf = fn (array $s): int => array_sum(array_intersect_key($s['counts'], array_flip($premiumKinds))) + 0;
+            if ($premiumOf($submitted) > (int) $caps['max_premium_elements']
+                && $premiumOf($submitted) > $premiumOf($baseline)) {
+                $errors['max_premium_elements'] = 'limit_reached';
+            }
+        }
+
+        // 4. Typography — the document's font families are the SAME product
+        //    capability as the template font (card_fonts), so a locked font is
+        //    locked in the document too. Grandfathering applies per font: a
+        //    family the STORED document already uses stays re-savable, while
+        //    SWITCHING to a non-entitled one is refused (server-side, so
+        //    flipping client state cannot unlock it).
+        $allowedFonts = (array) ($caps['card_fonts'] ?? []);
+        if ($allowedFonts !== []) {
+            $storedFonts = $this->designFonts(is_array($card->design_json) ? $card->design_json : []);
+            foreach ($this->designFonts($design) as $font) {
+                if (! in_array($font, $allowedFonts, true) && ! in_array($font, $storedFonts, true)) {
+                    $errors['design_fonts'] = 'locked';
+                    break;
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Distinct text-layer font families used by a design document.
+     * Applies the validator's own default (vazir) so omitting the field cannot
+     * be used to slip past the card_fonts capability.
+     *
+     * @return list<string>
+     */
+    private function designFonts(array $design): array
+    {
+        $fonts = [];
+        foreach ((array) ($design['layers'] ?? []) as $layer) {
+            if (! is_array($layer) || ($layer['kind'] ?? null) !== 'text') {
+                continue;
+            }
+            $font = (string) ($layer['fontFamily'] ?? 'vazir');
+            if ($font !== '') {
+                $fonts[$font] = true;
+            }
+        }
+
+        return array_keys($fonts);
+    }
+
+    /**
+     * Kind-occurrence summary of a design document used for capability
+     * accounting. Accepts raw client input AND stored documents; unknown
+     * kinds are counted as themselves (the structural validator will reject
+     * them separately — counting must never crash here).
+     *
+     * @return array{counts: array<string, int>, total: int}
+     */
+    private function summarizeDesign(array $design): array
+    {
+        $counts = [];
+        $total = 0;
+        foreach ((array) ($design['layers'] ?? []) as $layer) {
+            if (! is_array($layer)) {
+                continue;
+            }
+            $kind = (string) ($layer['kind'] ?? '');
+            if ($kind === '') {
+                continue;
+            }
+            $counts[$kind] = ($counts[$kind] ?? 0) + 1;
+            $total++;
+        }
+
+        return ['counts' => $counts, 'total' => $total];
+    }
+
+    /**
      * Does the stored design use values the business is NO LONGER entitled
      * to (only reachable via grandfathering)? Such a design is "premium
      * locked" — export of it is governed by expired_card_access policy.
      */
     private function designHasLockedValues(Business $business, BusinessCard $card): bool
     {
+        $gate = app(FeatureGate::class);
+
         foreach (self::ENTITLED_LIST_FIELDS as $field => $capability) {
             $stored = $card->{$field};
-            if ($stored !== null && ! app(FeatureGate::class)->allowsValue($business, $capability, (string) $stored)) {
+            if ($stored !== null && ! $gate->allowsValue($business, $capability, (string) $stored)) {
                 return true;
+            }
+        }
+
+        // The LAYERED document counts as well. Without this, a lapsed subscriber
+        // whose design only uses premium layer kinds (or more premium elements
+        // than the plan allows) would still be able to export it under POLICY
+        // expired_card_access=readonly — the document is exactly what that
+        // policy is meant to protect.
+        if (is_array($card->design_json)) {
+            $caps = $gate->payload($business)['capabilities'];
+            $counts = $this->summarizeDesign($card->design_json)['counts'];
+            $allowedKinds = (array) ($caps['card_layer_kinds'] ?? []);
+
+            foreach (array_keys($counts) as $kind) {
+                if (! in_array($kind, $this->knownLayerKinds(), true)) {
+                    continue; // structural, not entitlement — the validator owns it
+                }
+                if (! in_array($kind, $allowedKinds, true)) {
+                    return true;
+                }
+            }
+
+            $premiumKinds = (array) ($caps['card_premium_layer_kinds'] ?? []);
+            if ($premiumKinds !== [] && is_numeric($caps['max_premium_elements'] ?? null)) {
+                $premium = array_sum(array_intersect_key($counts, array_flip($premiumKinds)));
+                if ($premium > (int) $caps['max_premium_elements']) {
+                    return true;
+                }
+            }
+
+            $allowedFonts = (array) ($caps['card_fonts'] ?? []);
+            if ($allowedFonts !== []) {
+                foreach ($this->designFonts($card->design_json) as $font) {
+                    if (! in_array($font, $allowedFonts, true)) {
+                        return true;
+                    }
+                }
             }
         }
 
@@ -278,6 +493,15 @@ class BusinessCardController extends Controller
         }
         $locked['print_file'] = ! $gate->allows($business, 'print_file');
         $locked['max_cards'] = $gate->limit($business, 'max_cards');
+        // Phase 4 layered-document capability mirrors (UX only).
+        $locked['layer_kinds'] = array_values(array_intersect(
+            $this->knownLayerKinds(),
+            (array) ($caps['card_layer_kinds'] ?? [])
+        ));
+        $locked['max_layers'] = $gate->limit($business, 'max_layers');
+        $locked['max_premium_elements'] = array_key_exists('max_premium_elements', $caps)
+            ? (is_numeric($caps['max_premium_elements']) ? (int) $caps['max_premium_elements'] : null)
+            : null;
         $locked['grandfathered'] = [
             'template' => $card->exists ? $card->template : null,
             'theme' => $card->exists ? $card->theme : null,
@@ -287,6 +511,12 @@ class BusinessCardController extends Controller
         return $locked;
     }
 
+    /** Full universe of layer kinds (editor catalog). */
+    private function knownLayerKinds(): array
+    {
+        return ['text', 'image', 'qr', 'badge', 'shape', 'path'];
+    }
+
     /** Full universe of values per list capability (editor catalogs). */
     private function knownValues(string $capability): array
     {
@@ -294,7 +524,7 @@ class BusinessCardController extends Controller
             'card_templates' => ['classic', 'midnight', 'emerald', 'local', 'creative'],
             'card_themes' => ['navy', 'emerald', 'warm'],
             'card_fonts' => ['sans', 'vazir', 'serif'],
-            'card_exports' => ['png', 'jpg'],
+            'card_exports' => ['png', 'jpg', 'svg', 'pdf'],
             default => [],
         };
     }

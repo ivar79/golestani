@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Business;
 use App\Models\Advertisement;
+use App\Models\InternalNotification;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
@@ -20,6 +20,7 @@ class PhaseFiveTest extends TestCase
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('business_owner');
+
         return $user;
     }
 
@@ -37,6 +38,8 @@ class PhaseFiveTest extends TestCase
 
     public function test_owner_can_upload_a_valid_receipt_file(): void
     {
+        // Receipts are confidential — they are stored on the PRIVATE disk.
+        Storage::fake('receipts');
         Storage::fake('public');
         $owner = $this->owner();
         $business = $owner->businesses()->create(['name' => 'Receipt Demo', 'slug' => 'receipt-demo', 'status' => 'approved']);
@@ -49,7 +52,9 @@ class PhaseFiveTest extends TestCase
         ])->assertCreated();
 
         $this->assertNotNull($response->json('receipt_path'));
-        Storage::disk('public')->assertExists($response->json('receipt_path'));
+        // PRIVATE disk — never the public one (public URL must not exist).
+        Storage::disk('receipts')->assertExists($response->json('receipt_path'));
+        Storage::disk('public')->assertMissing($response->json('receipt_path'));
 
         $this->actingAs($owner)->get('/api/subscriptions/'.$response->json('id').'/receipt')->assertOk();
     }
@@ -159,7 +164,7 @@ class PhaseFiveTest extends TestCase
     public function test_owner_can_read_and_mark_notifications_as_read(): void
     {
         $owner = $this->owner();
-        $notification = \App\Models\InternalNotification::create([
+        $notification = InternalNotification::create([
             'user_id' => $owner->id,
             'type' => 'subscription_expired',
             'title' => 'Expired',

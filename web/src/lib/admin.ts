@@ -224,6 +224,48 @@ export async function updateAdminPlan(id: number, data: Partial<AdminPlan>) {
   return (await api.put<AdminPlan>(`/admin/plans/${id}`, data)).data;
 }
 
+export type AdminSubscription = {
+  id: number;
+  status: "pending_receipt" | "active" | "rejected" | "expired" | "scheduled";
+  plan_name?: string | null;
+  price_amount?: number | null;
+  price_currency?: string | null;
+  duration_days?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  receipt_reference?: string | null;
+  has_receipt?: boolean;
+  admin_note?: string | null;
+  created_at?: string;
+  plan?: { id: number; name: string } | null;
+  business?: { id: number; name: string; slug: string } | null;
+};
+
+export async function getAdminSubscriptions(status?: AdminSubscription["status"], page = 1) {
+  const params = new URLSearchParams({ page: String(page) });
+  if (status) params.set("status", status);
+  return (await api.get<{ data: AdminSubscription[]; current_page: number; last_page: number; total: number }>(`/admin/subscriptions?${params}`)).data;
+}
+
+export async function downloadAdminSubscriptionReceipt(id: number): Promise<void> {
+  const response = await api.get(`/subscriptions/${id}/receipt`, { responseType: "blob" });
+  const disposition: string = response.headers?.["content-disposition"] ?? "";
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const asciiMatch = /filename="?([^";]+)"?/i.exec(disposition);
+  let filename = "receipt";
+  if (utf8Match?.[1]) filename = decodeURIComponent(utf8Match[1]);
+  else if (asciiMatch?.[1]) filename = asciiMatch[1];
+  const blob: Blob = response.data;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename.replace(/[/\\?%*:|"<>]/g, "-");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getAdminRevenueReport() {
   return (await api.get<{ subscriptions: { total: number; pending: number; active: number; revenue: number } }>("/admin/reports/revenue")).data;
 }

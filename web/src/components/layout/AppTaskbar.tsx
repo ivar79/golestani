@@ -304,7 +304,7 @@ export default function AppTaskbar() {
       </button>
 
       {userMenuOpen && (
-        <div className="drawer-panel absolute left-0 top-[calc(100%+10px)] z-[70] w-60 rounded-2xl border border-white/10 bg-[#070e1c]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.65),0_0_30px_rgba(16,185,129,0.1)] backdrop-blur-2xl">
+        <div className="animate-[drawer-slide_0.25s_ease-out] absolute left-0 top-[calc(100%+10px)] z-[70] w-60 rounded-2xl border border-white/10 bg-[#070e1c]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.65),0_0_30px_rgba(16,185,129,0.1)] backdrop-blur-2xl">
           {/* Header Info inside Dropdown */}
           <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-white/5 mb-1">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
@@ -379,7 +379,7 @@ export default function AppTaskbar() {
       )}
     </div>
   ) : (
-    <Link href="/login" className="btn btn-primary btn-sm hidden sm:inline-flex">
+    <Link href="/login" className="group inline-flex hidden cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-transparent px-4 py-2 text-sm font-semibold leading-none text-white transition-[transform,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [background-image:linear-gradient(120deg,#0d9488_0%,#0891b2_100%)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(2,6,23,0.4),0_10px_24px_-12px_rgba(13,148,136,0.55),0_0_20px_-8px_rgba(8,145,178,0.35)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(16,185,129,0.35)] hover:-translate-y-px [background-image:linear-gradient(120deg,#0f766e_0%,#0e7490_100%)] hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.3),0_2px_4px_rgba(2,6,23,0.35),0_16px_36px_-14px_rgba(13,148,136,0.65),0_0_30px_-8px_rgba(8,145,178,0.5)] active:translate-y-0 active:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(2,6,23,0.4),0_6px_18px_-10px_rgba(16,185,129,0.5)] disabled:cursor-not-allowed disabled:opacity-55 disabled:transform-none disabled:[box-shadow:none] sm:inline-flex">
       {loginLabel}
     </Link>
   );
@@ -445,18 +445,18 @@ export default function AppTaskbar() {
               setMenuOpen((v) => !v);
               setSearchOpen(false);
             }}
-            className="topbar-bob flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-night/80 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-xl transition hover:bg-white/5"
+            className="animate-[topbar-bob_2.4s_ease-in-out_infinite] flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-night/80 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-xl transition hover:bg-white/5"
             style={{ opacity: toggleVisible ? 1 : 0, pointerEvents: toggleVisible ? "auto" : "none" }}
           >
             <ChevronDown />
           </button>
           {menuOpen && (
-            <div className="drawer-panel absolute left-1/2 mt-3 w-64 -translate-x-1/2 overflow-hidden rounded-2xl border border-white/10 bg-night/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="animate-[drawer-slide_0.25s_ease-out] absolute left-1/2 mt-3 w-64 -translate-x-1/2 overflow-hidden rounded-2xl border border-white/10 bg-night/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
               {navList("block rounded-xl px-4 py-3 text-sm text-surface-variant transition hover:bg-white/5 hover:text-white", closeAll)}
               {user ? (
                 <>
                   {panel && (
-                    <Link href={panel} onClick={closeAll} className="btn btn-secondary btn-md mt-2 block w-full">
+                    <Link href={panel} onClick={closeAll} className="inline-flex mt-2 block w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/12 bg-white/[0.06] px-[0.875rem] py-3 text-[0.9375rem] font-semibold leading-none text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-[8px] transition-[transform,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:border-white/20 hover:bg-white/[0.12] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] active:translate-y-0 focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(16,185,129,0.35)] disabled:cursor-not-allowed disabled:opacity-55 disabled:transform-none disabled:[box-shadow:none]">
                       پنل کاربری
                     </Link>
                   )}
@@ -469,7 +469,7 @@ export default function AppTaskbar() {
                   </button>
                 </>
               ) : (
-                <Link href="/login" onClick={closeAll} className="btn btn-primary btn-md mt-2 block w-full">
+                <Link href="/login" onClick={closeAll} className="group inline-flex mt-2 block w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-transparent px-[0.875rem] py-3 text-[0.9375rem] font-semibold leading-none text-white transition-[transform,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [background-image:linear-gradient(120deg,#0d9488_0%,#0891b2_100%)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(2,6,23,0.4),0_10px_24px_-12px_rgba(13,148,136,0.55),0_0_20px_-8px_rgba(8,145,178,0.35)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(16,185,129,0.35)] hover:-translate-y-px [background-image:linear-gradient(120deg,#0f766e_0%,#0e7490_100%)] hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.3),0_2px_4px_rgba(2,6,23,0.35),0_16px_36px_-14px_rgba(13,148,136,0.65),0_0_30px_-8px_rgba(8,145,178,0.5)] active:translate-y-0 active:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(2,6,23,0.4),0_6px_18px_-10px_rgba(16,185,129,0.5)] disabled:cursor-not-allowed disabled:opacity-55 disabled:transform-none disabled:[box-shadow:none]">
                   {loginLabel}
                 </Link>
               )}
@@ -503,10 +503,10 @@ export default function AppTaskbar() {
 
       {/* Mobile/tablet drawer (slides from LEFT) */}
       {drawerOpen && (
-        <div className="drawer-backdrop fixed inset-0 z-[70] bg-night/70 backdrop-blur-sm xl:hidden" onClick={closeAll}>
+        <div className="animate-[drawer-fade_0.2s_ease-out] fixed inset-0 z-[70] bg-night/70 backdrop-blur-sm xl:hidden" onClick={closeAll}>
           <div
             data-drawer
-            className="drawer-panel fixed inset-y-0 left-0 flex w-[80%] max-w-sm flex-col overflow-y-auto border-r border-white/10 bg-night/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+            className="animate-[drawer-slide_0.25s_ease-out] fixed inset-y-0 left-0 flex w-[80%] max-w-sm flex-col overflow-y-auto border-r border-white/10 bg-night/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between px-2 pt-1">
@@ -578,7 +578,7 @@ export default function AppTaskbar() {
                 </button>
               </div>
             ) : (
-              <Link href="/login" onClick={closeAll} className="btn btn-primary btn-md mt-4 block w-full">
+              <Link href="/login" onClick={closeAll} className="group inline-flex mt-4 block w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-transparent px-[0.875rem] py-3 text-[0.9375rem] font-semibold leading-none text-white transition-[transform,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [background-image:linear-gradient(120deg,#0d9488_0%,#0891b2_100%)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(2,6,23,0.4),0_10px_24px_-12px_rgba(13,148,136,0.55),0_0_20px_-8px_rgba(8,145,178,0.35)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(16,185,129,0.35)] hover:-translate-y-px [background-image:linear-gradient(120deg,#0f766e_0%,#0e7490_100%)] hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.3),0_2px_4px_rgba(2,6,23,0.35),0_16px_36px_-14px_rgba(13,148,136,0.65),0_0_30px_-8px_rgba(8,145,178,0.5)] active:translate-y-0 active:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(2,6,23,0.4),0_6px_18px_-10px_rgba(16,185,129,0.5)] disabled:cursor-not-allowed disabled:opacity-55 disabled:transform-none disabled:[box-shadow:none]">
                 {loginLabel}
               </Link>
             )}

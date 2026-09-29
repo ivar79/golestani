@@ -19,6 +19,11 @@ services:
       # requests (search, facets, ads, tiles) that then queue behind each other
       # and hit the 15s axios timeout. 8 workers serve them concurrently.
       PHP_CLI_SERVER_WORKERS: 8
+      # Redis lives in its own container; inside this one the compose service
+      # name resolves it (127.0.0.1 would point at the API container itself).
+      # Same reason the worker service sets this — without it the health panel
+      # reports Redis as down (connection refused).
+      REDIS_HOST: redis
     env_file:
       - ./api/.env
     command: php artisan serve --host=0.0.0.0 --port=8000

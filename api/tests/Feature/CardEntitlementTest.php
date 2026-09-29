@@ -316,6 +316,107 @@ class CardEntitlementTest extends TestCase
     }
 
     /* ---------------------------------------------------------------
+     | Document fonts are the SAME capability as the template font
+     * --------------------------------------------------------------- */
+
+    /** A minimally valid single-text-layer document using one font family. */
+    private function designUsingFont(string $font): array
+    {
+        return [
+            'version' => 1,
+            'artboard' => ['width' => 1050, 'height' => 600],
+            'background' => '#f6f8fb',
+            'layers' => [[
+                'id' => 'layer-1', 'kind' => 'text',
+                'x' => 48, 'y' => 40, 'width' => 500, 'height' => 60,
+                'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+                'z' => 0, 'color' => '#0b1c33', 'background' => null,
+                'text' => 'متن',
+                'fontSize' => 40, 'fontWeight' => 800, 'align' => 'start',
+                'fontFamily' => $font,
+            ]],
+        ];
+    }
+
+    public function test_locked_document_font_is_rejected_server_side(): void
+    {
+        Storage::fake('card_files');
+        $business = $this->business($this->owner(), 'card-font-free');
+
+        // Free tier grants card_fonts = ['sans','vazir'] — the LAYERED document
+        // must respect the same capability as the template font, so flipping
+        // client state cannot unlock a premium family.
+        $response = $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $this->designUsingFont('serif'),
+        ])->assertStatus(403);
+
+        $this->assertSame('locked', $response->json('entitlement_errors.design_fonts'));
+
+        // An entitled family saves normally.
+        $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $this->designUsingFont('vazir'),
+        ])->assertOk();
+    }
+
+    public function test_stored_document_font_is_grandfathered_for_resave(): void
+    {
+        Storage::fake('card_files');
+        $business = $this->business($this->owner(), 'card-font-grandfather');
+
+        // A document written while the family WAS entitled (e.g. a lapsed plan).
+        $card = $business->cards()->create(['template' => 'classic', 'theme' => 'navy', 'font_size' => 'medium']);
+        $card->forceFill(['design_json' => $this->designUsingFont('serif')])->save();
+
+        // Re-saving it verbatim is always allowed — grandfathering never locks
+        // an owner out of their own existing design.
+        $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $this->designUsingFont('serif'),
+        ])->assertOk();
+    }
+
+    public function test_expired_user_cannot_export_a_design_whose_properties_are_locked(): void
+    {
+        Storage::fake('card_files');
+        $business = $this->business($this->owner(), 'card-premium-export');
+        $this->activate($business); // grants card_fonts incl. serif
+
+        $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $this->designUsingFont('serif'),
+        ])->assertOk();
+
+        $business->subscriptions()->update(['status' => 'expired', 'end_date' => now()->subDay()]);
+
+        // POLICY expired_card_access=readonly must consider the LAYERED document
+        // too: the design only exists because a premium font was entitled, so
+        // exporting it after expiry has to be refused (this was the bug — only
+        // the legacy scalar fields were inspected).
+        $response = $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic', 'export_format' => 'png',
+        ])->assertStatus(403);
+
+        $this->assertSame('locked', $response->json('entitlement_errors.export_design'));
+    }
+
+    public function test_expired_user_can_still_export_a_design_with_only_entitled_properties(): void
+    {
+        Storage::fake('card_files');
+        $business = $this->business($this->owner(), 'card-plain-export');
+        $this->activate($business);
+
+        $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $this->designUsingFont('vazir'),
+        ])->assertOk();
+
+        $business->subscriptions()->update(['status' => 'expired', 'end_date' => now()->subDay()]);
+
+        // Nothing in this design ever required the lapsed plan, so the readonly
+        // export policy must not lock the owner out of their own card.
+        $this->actingAs($business->owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic', 'export_format' => 'png',
+        ])->assertOk();
+    }
+
+    /* ---------------------------------------------------------------
      | Plan edit does not leak into active snapshot (UI parity with backend)
      * --------------------------------------------------------------- */
 

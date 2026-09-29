@@ -39,5 +39,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Payments: the callback must answer JSON in the suite (the browser
+             redirect path is covered by its own dedicated regression test). -->
+        <env name="FRONTEND_URL" value=""/>
     </php>
 </phpunit>

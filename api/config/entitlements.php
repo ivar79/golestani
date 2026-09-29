@@ -36,6 +36,21 @@ return [
         'card_exports' => ['list', 'فرمت‌های خروجی', 'کارت ویزیت', ['png']],
         'print_file' => ['bool', 'نگهداری فایل طرح چاپی', 'کارت ویزیت', false],
 
+        // Phase 4 capability hardening — the LAYERED editor document.
+        // card_layer_kinds: which layer kinds the design document may contain.
+        // card_premium_layer_kinds: kinds that count as PREMIUM elements (each
+        //   occurrence counts toward max_premium_elements). Empty = dormant.
+        // max_layers: total layer cap for one document (null = unlimited).
+        // max_premium_elements: premium-element cap (null = unlimited).
+        // Free-tier values mirror the pre-hardening behaviour exactly: all
+        // kinds allowed, 60 layers (the validator's structural cap), no
+        // premium set, unlimited premium elements. Nothing is restricted
+        // until the Product Owner configures real plan values.
+        'card_layer_kinds' => ['list', 'انواع لایه کارت‌ساز', 'کارت ویزیت', ['text', 'image', 'qr', 'badge', 'shape', 'path']],
+        'card_premium_layer_kinds' => ['list', 'عناصر ویژه کارت‌ساز', 'کارت ویزیت', []],
+        'max_layers' => ['int', 'حداکثر لایه‌های کارت', 'محدودیت‌ها', 60],
+        'max_premium_elements' => ['int', 'حداکثر عناصر ویژه کارت', 'محدودیت‌ها', null],
+
         'max_cards' => ['int', 'حداکثر کارت ویزیت', 'محدودیت‌ها', 1],
         'max_showcases' => ['int', 'حداکثر آیتم ویترین', 'محدودیت‌ها', 0],
         'max_ads' => ['int', 'حداکثر آگهی', 'محدودیت‌ها', 0],
@@ -58,6 +73,10 @@ return [
             'card_fonts' => ['sans', 'vazir'],
             'card_exports' => ['png'],
             'print_file' => false,
+            'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path'],
+            'card_premium_layer_kinds' => [],
+            'max_layers' => 60,
+            'max_premium_elements' => null,
             'max_cards' => 1,
             'max_showcases' => 0,
             'max_ads' => 0,
@@ -80,11 +99,33 @@ return [
         // existing active subscribers.
         'entitlements' => 'snapshot',
 
-        // POLICY [TODO(business)]: upgrade/downgrade timing. Current manual
-        // flow: a new request replaces the old subscription at admin
-        // approval → effective immediately. Options for a future payment
-        // era: immediate | next_billing_cycle | prorated | end_of_period.
-        'plan_change' => 'immediate',
+        // POLICY [decided]: what buying a plan does to the lifetime you
+        // already pay for. This is the ONE declaration of the rule; the
+        // payment service RESOLVES it from here and refuses to run if the
+        // declaration does not describe what it implements (see
+        // PaymentService::assertPlanChangePolicy), so config and behaviour
+        // can never drift apart silently.
+        //
+        //   renewal   extend                 → expires_at + purchased duration
+        //   upgrade   immediate_carry_over   → immediate, remaining time added
+        //   downgrade scheduled_at_expiry    → starts exactly at expires_at
+        //   proration none                   → no monetary proration
+        //
+        // The former scalar value ('immediate') was stale: it described only
+        // upgrades while downgrades have always been scheduled, and nothing
+        // read it.
+        'plan_change' => [
+            'renewal' => 'extend',
+            'upgrade' => 'immediate_carry_over',
+            'downgrade' => 'scheduled_at_expiry',
+            'proration' => 'none',
+
+            // Notes (business-facing, not read by code):
+            //  - downgrade activation is LAZY (`scheduled` → `active` on the
+            //    first read after its start time), never cron-dependent.
+            //  - every activation re-freezes the entitlement snapshot; earlier
+            //    purchases are never rewritten retroactively.
+        ],
 
         // POLICY [TODO(business)]: grace days after end_date. 0 = current
         // behaviour (expired means expired). >0 would extend access after

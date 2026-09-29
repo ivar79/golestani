@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import HomeIcon from "@/components/home/HomeIcon";
 import type { SearchFacets } from "@/lib/businesses";
 import { getAllProvinces, type ProvinceData } from "@/lib/iranGeo";
@@ -72,17 +73,44 @@ export default function SearchFilters({
     onChange({ ...filters, category: filters.category === cat ? null : cat });
   }
 
+  // Single place that closes the picker AND resets the province drill-down.
+  // Used by the X button, backdrop click, Escape, and pickCity.
+  const closeCityPicker = useCallback(() => {
+    setShowCityPicker(false);
+    setSelectedProvince(null);
+  }, []);
+
   function pickCity(cityName: string | null) {
     // Changing the city invalidates the neighborhood filter (different area).
     onChange({ ...filters, city: cityName, neighborhood: null });
-    setShowCityPicker(false);
-    setSelectedProvince(null);
+    closeCityPicker();
   }
 
   function pickNeighborhood(name: string | null) {
     onChange({ ...filters, neighborhood: filters.neighborhood === name ? null : name });
     setShowNeighborhood(false);
   }
+
+  // Lock background scroll while the picker is open. Restores the previous
+  // value on close/unmount so concurrent locks never fight each other.
+  useEffect(() => {
+    if (!showCityPicker) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showCityPicker]);
+
+  // Close the picker with the Escape key while it is open.
+  useEffect(() => {
+    if (!showCityPicker) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCityPicker();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showCityPicker, closeCityPicker]);
 
   return (
     <div className="sticky top-[4.5rem] z-20 flex shrink-0 flex-col gap-4 rounded-t-2xl border-b border-ik-border bg-ik-panel/85 px-4 pb-4 pt-5">
@@ -197,9 +225,19 @@ export default function SearchFilters({
         </div>
       </div>
 
-      {/* Modal / Dialog for Selecting Province & Cities/Villages */}
-      {showCityPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ik-bg/70 p-4">
+      {/* Modal / Dialog for Selecting Province & Cities/Villages.
+          Rendered through createPortal(document.body) so it escapes this
+          sticky panel's stacking context (z-20 + backdrop-blur), which
+          previously trapped the z-50 overlay beneath the page's z-40 header
+          and made it move with the panel's scroll position. */}
+      {showCityPicker &&
+        createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ik-bg/70 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCityPicker();
+          }}
+        >
           <div className="relative w-full max-w-lg rounded-2xl border border-ik-border bg-ik-panel p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-ik-border pb-3">
               <h4 className="flex items-center gap-2 text-sm font-bold text-ik-text">
@@ -210,10 +248,7 @@ export default function SearchFilters({
               </h4>
               <button
                 type="button"
-                onClick={() => {
-                  setShowCityPicker(false);
-                  setSelectedProvince(null);
-                }}
+                onClick={closeCityPicker}
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-ik-muted transition-colors hover:bg-ik-wash hover:text-ik-text"
                 aria-label="بستن"
               >
@@ -271,7 +306,8 @@ export default function SearchFilters({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Filter chips — strip scrolls horizontally; it must NOT bleed past

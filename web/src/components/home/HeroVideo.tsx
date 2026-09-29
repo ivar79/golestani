@@ -1,41 +1,64 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
- * HeroVideo — پس‌زمینهٔ متحرک قهرمان صفحهٔ اصلی (جایگزین hero-1.jpg).
+ * HeroVideo — پس‌زمینهٔ متحرک قهرمان صفحهٔ اصلی.
  *
- * ویدئوی موج ذرات (docs/design/homepage/1.mp4) به‌صورت لوپ بی‌صدا پخش
- * می‌شود و با همان mix-blend-lighten تصویر قبلی ترکیب می‌شود تا ظاهر
- * نهایی عیناً همان حال‌وهوای قبلی باشد — فقط متحرک.
+ * Phase 3.5 perf (baseline + after-driven): Lighthouse نشان داد ویدئوی wave
+ * (≈900KB webm) در حالت موبایل شبیه‌سازی‌شده همزمان با تصویر LCP
+ * (hero-2.jpg) پهنای‌باند می‌گیرد و LCP را به ~۶s می‌راند.
  *
- * - ترتیب source ها استاندارد وب: مرورگر اولین فرمت قابل‌پشتیبانی را
- *   برمی‌دارد (کروم/فایرفاکس/اج → webm سبک‌تر؛ سافاری → mp4).
- * - muted + playsInline → پخش خودکار مجاز در همهٔ مرورگرها.
- * - poster → تا بافر شدن ویدئو، فریم اولِ خود ویدئو نمایش داده می‌شود
- *   و هیچ پرش تصویری (aurora → wave) رخ نمی‌دهد.
- * - prefers-reduced-motion → ویدئو pause می‌شود و روی فریم پوستر می‌ماند؛
- *   پس‌زمینه حذف نمی‌شود، فقط انیمیشن متوقف است (مقابله با display:none
- *   که پوستر را هم از بین می‌برد و هیرو را بی‌رمق می‌گذاشت).
+ * راه‌حل نهایی — «خروج کامل ویدئو از پنجرهٔ بحرانی» بدون خالی‌شدن Hero:
+ *  - عنصر <video> همیشه با poster رندر می‌شود (فریم پوستر بلافاصله
+ *    نمایان است؛ حتی بدون JS ظاهر هیرو حفظ می‌شود — CLS صفر).
+ *  - preload="none": تا لحظهٔ play هیچ بایتی از ویدئو دانلود نمی‌شود.
+ *  - sourceها فقط پس از `window load` (یا timeoutهای ایمنی ۱.۲/۳.۵ ثانیه)
+ *    وصل می‌شوند؛ یعنی ویدئو حتماً بعد از منابع بحرانی (HTML/فونت‌ها/
+ *    تصویر LCP) وارد جریان دانلود می‌شود.
+ *  - تعویض پوستر→فریم اول ویدئو همان تصویر است؛ هیچ پرش بصری رخ نمی‌دهد.
+ *  - prefers-reduced-motion: ویدئو هرگز شروع نمی‌شود؛ پوستر می‌ماند.
  */
+
 export default function HeroVideo() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [sourcesReady, setSourcesReady] = useState(false);
 
-  // تضمین پخش خودکار: React اتریبیوت muted را در SSR ست نمی‌کند (تنها
-  // پراپرتی بعد از هیدریشن) و برخی مرورگرها policy پخش خودکار را روی
-  // اتریبیوت بررسی می‌کنند. هر دو را ست می‌کنیم و در canplay دوباره play
-  // می‌زنیم تا هیچ حالتی ویدئوی متوقف نماند.
-  // prefers-reduced-motion: به‌جای مخفی‌کردن ویدئو، آن را pause می‌کنیم —
-  // فریم پوستر می‌ماند و فضا/رنگ پس‌زمینه حفظ می‌شود. تغییر زندهٔ تنظیم
-  // (media change) هم گرفته می‌شود تا بدون رفرش اعمال شود.
+  useEffect(() => {
+    // پنجرهٔ بحرانی: ویدئو فقط پس از window load (یا timeoutهای ایمنی
+    // زیر) وارد جریان دانلود می‌شود تا با تصویر LCP/فونت‌ها رقابت نکند.
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      setSourcesReady(true);
+    };
+    // fallback: اگر load دیر آمد، حداکثر ۱.۲ ثانیه بعد وصل می‌شود؛
+    // سقف مطلق ۳.۵ ثانیه برای محیط‌های کندتر. تصمیم reduced-motion
+    // نیز در همین لحظه (async) گرفته می‌شود.
+    const fallback = window.setTimeout(settle, 1200);
+    const absolute = window.setTimeout(settle, 3500);
+    window.addEventListener("load", settle, { once: true });
+
+    return () => {
+      clearTimeout(fallback);
+      clearTimeout(absolute);
+      window.removeEventListener("load", settle);
+    };
+  }, []);
+
+  // تضمین پخش خودکار پس از اتصال منبع: React اتریبیوت muted را در SSR
+  // ست نمی‌کند و برخی مرورگرها policy پخش خودکار را روی اتریبیوت
+  // بررسی می‌کنند؛ هر دو را ست می‌کنیم و در canplay دوباره play می‌زنیم.
+  // prefers-reduced-motion: pause — پوستر می‌ماند. تغییر زنده هم گرفته می‌شود.
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !sourcesReady) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     v.muted = true;
     v.defaultMuted = true;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const ensure = () => {
-      if (reducedMotion.matches) {
+      if (reduced.matches) {
         v.pause();
         return;
       }
@@ -43,27 +66,30 @@ export default function HeroVideo() {
     };
     ensure();
     v.addEventListener("canplay", ensure);
-    reducedMotion.addEventListener("change", ensure);
+    reduced.addEventListener("change", ensure);
     return () => {
       v.removeEventListener("canplay", ensure);
-      reducedMotion.removeEventListener("change", ensure);
+      reduced.removeEventListener("change", ensure);
     };
-  }, []);
+  }, [sourcesReady]);
 
   return (
     <video
       ref={videoRef}
-      autoPlay
       loop
       muted
       playsInline
-      preload="metadata"
+      preload="none"
       poster="/video/hero-wave-poster.jpg"
       className="h-full w-full object-cover mix-blend-lighten"
       aria-hidden="true"
     >
-      <source src="/video/hero-wave-loop.webm" type="video/webm" />
-      <source src="/video/hero-wave-loop.mp4" type="video/mp4" />
+      {sourcesReady ? (
+        <>
+          <source src="/video/hero-wave-loop.webm" type="video/webm" />
+          <source src="/video/hero-wave-loop.mp4" type="video/mp4" />
+        </>
+      ) : null}
     </video>
   );
 }

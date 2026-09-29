@@ -238,260 +238,59 @@ body {
   color: var(--ik-text);
 }
 
-@keyframes float-soft {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-0.5rem); }
-}
+/* ============================================================
+   Custom utilities — Tailwind v4 @utility (قرارداد: همه استایل‌ها با Tailwind)
 
-.animate-float-soft {
-  animation: float-soft 6s ease-in-out infinite;
-}
+   Only utilities that are genuinely reusable get an @utility definition;
+   the consumer components compose them with the rest of their Tailwind
+   classes. The keyframes below are plain @keyframes (Tailwind v4 renders
+   them globally) so the arbitrary animate-[...] values in components work.
+   ============================================================ */
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-float-soft {
-    animation: none;
-  }
-}
-
-.homepage-glass {
-  background: rgb(255 255 255 / 80%);
-  border: 1px solid rgb(196 198 207 / 55%);
-  box-shadow: 0 12px 32px rgb(13 28 47 / 8%);
-  backdrop-filter: blur(16px);
-}
-
-.homepage-card {
-  border: 1px solid rgb(196 198 207 / 55%);
-  box-shadow: 0 4px 12px rgb(13 28 47 / 3%);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
-}
-
-.homepage-card:hover {
-  transform: translateY(-3px);
-  border-color: rgb(5 150 105 / 35%);
-  box-shadow: 0 14px 30px rgb(13 28 47 / 9%), inset 0 0 0 1px rgb(5 150 105 / 8%);
-}
-
-.mask-edge-fade {
-  -webkit-mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
+@utility mask-edge-fade {
   mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes dash {
   to { stroke-dashoffset: -100; }
 }
 
-.animate-dash {
-  animation: dash 20s linear infinite;
-}
-
-/* --- Smart scroll taskbar (LeadFresh-style) --- */
 @keyframes topbar-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(3px); }
 }
-.topbar-bob { animation: topbar-bob 2.4s ease-in-out infinite; }
 
-@media (prefers-reduced-motion: reduce) {
-  .topbar-bob { animation: none; }
-}
-
-.drawer-backdrop { animation: drawer-fade 0.2s ease-out; }
-.drawer-panel { animation: drawer-slide 0.25s ease-out; }
 @keyframes drawer-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes drawer-slide { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-html { scroll-behavior: smooth; }
-
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-/* ============================================================
-   Button design system (وباشتنی: برای همه دکمه‌های پروژه)
-
-   هدف: دکمه‌هایی «دست‌ساز» و مدرن — سایهٔ چندلایهٔ ظریف به‌جای
-   هالهٔ شناور، هایلایت داخلی، میکرو-اینترکشن (بلندشدن در hover،
-   فشرده‌شدن در active، حرکت فلش)، و حلقهٔ focus-visible.
-
-   هماهنگی با پس‌زمینه:
-   - `.btn-secondary` حالت شیشه‌ای کمرنگ برای پس‌زمینهٔ تیره (home).
-   - `.btn-ghost`  حالت متن‌ی برای پس‌زمینهٔ تیره/روشن.
-   - `.btn-outline` حالت لبه‌دار سرمه‌ای برای پس‌زمینهٔ روشن (auth/panel).
-   رنگ emerald (secondary) روی تیره و روشن هر دو خوانا و هماهنگ است.
-   ============================================================ */
-
-.btn {
-  --btn-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-family: inherit;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  user-select: none;
-  cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 0.75rem;
-  transition:
-    transform var(--btn-ease) 180ms,
-    box-shadow var(--btn-ease) 180ms,
-    background-color var(--btn-ease) 180ms,
-    border-color var(--btn-ease) 180ms,
-    color var(--btn-ease) 180ms;
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[dash_20s_linear_infinite\],
+  .animate-\[topbar-bob_2\.4s_ease-in-out_infinite\],
+  .animate-\[drawer-fade_0\.2s_ease-out\],
+  .animate-\[drawer-slide_0\.25s_ease-out\] {
+    animation: none;
+  }
 }
 
-.btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35);
+html {
+  scroll-behavior: smooth;
 }
 
-.btn:disabled,
-.btn[aria-disabled="true"] {
-  cursor: not-allowed;
-  opacity: 0.55;
-  transform: none !important;
-  box-shadow: none !important;
-}
+/* Button design system — همه دکمه‌ها الان با کلاس‌های Tailwind در کامپوننت‌های
+   مصرف‌کننده ساخته می‌شوند (HomeHero / HomeCta / AppTaskbar / login / otp).
+   مشخصات همان است: گرادیان teal/cyan با WCAG AA، سایهٔ چندلایه،
+   میکرو-اینترکشن hover/active با ease cubic-bezier(0.22,1,0.36,1)،
+   حرکت فلش با group-hover:-translate-x-[3px]، و حلقهٔ focus-visible.
+   عمداً @utility تعریف نشده چون هر variant فقط یک مصرف‌کننده دارد و
+   ترکیب utility-level در className خوانایی و tree-shaking بهتری دارد.
 
-.btn .btn-arrow {
-  transition: transform var(--btn-ease) 180ms;
-}
-
-/* Primary — rich deep teal/cyan gradient with WCAG AA compliance (contrast > 4.5:1 with white) */
-.btn-primary {
-  color: #ffffff;
-  background-image: linear-gradient(120deg, #0d9488 0%, #0891b2 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    0 1px 2px rgba(2, 6, 23, 0.4),
-    0 10px 24px -12px rgba(13, 148, 136, 0.55),
-    0 0 20px -8px rgba(8, 145, 178, 0.35);
-}
-.btn-primary:hover {
-  background-image: linear-gradient(120deg, #0f766e 0%, #0e7490 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 2px 4px rgba(2, 6, 23, 0.35),
-    0 16px 36px -14px rgba(13, 148, 136, 0.65),
-    0 0 30px -8px rgba(8, 145, 178, 0.5);
-  transform: translateY(-1px);
-}
-.btn-primary:hover .btn-arrow {
-  transform: translateX(-3px);
-}
-.btn-primary:active {
-  transform: translateY(0);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 1px 2px rgba(2, 6, 23, 0.4),
-    0 6px 18px -10px rgba(16, 185, 129, 0.5);
-}
-
-/* Secondary — glassy, for dark backgrounds (homepage) */
-.btn-secondary {
-  color: #fff;
-  background-color: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(8px);
-}
-.btn-secondary:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-.btn-secondary:active {
-  transform: translateY(0);
-}
-
-/* Ghost — text / soft-fill, adapts to light context */
-.btn-ghost {
-  color: currentColor;
-}
-.btn-ghost:hover {
-  transform: translateY(-1px);
-}
-.btn-ghost:active {
-  transform: translateY(0);
-}
-
-/* Outline — navy border, for light backgrounds (auth/dashboard/admin) */
-.btn-outline {
-  color: #294766;
-  background-color: #fff;
-  border-color: rgba(41, 71, 102, 0.18);
-  box-shadow: 0 1px 2px rgba(13, 28, 47, 0.06);
-}
-.btn-outline:hover {
-  border-color: rgba(41, 71, 102, 0.32);
-  background-color: #f4f7fb;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px -6px rgba(13, 28, 47, 0.2);
-}
-.btn-outline:active {
-  transform: translateY(0);
-}
-
-/* Sizes */
-.btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; }
-.btn-md { padding: 0.75rem 1.375rem; font-size: 0.9375rem; }
-.btn-lg { padding: 0.875rem 2rem; font-size: 1.125rem; }
-
-/* ============================================================
-   Auth CTA (صفحات ورود / OTP)
-
-   گرادیان ظریف cyan→blue با هالهٔ بسیار ملایم؛ هماهنگ با پنل
-   شیشه‌ای و تن‌های ویدئوی پس‌زمینه. بدون نئون و بدون افکت اضافه.
-   ============================================================ */
-.auth-cta {
-  border-radius: 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border-radius: 0.75rem;
-  font-family: inherit;
-  white-space: nowrap;
-  cursor: pointer;
-  color: #ffffff;
-  background-image: linear-gradient(120deg, #0ea5e9 0%, #2563eb 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 1px 2px rgba(2, 6, 23, 0.4),
-    0 8px 22px -14px rgba(14, 165, 233, 0.45);
-  transition:
-    filter 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.auth-cta:hover:not(:disabled) {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
-    0 2px 4px rgba(2, 6, 23, 0.35),
-    0 12px 28px -16px rgba(14, 165, 233, 0.55);
-}
-.auth-cta:active:not(:disabled) {
-  transform: translateY(0);
-  filter: brightness(0.98);
-}
-.auth-cta:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.35);
-}
-.auth-cta:disabled {
-  cursor: not-allowed;
-}
-
-/* Hero background video — reduced-motion is handled in HeroVideo.tsx by
+   Hero background video — reduced-motion is handled in HeroVideo.tsx by
    pausing playback (freezing on the poster frame) instead of hiding the
    element, so the atmospheric background never disappears entirely. */

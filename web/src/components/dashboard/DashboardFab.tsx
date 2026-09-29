@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUp, Headphones, MapPin, Plus } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { ArrowUp, MapPin, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 type Action = {
   label: string;
@@ -20,7 +20,6 @@ export function DashboardFab({ hasBusiness }: { hasBusiness: boolean }) {
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 240);

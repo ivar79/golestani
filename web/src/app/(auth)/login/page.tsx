@@ -116,10 +116,10 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading || !isValidPhone}
-          className="auth-cta mt-1 w-full rounded-2xl py-3.5 text-[15px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+          className="group mt-1 inline-flex w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-2xl py-3.5 text-[15px] font-semibold leading-none text-white transition-[filter,transform,box-shadow] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [background-image:linear-gradient(120deg,#0ea5e9_0%,#2563eb_100%)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(2,6,23,0.4),0_8px_22px_-14px_rgba(14,165,233,0.45)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_3px_rgba(14,165,233,0.35)] hover:not-disabled:brightness-[1.08] hover:not-disabled:-translate-y-px hover:not-disabled:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.26),0_2px_4px_rgba(2,6,23,0.35),0_12px_28px_-16px_rgba(14,165,233,0.55)] active:not-disabled:translate-y-0 active:not-disabled:brightness-[0.98] disabled:cursor-not-allowed"
         >
           <span>{loading ? "در حال ارسال کد..." : "دریافت کد تأیید"}</span>
-          <span className="btn-arrow text-lg leading-none" aria-hidden="true">
+          <span className="text-lg leading-none transition-transform duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-x-[3px]" aria-hidden="true">
             ←
           </span>
         </button>

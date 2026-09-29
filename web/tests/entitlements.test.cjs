@@ -154,7 +154,11 @@ test("card-maker locks templates from the entitlement contract", () => {
 });
 
 test("card-maker locks exports and the print-file panel", () => {
-  assert.ok(makerSource.includes('isAllowedValue(entitlements.capabilities, "card_exports"'), "export buttons must consult the contract");
+  // The capability check lives in the shared export menu now; the page must
+  // hand it the live contract (not a copy) and the menu must consult it.
+  const exportMenuSource = read("src/components/cards/CardExportMenu.tsx");
+  assert.ok(makerSource.includes("capabilities={entitlements.capabilities}"), "export menu must receive the live contract");
+  assert.ok(exportMenuSource.includes('isAllowedValue(capabilities, "card_exports"'), "export options must consult the contract");
   assert.ok(makerSource.includes("entitlements.capabilities.print_file"), "print-file panel must consult the contract");
 });
 

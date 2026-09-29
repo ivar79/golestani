@@ -27,8 +27,10 @@ import {
   AlertCircle,
   Save,
   Home,
+  Sparkles,
   Database,
   Activity,
+  ReceiptText,
   History as HistoryIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +46,7 @@ import {
 import { getAdminSettings, saveAdminSetting, uploadAdminMedia } from "@/lib/admin";
 import AdminPagesTab from "@/components/admin/AdminPagesTab";
 import AdminMapTab from "@/components/admin/AdminMapTab";
+import AdminGreetingTab from "@/components/admin/AdminGreetingTab";
 import AdminBlogTab from "@/components/admin/AdminBlogTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
 import AdminUsersTab from "@/components/admin/AdminUsersTab";
@@ -51,6 +54,7 @@ import AdminTaxonomiesTab from "@/components/admin/AdminTaxonomiesTab";
 import AdminHealthTab from "@/components/admin/AdminHealthTab";
 import AdminPlansTab from "@/components/admin/AdminPlansTab";
 import AdminDesignersTab from "@/components/admin/AdminDesignersTab";
+import AdminSubscriptionsTab from "@/components/admin/AdminSubscriptionsTab";
 import AdminReportsTab from "@/components/admin/AdminReportsTab";
 import AdminAuditTab from "@/components/admin/AdminAuditTab";
 
@@ -60,6 +64,7 @@ const TABS = [
   { id: "Taxonomies", label: "داده‌های پایه", icon: Database },
   { id: "Health", label: "سلامت و سوابق", icon: Activity },
   { id: "Plans", label: "پلن‌ها و درآمد", icon: CreditCard },
+  { id: "Subscriptions", label: "اشتراک‌ها و رسیدها", icon: ReceiptText },
   { id: "Designers", label: "مدیریت طراحان", icon: Palette },
   { id: "Reports", label: "گزارش‌های مردمی", icon: AlertCircle },
   { id: "Audit", label: "سوابق مدیریتی", icon: HistoryIcon },
@@ -67,6 +72,7 @@ const TABS = [
   { id: "Pages", label: "صفحات مستقل", icon: FileText },
   { id: "Blog", label: "وبلاگ و مقالات", icon: BookOpen },
   { id: "Map", label: "زیرساخت نقشه", icon: MapIcon },
+  { id: "Greeting", label: "خوش‌آمد هوشمند", icon: Sparkles },
   { id: "Media", label: "کتابخانه رسانه", icon: ImageIcon },
 ] as const;
 
@@ -893,6 +899,12 @@ export default function AdminPage() {
             </div>
           )}
 
+          {tab === "Greeting" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl transition-all hover:border-white/[0.12]">
+              <AdminGreetingTab />
+            </div>
+          )}
+
           {tab === "Media" && (
             <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-4 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] transition-all hover:border-white/[0.12]">
               <AdminMediaTab />
@@ -926,6 +938,12 @@ export default function AdminPage() {
           {tab === "Designers" && (
             <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
               <AdminDesignersTab />
+            </div>
+          )}
+
+          {tab === "Subscriptions" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminSubscriptionsTab />
             </div>
           )}
 

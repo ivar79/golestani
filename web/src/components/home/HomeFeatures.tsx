@@ -1,11 +1,11 @@
-"use client";
-import { cms, useHomepageContent } from "@/lib/homepage";
+import { cms, type HomepageContent } from "@/lib/homepageContent";
 import HomeIcon, { type HomeIconName } from "./HomeIcon";
 
 const FALLBACK_ICONS: HomeIconName[] = ["contactPage", "qrScanner", "search"];
 
-export default function HomeFeatures() {
-  const content = useHomepageContent();
+// Phase 3.5 perf: Server Component — فقط متن CMS رندر می‌کند؛ محتوا به‌صورت
+// prop از صفحهٔ اصلی (Server) می‌آید و هیچ hydration ای ندارد.
+export default function HomeFeatures({ content }: { content: HomepageContent }) {
   const features = [1, 2, 3].map((n) => ({
     icon: (cms(content, `feature.${n}.icon`) as HomeIconName) || FALLBACK_ICONS[n - 1],
     title: cms(content, `feature.${n}.title`),

@@ -1,0 +1,5 @@
+⚠ Warning: Next.js ignored package-lock.json in C:\Users\Hossein because it is outside the current Git repository (C:\Users\Hossein\Desktop\golestani-export-new\golestani).
+ To use this directory, set `turbopack.root` in your Next.js config.
+
+[Server HMR] Update failed, full reload needed: SyntaxError: Identifier 'spaceDown' has already been declared
+    at eval (<anonymous>)

@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { getOwnedBusinesses, type Phase2Business } from "@/lib/phase2";
-import { getPlansPricing, submitSubscription, type Plan } from "@/lib/subscriptions";
+import { getPlansPricing, type Plan } from "@/lib/subscriptions";
+import { initPayment } from "@/lib/payments";
 import { planFeatureLines, type PublicPlansResponse } from "@/lib/entitlements";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
 
@@ -48,7 +49,7 @@ function PricingSwitch({ first, second, value, onChange }: { first: string; seco
   );
 }
 
-function ReceiptModal({ plan, businesses, selectedBusiness, onBusinessChange, onClose, onSubmitted }: { plan: Plan; businesses: Phase2Business[]; selectedBusiness: string; onBusinessChange: (value: string) => void; onClose: () => void; onSubmitted: (message: string) => void }) {
+function ReceiptModal({ plan, businesses, selectedBusiness, onBusinessChange, onClose, onRedirecting }: { plan: Plan; businesses: Phase2Business[]; selectedBusiness: string; onBusinessChange: (value: string) => void; onClose: () => void; onRedirecting: (url: string) => void }) {
   const [reference, setReference] = useState("");
   const [file, setFile] = useState<File | undefined>();
   const [submitting, setSubmitting] = useState(false);
@@ -56,15 +57,15 @@ function ReceiptModal({ plan, businesses, selectedBusiness, onBusinessChange, on
 
   async function submit() {
     if (!selectedBusiness) return setError("ابتدا کسب‌وکار موردنظر را انتخاب کنید.");
-    if (!reference.trim() && !file) return setError("شماره پیگیری یا فایل رسید را وارد کنید.");
     setSubmitting(true);
     setError(null);
     try {
-      await submitSubscription(Number(selectedBusiness), { plan_id: plan.id, receipt_reference: reference.trim() || undefined, receipt: file });
-      onSubmitted("درخواست شما ثبت شد و پس از بررسی مدیر فعال می‌شود.");
+      // ONLINE PAYMENT: the client sends ONLY plan + business. The amount is
+      // resolved server-side; the browser is redirected to ZarinPal StartPay.
+      const result = await initPayment(Number(selectedBusiness), plan.id);
+      onRedirecting(result.redirect_url);
     } catch (requestError) {
       setError(extractApiError(requestError));
-    } finally {
       setSubmitting(false);
     }
   }
@@ -82,7 +83,7 @@ function ReceiptModal({ plan, businesses, selectedBusiness, onBusinessChange, on
           <label className="block space-y-2 text-sm font-semibold text-slate-200">شماره رسید یا کد پیگیری <span className="font-normal text-slate-500">(اختیاری اگر فایل انتخاب شود)</span><input value={reference} onChange={(event) => setReference(event.target.value)} maxLength={160} placeholder="مثال: TRX-123456" className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-400" /></label>
           <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-4 text-sm text-slate-300 hover:border-emerald-400/60 hover:bg-emerald-400/[0.04]"><UploadCloud className="h-5 w-5 shrink-0 text-emerald-300" /><span className="min-w-0 flex-1 truncate">{file ? file.name : "فایل رسید را انتخاب کنید (JPG، PNG یا PDF تا ۵MB)"}</span><input type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only" onChange={(event) => setFile(event.target.files?.[0])} /></label>
           <div className="flex items-start gap-2 rounded-2xl bg-emerald-400/[0.06] p-3 text-xs leading-6 text-slate-400"><FileText className="mt-1 h-4 w-4 shrink-0 text-emerald-300" />رسیدها به‌صورت دستی بررسی می‌شوند و وضعیت درخواست در داشبورد شما نمایش داده خواهد شد.</div>
-          <button type="button" onClick={() => void submit()} disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}ثبت درخواست</button>
+          <button type="button" data-payment-init onClick={() => void submit()} disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}پرداخت آنلاین</button>
         </div>
       </div>
     </div>
@@ -135,57 +136,90 @@ export default function PricingSection({ content }: { content: PricingContent })
     }
   }
 
+  /** Redirect the whole browser to the gateway (full navigation — the user
+      must physically leave the SPA and come back through the callback). */
+  function redirectToGateway(url: string) {
+    window.location.assign(url);
+  }
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-night px-4 pb-20 pt-28 text-surface sm:px-8">
+    <div className="relative min-h-screen bg-night px-4 pb-20 pt-28 text-surface sm:px-8">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(16,185,129,0.14),transparent_28%),radial-gradient(circle_at_85%_35%,rgba(34,211,238,0.10),transparent_30%)]" />
       <div className="relative mx-auto max-w-6xl">
         <div className="mx-auto max-w-3xl text-center"><MotionDiv variants={fadeUp} custom={0} initial="hidden" animate="visible" className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-300"><Zap className="h-4 w-4" />{content.eyebrow}</MotionDiv><h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl"><VerticalCutReveal splitBy="words" staggerDuration={0.12} staggerFrom="first" containerClassName="justify-center">{content.title}</VerticalCutReveal></h1><p className="mt-5 text-base leading-8 text-slate-400 sm:text-lg">{content.subtitle}</p></div>
         {plansError && <div role="alert" className="mx-auto mt-8 max-w-2xl rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-center text-sm text-rose-200">{plansError}<button type="button" onClick={() => window.location.reload()} className="ms-2 font-bold underline">تلاش دوباره</button></div>}
         {success && <div role="status" className="mx-auto mt-8 max-w-2xl rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-center text-sm text-emerald-200">{success}</div>}
-        {/* Free tier — rendered from the server contract (config-driven). */}
-        {pricing && (
-          <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-black text-white">{pricing.free_tier.label}</h2>
-                  <p className="mt-2 text-sm text-slate-400">{pricing.free_tier.description}</p>
+        {/* Free tier + paid plans — ONE comparison grid so all three cards sit
+            side by side on desktop (sm:2 cols, lg:3 cols) and stack on mobile.
+            The free card mirrors the paid-card structure (title → price →
+            features → CTA) so rows align; badges are inline in the header
+            (no absolute positioning → no overlap, RTL-safe). */}
+        <div data-pricing-grid className={`mx-auto mt-12 grid max-w-6xl gap-4 ${pricing ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2"}`}>
+          {plansLoading ? (
+            <div className="col-span-full flex items-center justify-center gap-3 py-16 text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin text-emerald-300" />در حال دریافت پلن‌ها...</div>
+          ) : (
+            <>
+              {pricing && (
+                <div className="flex flex-col rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h2 className="text-xl font-black text-white">{pricing.free_tier.label}</h2>
+                      <p className="mt-2 text-sm text-slate-400">{pricing.free_tier.description}</p>
+                    </div>
+                    <CreditCard className="h-6 w-6 shrink-0 text-slate-500" />
+                  </div>
+                  <div className="mt-5 text-2xl font-black text-slate-300 sm:text-3xl">{toman(0)}</div>
+                  <ul className="mt-5 flex-1 space-y-3 text-sm text-slate-300">
+                    {planFeatureLines(pricing.free_tier.capabilities, pricing.labels).map((line) => (
+                      <li key={line.key} className="flex gap-2">
+                        {line.state === "off"
+                          ? <X className="h-4 w-4 shrink-0 text-slate-600" />
+                          : <Check className="h-4 w-4 shrink-0 text-emerald-300" />}
+                        <span className={line.state === "off" ? "text-slate-500" : ""}>{line.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button type="button" onClick={() => router.push("/dashboard")} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-sm font-black text-white transition hover:bg-white/10">
+                    <CreditCard className="h-4 w-4" />
+                    شروع رایگان
+                  </button>
                 </div>
-                <span className="text-2xl font-black text-slate-400">۰</span>
-              </div>
-              <ul className="mt-6 space-y-3 text-sm text-slate-300">
-                {planFeatureLines(pricing.free_tier.capabilities, pricing.labels).map((line) => (
-                  <li key={line.key} className="flex gap-2">
-                    {line.state === "off"
-                      ? <X className="h-4 w-4 shrink-0 text-slate-600" />
-                      : <Check className="h-4 w-4 shrink-0 text-emerald-300" />}
-                    <span className={line.state === "off" ? "text-slate-500" : ""}>{line.label}</span>
-                  </li>
-                ))}
-              </ul>
-              <button type="button" onClick={() => router.push("/dashboard")} className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-sm font-black text-white transition hover:bg-white/10">
-                <CreditCard className="h-4 w-4" />
-                شروع رایگان
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
-          {plansLoading ? <div className="col-span-full flex items-center justify-center gap-3 py-16 text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin text-emerald-300" />در حال دریافت پلن‌ها...</div> : displayedPlans.length === 0 ? <div className="col-span-full rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-slate-400">در حال حاضر پلن فعالی برای نمایش وجود ندارد.</div> : displayedPlans.map((plan, index) => { const selected = currentPlan?.id === plan.id; return <MotionDiv key={plan.id} variants={fadeUp} custom={index + 1} initial="hidden" animate="visible" className={`relative rounded-3xl border p-6 transition-transform hover:-translate-y-1 ${selected ? "border-emerald-400/60 bg-emerald-400/[0.09] shadow-2xl shadow-emerald-950/40" : "border-white/10 bg-white/[0.04]"}`}>
-            {(selected || plan.is_featured) && <span className="absolute -top-3 right-6 rounded-full bg-emerald-400 px-3 py-1 text-[11px] font-black text-slate-950">{plan.is_featured ? "پیشنهاد ویژه" : "پلن فعلی"}</span>}
-            <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black text-white">{plan.name}</h2><p className="mt-2 text-sm text-slate-400">{plan.description || `اعتبار ${plan.duration_days} روزه`}</p></div><CreditCard className="h-6 w-6 text-emerald-300" /></div><div className="mt-8 text-3xl font-black text-white">{toman(plan.price)}</div>
-            {/* Feature lines come from the SERVER catalog labels — zero hardcoded feature names. */}
-            <ul className="mt-6 space-y-3 text-sm text-slate-300">
-              {planFeatureLines(plan.features, pricing?.labels ?? {}).filter((line) => line.state !== "off").map((line) => (
-                <li key={line.key} className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-emerald-300" />{line.label}</li>
-              ))}
-            </ul><button type="button" onClick={() => void openReceipt(plan)} className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300"><CreditCard className="h-4 w-4" />{content.ctaLabel}</button>
-          </MotionDiv>; })}
+              )}
+              {displayedPlans.length === 0 ? <div className="col-span-full rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-slate-400">در حال حاضر پلن فعالی برای نمایش وجود ندارد.</div> : displayedPlans.map((plan, index) => {
+                const selected = currentPlan?.id === plan.id;
+                const featured = Boolean(plan.is_featured);
+                // In the 2-col middle range the featured card spans the full row
+                // (deliberate emphasis, not a dangling fragment); from lg up it is
+                // a normal equal column in the 3-card row.
+                const spanClass = pricing && featured ? "sm:col-span-2 lg:col-span-1" : "";
+                return          <MotionDiv key={plan.id} variants={fadeUp} custom={index + 1} initial="hidden" animate="visible" className={`flex flex-col rounded-3xl border p-6 transition-transform hover:-translate-y-1 ${spanClass} ${featured ? "border-emerald-400/60 bg-emerald-400/[0.06] shadow-lg shadow-emerald-950/20" : selected ? "border-emerald-400/50 bg-white/[0.04]" : "border-white/10 bg-white/[0.04]"}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-xl font-black text-white">{plan.name}</h2>
+                        {(selected || featured) && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${featured ? "bg-emerald-400 text-slate-950" : "border border-emerald-400/40 bg-night text-emerald-200"}`}>{featured ? "پیشنهاد ویژه" : "پلن فعلی"}</span>}
+                      </div>
+                      <p className="mt-2 text-sm text-slate-400">{plan.description || `اعتبار ${plan.duration_days} روزه`}</p>
+                    </div>
+                    <CreditCard className="h-6 w-6 shrink-0 text-emerald-300" />
+                  </div>
+                  <div className="mt-5 text-2xl font-black text-white sm:text-3xl">{toman(plan.price)}</div>
+                  {/* Feature lines come from the SERVER catalog labels — zero hardcoded feature names.
+                      flex-1 pushes the CTA to the card bottom so CTAs of the same row align. */}
+                  <ul className="mt-5 flex-1 space-y-3 text-sm text-slate-300">
+                    {planFeatureLines(plan.features, pricing?.labels ?? {}).filter((line) => line.state !== "off").map((line) => (
+                      <li key={line.key} className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-emerald-300" />{line.label}</li>
+                    ))}
+                  </ul>
+                  <button type="button" onClick={() => void openReceipt(plan)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300"><CreditCard className="h-4 w-4" />{content.ctaLabel}</button>
+                </MotionDiv>;
+              })}
+            </>
+          )}
         </div>
-        <div className="mx-auto mt-12 max-w-2xl rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-7"><h3 className="text-lg font-bold text-white">{content.featuresTitle}</h3><div className="mt-4 grid gap-3 sm:grid-cols-2">{content.features.map((feature) => <div key={feature} className="flex items-center gap-2 text-sm text-slate-400"><CheckCheck className="h-4 w-4 text-emerald-300" />{feature}</div>)}</div><div className="mt-6 grid gap-4 sm:grid-cols-2"><div><p className="mb-2 text-xs text-slate-500">{content.updatesTitle}</p><PricingSwitch first={content.updatesLabel1} second={content.updatesLabel2} value={isForever} onChange={setIsForever} /></div><div><p className="mb-2 text-xs text-slate-500">{content.licenseTitle}</p><PricingSwitch first={content.licenseLabel1} second={content.licenseLabel2} value={isCorporate} onChange={setIsCorporate} /></div></div></div>
+        <div className="mx-auto mt-12 max-w-6xl rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-7"><h3 className="text-lg font-bold text-white">{content.featuresTitle}</h3><div className="mt-4 grid gap-3 sm:grid-cols-2">{content.features.map((feature) => <div key={feature} className="flex items-center gap-2 text-sm text-slate-400"><CheckCheck className="h-4 w-4 text-emerald-300" />{feature}</div>)}</div><div className="mt-6 grid gap-4 sm:grid-cols-2"><div><p className="mb-2 text-xs text-slate-500">{content.updatesTitle}</p><PricingSwitch first={content.updatesLabel1} second={content.updatesLabel2} value={isForever} onChange={setIsForever} /></div><div><p className="mb-2 text-xs text-slate-500">{content.licenseTitle}</p><PricingSwitch first={content.licenseLabel1} second={content.licenseLabel2} value={isCorporate} onChange={setIsCorporate} /></div></div></div>
       </div>
-      {modalPlan && <ReceiptModal plan={modalPlan} businesses={businesses} selectedBusiness={selectedBusiness} onBusinessChange={setSelectedBusiness} onClose={() => setModalPlan(null)} onSubmitted={(message) => { setModalPlan(null); setSuccess(message); }} />}
+      {modalPlan && <ReceiptModal plan={modalPlan} businesses={businesses} selectedBusiness={selectedBusiness} onBusinessChange={setSelectedBusiness} onClose={() => setModalPlan(null)} onRedirecting={redirectToGateway} />}
     </div>
   );
 }

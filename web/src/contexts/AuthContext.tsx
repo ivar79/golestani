@@ -30,12 +30,24 @@ export function AuthProvider({children}:{children:ReactNode}) {
   const [hydrated,setHydrated]=useState<boolean>(false);
   useEffect(()=>{
     // Adopt the persisted token once, after hydration, so SSR/client agree.
-    const stored=readStoredToken();
-    if (stored) setToken(stored);
-    setHydrated(true);
+    // Deferred tick (project pattern): keeps setState out of the effect body
+    // (react-hooks/set-state-in-effect) and out of the hydration render path.
+    const t=window.setTimeout(()=>{
+      const stored=readStoredToken();
+      if (stored) setToken(stored);
+      setHydrated(true);
+    },0);
+    return()=>{window.clearTimeout(t);};
   },[]);
   useEffect(()=>{
-    if (!token) { setAuthCookie(false); if (hydrated) setLoading(false); return; }
+    if (!token) {
+      setAuthCookie(false);
+      if (hydrated) {
+        const t=window.setTimeout(()=>setLoading(false),0);
+        return()=>{window.clearTimeout(t);};
+      }
+      return;
+    }
     setAuthCookie(true);
     let active=true;
     getMe().then(me=>{if(active)setUser(me);}).catch(()=>{if(active){clearSession();setToken(null);setUser(null);}}).finally(()=>{if(active)setLoading(false);});

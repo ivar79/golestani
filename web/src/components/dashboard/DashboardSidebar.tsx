@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -9,17 +9,18 @@ import {
   Image as ImageIcon,
   QrCode,
   CreditCard,
+  Package,
+  Megaphone,
   Home,
   LogOut,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { ThemeToggle } from "./ThemeToggle";
 import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 
-export type DashboardTab = "overview" | "info" | "location" | "media" | "qr" | "subscriptions";
+export type DashboardTab = "overview" | "info" | "location" | "media" | "qr" | "subscriptions" | "showcase" | "ads";
 
 interface DashboardSidebarProps {
   currentTab: DashboardTab;
@@ -31,7 +32,6 @@ interface DashboardSidebarProps {
   /** Profile photo URL (already resolved); undefined = not loaded, null = none. */
   userAvatar?: string | null;
   businessName?: string;
-  businessSlug?: string;
   status?: string;
   completionRate: number;
   onLogout: () => void;
@@ -46,7 +46,6 @@ export function DashboardSidebar({
   username,
   userAvatar,
   businessName,
-  businessSlug,
   status,
   completionRate,
   onLogout,
@@ -84,6 +83,16 @@ export function DashboardSidebar({
       id: "subscriptions" as DashboardTab,
       label: "اشتراک و امکانات",
       icon: CreditCard,
+    },
+    {
+      id: "showcase" as DashboardTab,
+      label: "ویترین محصولات",
+      icon: Package,
+    },
+    {
+      id: "ads" as DashboardTab,
+      label: "تبلیغات ویژه",
+      icon: Megaphone,
     },
   ];
 
@@ -271,7 +280,7 @@ export function DashboardSidebar({
                     @{username}
                   </p>
                 ) : (
-                  <p className="text-xs font-bold text-ik-text truncate" dir="ltr" font-mono>
+                  <p className="text-xs font-bold font-mono text-ik-text truncate" dir="ltr">
                     {userPhone || "کاربر گرامی"}
                   </p>
                 )}

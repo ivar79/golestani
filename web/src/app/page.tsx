@@ -8,6 +8,7 @@ import HomeCta from "@/components/home/HomeCta";
 import HomeFooter from "@/components/home/HomeFooter";
 import { HomepageContentProvider } from "@/lib/homepage";
 import { cms, fetchHomepageContentServer, type HomepageContent } from "@/lib/homepageContent";
+import { SITE_URL } from "@/lib/siteUrl";
 
 /** ISR: the homepage re-renders at most once per minute; CMS fetch is cached. */
 export const revalidate = 60;
@@ -25,9 +26,32 @@ export async function generateMetadata(): Promise<Metadata> {
   } catch {
     // plain string — title only
   }
+  const finalTitle = title || "اینکارت | بانک مشاغل و کارت ویزیت دیجیتال";
+  const finalDescription =
+    description ||
+    "جست‌وجو و معرفی کسب‌وکارهای محلی ایران همراه با کارت ویزیت دیجیتال، ویترین اختصاصی و QR اختصاصی برای هر کسب‌وکار.";
+
   return {
-    title: title || "اینکارت | سامانه معرفی کسب‌وکارها",
-    description,
+    metadataBase: new URL(SITE_URL),
+    title: finalTitle,
+    description: finalDescription,
+    alternates: { canonical: "/" },
+    robots: { index: true, follow: true },
+    openGraph: {
+      type: "website",
+      url: SITE_URL,
+      siteName: "اینکارت",
+      locale: "fa_IR",
+      title: finalTitle,
+      description: finalDescription,
+      images: [{ url: "/assets/hero-2.jpg", width: 769, height: 767, alt: finalTitle }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: finalTitle,
+      description: finalDescription,
+      images: ["/assets/hero-2.jpg"],
+    },
   };
 }
 
@@ -36,20 +60,48 @@ export default async function Home() {
   // HTML (no client-side content flash, fully SEO-visible).
   const content: HomepageContent = await fetchHomepageContentServer();
 
+  // Phase 3.5 SEO — WebSite + Organization structured data (server-rendered,
+  // بدون متن جعلی: همان متن CMS/برند واقعی پروژه).
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: "اینکارت",
+        description: cms(content, "hero.subtitle") || "بانک مشاغل و کارت ویزیت‌های دیجیتال ایران",
+        inLanguage: "fa-IR",
+        publisher: { "@id": `${SITE_URL}/#organization` },
+      },
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        name: "اینکارت",
+        url: SITE_URL,
+        logo: `${SITE_URL}/icon.png`,
+      },
+    ],
+  };
+
   return (
     <HomepageContentProvider content={content}>
       <main dir="rtl" className="min-h-screen overflow-hidden bg-night text-surface">
         <AppTaskbar />
         <HomeHero />
-        <HomeFeatures />
+        <HomeFeatures content={content} />
         <section id="showcase" className="mx-auto mt-24 w-full px-[clamp(1.25rem,5vw,6rem)]">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-            <DigitalCardShowcase />
-            <HowItWorks />
+            <DigitalCardShowcase content={content} />
+            <HowItWorks content={content} />
           </div>
         </section>
-        <HomeCta />
-        <HomeFooter />
+        <HomeCta content={content} />
+        <HomeFooter content={content} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </main>
     </HomepageContentProvider>
   );

@@ -1,10 +1,9 @@
-"use client";
-import { cms, cmsList, useHomepageContent } from "@/lib/homepage";
+import { cms, cmsList, type HomepageContent } from "@/lib/homepageContent";
 import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 import HomeIcon, { type HomeIconName } from "./HomeIcon";
 
-export default function HomeFooter() {
-  const content = useHomepageContent();
+// Phase 3.5 perf: Server Component — محتوا به‌صورت prop از صفحهٔ اصلی می‌آید.
+export default function HomeFooter({ content }: { content: HomepageContent }) {
   const about = cms(content, "footer.about");
   const copyrightRaw = cms(content, "footer.copyright");
   const copyright = copyrightRaw

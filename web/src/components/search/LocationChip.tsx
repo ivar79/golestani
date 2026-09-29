@@ -171,29 +171,30 @@ export default function LocationChip({ location }: { location: LocationState }) 
           {/* Address search (Neshan geocoding) — hidden entirely when the key is missing. */}
           {neshanSearchAvailable() && (
             <div className="border-b border-ik-border p-3">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void runAddressSearch();
-                }}
-                className="flex items-center gap-2"
-              >
+              <div className="flex items-center gap-2" role="search">
                 <input
                   value={addressQuery}
                   onChange={(e) => setAddressQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void runAddressSearch();
+                    }
+                  }}
                   placeholder="آدرس دقیق یا نام مکان… (مثلاً ونک، رستوران)"
                   className="min-h-[44px] w-full rounded-xl border border-ik-border bg-ik-wash px-3 text-sm text-ik-text outline-none transition-colors placeholder:text-ik-muted focus:border-ik-accent/40"
                 />
                 <button
-                  type="submit"
+                  type="button"
                   disabled={addressSearching}
+                  onClick={() => void runAddressSearch()}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ik-accent/30 bg-ik-accent/10 text-ik-accent transition-colors hover:bg-ik-accent/20 disabled:opacity-50"
                   title="جست‌وجوی آدرس"
                   aria-label="جست‌وجوی آدرس"
                 >
                   <Search className={`h-4 w-4 ${addressSearching ? "animate-pulse" : ""}`} />
                 </button>
-              </form>
+              </div>
 
               {addressUnavailable && (
                 <p className="mt-2 text-[11px] text-ik-warning">
