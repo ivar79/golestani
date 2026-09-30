@@ -24,7 +24,11 @@ class CardDesignValidator
 {
     private const MAX_BYTES = 100_000;          // ~100KB serialized cap
 
-    private const MAX_LAYERS = 60;
+    // Structural SECURITY cap (not a plan quota — plan caps live in
+    // entitlements and are enforced per-business in the controller). Raised
+    // from 60 so an unlimited tier can genuinely exceed the old free cap
+    // while hostile payloads still cannot balloon the document.
+    private const MAX_LAYERS = 120;
 
     private const MAX_STRING = 2_000;
 
@@ -42,14 +46,21 @@ class CardDesignValidator
 
     private const LINE_JOINS = ['miter', 'round', 'bevel'];
 
+    /** Luxury material effects (applyLuxuryMaterial) — closed enum so the
+     * whitelist carries the visual style instead of silently DROPPING it
+     * (the previous partial-save bug: gold/glass/neon vanished on reload). */
+    private const EFFECTS = ['glass', 'velvet', 'gold', 'silver', 'neon', 'none'];
+
     private const FONT_FAMILIES = ['vazir', 'sans', 'serif', 'monospace'];
 
     private const MAX_PATH_POINTS = 500;
 
     /** Cap for a serialized raw SVG path (`rawD`). The whole document is
      * already capped at MAX_BYTES; this bounds a single path so a hostile or
-     * runaway stroke cannot consume the entire budget. */
-    private const MAX_RAW_D = 20_000;
+     * runaway stroke cannot consume the entire budget. Sized to hold the
+     * Q→C-expanded form of a large perfect-freehand ribbon (the frontend's
+     * structural rawD budget mirrors this number). */
+    private const MAX_RAW_D = 60_000;
 
     private const IMAGE_PREFIXES = ['storage/', '/storage/'];
 
@@ -177,6 +188,16 @@ class CardDesignValidator
         // never had a name.
         if (isset($layer['name']) && is_string($layer['name'])) {
             $clean['name'] = $this->cleanString($layer['name'], 120);
+        }
+
+        // Luxury material effect — same "emit only when present" contract as
+        // `name`: documents stored without effects round-trip byte-identically,
+        // while a materialized style survives the whitelist instead of being
+        // silently dropped (partial save).
+        if (array_key_exists('effect', $layer)
+            && is_string($layer['effect'])
+            && in_array($layer['effect'], self::EFFECTS, true)) {
+            $clean['effect'] = $layer['effect'];
         }
 
         $clean['text'] = '';

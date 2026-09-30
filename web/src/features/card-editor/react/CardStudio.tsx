@@ -24,8 +24,10 @@ import { EditorEngine } from "../engine/EditorEngine";
 import { createDocumentFromBusiness, type TemplateKey } from "../domain/factory";
 import type { CardDocument } from "../domain/document";
 import { SaveQueue } from "../domain/saveQueue";
-import { describeEntitlementErrors, extractEntitlementErrors } from "@/lib/entitlements";
+import { auditDocument, budgetForTier } from "../domain/saveLimits";
+import { describeEntitlementErrors, extractEntitlementErrors, limitOf } from "@/lib/entitlements";
 import { EditorStage } from "./EditorStage";
+import { useEntitlements } from "@/components/cards/FeatureGate";
 import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel, DrawingPanel } from "./EditorPanels";
 import { TemplatesPanel } from "./TemplatesPanel";
 import { useCardEditor } from "./useCardEditor";
@@ -77,6 +79,19 @@ export function CardStudio({
   // revision over newer edits.
   const saveQueue = useMemo(() => new SaveQueue(), []);
 
+  // Entitlement context (UX mirror — the server re-checks every save).
+  const entitlements = useEntitlements();
+  const maxLayersEntitlement = limitOf(entitlements.capabilities, "max_layers");
+
+  // Inject the tier policy into the engine: an UNLIMITED tier (max_layers
+  // === null — FeatureGate's canonical "no real cap" signal, never a plan
+  // name) keeps stroke geometry byte-for-byte; capped tiers get the gentle
+  // optimize ladder. Re-applied whenever the payload changes (snapshot
+  // refresh, plan change) — a no-op when the value is identical.
+  useEffect(() => {
+    engine.setSavePolicy(maxLayersEntitlement);
+  }, [engine, maxLayersEntitlement]);
+
   // Automatically switch to inspector tab when a layer is selected. Adjusted
   // DURING RENDER (the React "adjust state when something changes" pattern)
   // instead of inside an effect, so the tab switch costs no extra render pass
@@ -104,6 +119,17 @@ export function CardStudio({
       // from effects/handlers only — never during render). Snapshotting at RUN
       // time means a queued save always carries the newest document.
       const payload = engine.snapshot().doc;
+
+      // Pre-flight audit — the honest gate. A document the server validator
+      // would refuse is NEVER put on the wire: the user gets a specific,
+      // actionable notice instead of a bare 422.
+      const budget = budgetForTier(maxLayersEntitlement);
+      const audit = auditDocument(payload, budget);
+      if (!audit.ok) {
+        setSaveStatus({ kind: "error", message: audit.violations.join(" ") });
+        return;
+      }
+
       const payloadJson = JSON.stringify(payload);
       setSaveStatus({ kind: "saving" });
       try {
@@ -140,18 +166,22 @@ export function CardStudio({
         });
       }
     });
-  }, [engine, onSaved, saveQueue]);
+  }, [engine, onSaved, saveQueue, maxLayersEntitlement]);
 
   // Always-current reference (the keyboard/autosave effects bind once).
+  // The write lives in an effect — the react-hooks rule forbids ref writes
+  // during render, and effect order guarantees persistRef is fresh before
+  // the autosave effect below schedules anything.
   const persistRef = useRef(persist);
-  persistRef.current = persist;
+  useEffect(() => {
+    persistRef.current = persist;
+  }, [persist]);
 
   // Publish the live document to the host page (vector export input). Runs on
   // committed state only — transient drag frames never leave the editor.
   useEffect(() => {
     onDocumentChange?.(state.doc);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.doc]);
+  }, [state.doc, onDocumentChange]);
 
   // Debounced autosave on FINAL state only (drag commits finish first).
   useEffect(() => {

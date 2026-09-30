@@ -17,6 +17,7 @@ import { createDocumentFromBusiness, parseDocument } from "../factory";
 import { TEMPLATES_CATALOG } from "../templatesCatalog";
 import { getBrushStrokeOutline } from "../freehand";
 import { createCurvedLineLayer } from "../luxuryMaterials";
+import { MAX_RAW_D_STRUCTURAL } from "../saveLimits";
 import type { Business } from "@/lib/businesses";
 
 const MAX_DOC_BYTES = 100_000; // backend MAX_BYTES cap
@@ -139,6 +140,54 @@ describe("save chain — document invariants the backend whitelist enforces", ()
       expect(twice).toBe(once);
     });
   }
+
+  it("a luxury material effect survives parseDocument (no partial save)", () => {
+    const engine = new EditorEngine(docOf("#0d2342", []));
+    const id = engine.addLayer("shape");
+    engine.select(id);
+    engine.applyLuxuryMaterial(id, "gold");
+    const saved = engine.getState().doc;
+    expect(saved.layers[0].effect).toBe("gold");
+
+    // The whitelist (server) rebuilds layers — the frontend contract is that
+    // the field it DOES carry round-trips the local load path unchanged.
+    const reloaded = parseDocument(JSON.stringify(saved));
+    expect(reloaded?.layers[0].effect).toBe("gold");
+  });
+
+  it("a huge committed brush stroke stays inside the structural rawD budget", () => {
+    // A pathological ribbon (thousands of outline points) — the engine's
+    // tier-aware fit must land it under MAX_RAW_D without truncating the
+    // subpath (same command count, still closed).
+    const outline: number[][] = [];
+    for (let i = 0; i < 4000; i++) {
+      const t = (i / 3999) * Math.PI * 6;
+      outline.push([500 + Math.cos(t) * 380 + (i % 7) * 0.4, 300 + Math.sin(t) * 220 + (i % 5) * 0.3]);
+    }
+    const engine = new EditorEngine(docOf("#0d2342", []));
+    expect(engine.addBrushLayer(outline, "#22d3ee")).not.toBeNull();
+    const layer = engine.getState().doc.layers[0];
+    if (layer.kind !== "path") return;
+    expect(layer.rawD!.length).toBeLessThanOrEqual(MAX_RAW_D_STRUCTURAL);
+    expect(layer.rawD!.startsWith("M")).toBe(true);
+    expect(layer.rawD!.endsWith("Z")).toBe(true);
+  });
+
+  it("repeated group rotations wrap stored angles into the validator's ±360 clamp", () => {
+    const engine = new EditorEngine(docOf("#0d2342", []));
+    const a = engine.addLayer("text");
+    const b = engine.addLayer("shape");
+    engine.select(a);
+    engine.select(b, true);
+    // Rotate hard through several full turns (each gesture ±~170°+).
+    for (let i = 0; i < 6; i++) {
+      engine.transientGroupRotate({ x: 900, y: 500 }, false);
+      engine.commitTransform();
+    }
+    for (const layer of engine.getState().doc.layers) {
+      expect(Math.abs(layer.angle)).toBeLessThanOrEqual(180);
+    }
+  });
 
   it("a legacy curvature document is normalized onto bend exactly once", () => {
     const legacy = docOf("#0d2342", [createCurvedLineLayer(100, 280, 500, 80, 60)]);

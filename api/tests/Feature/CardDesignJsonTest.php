@@ -303,6 +303,98 @@ class CardDesignJsonTest extends TestCase
         $this->assertSame(1, $stored['strokeOpacity']);
     }
 
+    /**
+     * Phase 3 save-integrity: the luxury-material `effect` field must survive
+     * the whitelist. This is the partial-save regression — the previous
+     * validator dropped the field silently, so a gold/glass/neon material
+     * vanished after save + reload while the canvas preview kept it.
+     */
+    public function test_luxury_effect_round_trips_and_unknown_values_are_dropped(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D11', 'slug' => 'design-json-11', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][0]['effect'] = 'gold';
+        $design['layers'][1]['effect'] = 'glass';
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic',
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->json('design_json.layers')
+        )->values();
+
+        $this->assertSame('gold', $stored[0]['effect']);
+        $this->assertSame('glass', $stored[1]['effect']);
+
+        // A hostile/typo'd value is dropped (not stored verbatim, not a 422 —
+        // same contract as the other normalized decorations).
+        $design['layers'][0]['effect'] = 'url(javascript:alert(1))';
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic',
+            'design_json' => $design,
+        ])->assertOk();
+
+        $second = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->json('design_json.layers')
+        )->values();
+        $this->assertArrayNotHasKey('effect', $second[0]);
+        $this->assertSame('glass', $second[1]['effect']);
+    }
+
+    /**
+     * A committed freehand ribbon that exceeds the OLD 20KB rawD cap must
+     * still save: the structural cap was sized for Q→C-expanded ribbons
+     * (60KB) and an unlimited tier never decimates geometry silently.
+     */
+    public function test_large_freehand_ribbon_within_structural_cap_round_trips(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D12', 'slug' => 'design-json-12', 'status' => 'approved']);
+        $this->attachPlan($business, [
+            'card_editor' => true,
+            'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path'],
+            'max_layers' => null,
+        ]);
+
+        // ~25KB of path data — over the old 20KB cap, under the structural 60KB.
+        $points = [];
+        for ($i = 0; $i < 900; $i++) {
+            $points[] = sprintf('%s %s', 10 + $i * 7.25, 20 + sin($i) * 13);
+        }
+        $rawD = 'M 10.5 20.5 L '.implode(' ', $points);
+        $this->assertGreaterThan(20_000, strlen($rawD));
+        $this->assertLessThanOrEqual(60_000, strlen($rawD));
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'ribbon-1', 'kind' => 'path',
+            'x' => 10, 'y' => 10, 'width' => 100, 'height' => 60,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 5, 'color' => null, 'background' => null, 'text' => '',
+            'closed' => false, 'points' => [], 'rawD' => $rawD,
+            'stroke' => '#0ea5e9', 'strokeWidth' => 6,
+            'strokeStyle' => 'solid', 'strokeLinecap' => 'round', 'strokeLinejoin' => 'round', 'strokeOpacity' => 1,
+            'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic',
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->json('design_json.layers')
+        )->keyBy('id')['ribbon-1'];
+        $this->assertSame($rawD, $stored['rawD']);
+    }
+
     public function test_path_layer_rejects_too_few_and_too_many_points(): void
     {
         Storage::fake('card_files');
@@ -625,7 +717,9 @@ class CardDesignJsonTest extends TestCase
         ])->assertStatus(422);
     }
 
-    /** rawD is length-capped so one path cannot swallow the document budget. */
+    /** rawD is length-capped so one path cannot swallow the document budget.
+     *  Sized against the RAISED structural cap (60KB) — the old 20KB cap
+     *  rejected legitimate large freehand ribbons (422 partial saves). */
     public function test_oversized_raw_d_is_rejected(): void
     {
         Storage::fake('card_files');
@@ -641,7 +735,7 @@ class CardDesignJsonTest extends TestCase
             'z' => 1, 'color' => null, 'background' => null,
             'text' => '',
             'closed' => true, 'points' => [],
-            'rawD' => 'M 0 0 '.str_repeat('L 1 1 ', 6000),
+            'rawD' => 'M 0 0 '.str_repeat('L 1 1 ', 20000), // ~120KB — well over the 60KB structural cap
             'stroke' => null, 'strokeWidth' => 0, 'fill' => '#0ea5e9',
         ];
 

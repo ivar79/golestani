@@ -38,6 +38,13 @@ import {
 } from "../domain/path";
 import { brushStrokeLayerGeometry } from "../domain/freehand";
 import { clampStrokeWidth } from "../domain/stroke";
+import {
+  budgetForTier,
+  fitRawDToBudget,
+  MAX_PATH_POINTS,
+  MAX_RAW_D_STRUCTURAL,
+  type SaveBudget,
+} from "../domain/saveLimits";
 import { POLYGON_DEFAULT_SIDES } from "../domain/shapes";
 import { framesBounds } from "../domain/geometry";
 import {
@@ -51,6 +58,23 @@ import {
 
 /** 8 resize handles (corners + edges), plus the rotation handle. */
 export type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/**
+ * Tier-aware save policy, injected by the host (CardStudio) from the live
+ * ENTITLEMENT payload — never a plan name. `unlimited` tiers keep their
+ * geometry byte-for-byte (no auto-simplify); capped tiers get the gentle
+ * optimize ladder first. See domain/saveLimits.ts.
+ */
+export type SavePolicy = { budget: SaveBudget; unlimited: boolean };
+
+/** Normalize any angle into (−180, 180] so stored values always satisfy the validator's ±360 clamp. */
+export function wrapAngle(deg: number): number {
+  if (!Number.isFinite(deg)) return 0;
+  let a = deg % 360;
+  if (a > 180) a -= 360;
+  if (a <= -180) a += 360;
+  return a === -0 ? 0 : a;
+}
 
 /** The active tool. `draw` is freehand, `pen` is the Bezier pen. */
 export type EditorTool = "select" | "draw" | "pen";
@@ -104,7 +128,24 @@ export type EngineState = {
 export class EditorEngine {
   private history = new HistoryStack(50);
   private listeners = new Set<() => void>();
+  /** Tier-aware save budget (defaults to the CAPPED policy; host injects the real one). */
+  private savePolicy: SavePolicy = { budget: budgetForTier(60), unlimited: false };
   private state: EngineState;
+
+  /**
+   * Inject the tier policy from the live entitlement payload. Called by the
+   * host whenever capabilities load/change — engine mutations that create
+   * geometry consult it so a stroke is fitted (or preserved) per tier.
+   */
+  setSavePolicy(maxLayers: number | null | undefined): void {
+    const budget = budgetForTier(maxLayers);
+    this.savePolicy = { budget, unlimited: budget.unlimited };
+  }
+
+  /** The rawD budget a NEW stroke should target. */
+  private get strokeBudget(): number {
+    return this.savePolicy.unlimited ? MAX_RAW_D_STRUCTURAL : this.savePolicy.budget.rawDBytes;
+  }
 
   constructor(initialDoc: CardDocument) {
     this.state = {
@@ -300,7 +341,14 @@ export class EditorEngine {
   addBrushLayer(outline: number[][], color = "#0ea5e9"): string | null {
     const geometry = brushStrokeLayerGeometry(outline);
     if (!geometry) return null;
-    const { d, x, y, width, height } = geometry;
+    // Tier-aware budget fit: unlimited tiers keep the stroke byte-for-byte
+    // (their budget IS the structural cap); capped tiers get the lossless
+    // optimize ladder first. Either way the geometry is never truncated.
+    const { d } = fitRawDToBudget(geometry.d, this.strokeBudget);
+    const x = geometry.x;
+    const y = geometry.y;
+    const width = geometry.width;
+    const height = geometry.height;
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
     const layer: PathLayer = {
       id,
@@ -562,8 +610,10 @@ export class EditorEngine {
     if (!target || target.locked) return;
     const center = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
     const deg = (Math.atan2(pointer.y - center.y, pointer.x - center.x) * 180) / Math.PI;
-    // Screen Y is down; compensate so dragging CCW reads as CCW.
-    let angle = deg + 90;
+    // Screen Y is down; compensate so dragging CCW reads as CCW. The result is
+    // wrapped into (−180,180] so stored values always satisfy the validator's
+    // ±360 clamp instead of being silently clamped into a different pose.
+    let angle = wrapAngle(deg + 90);
     if (shift) {
       const step = 15;
       angle = Math.round(angle / step) * step;
@@ -716,7 +766,10 @@ export class EditorEngine {
       this.transientPatch(layer.id, {
         x: nextCenterX - layer.width / 2,
         y: nextCenterY - layer.height / 2,
-        angle: (layer.angle ?? 0) + delta,
+        // Wrap the accumulated group rotation per member: repeated gestures
+        // would otherwise push `angle` past ±360 where the validator clamps
+        // it SILENTLY — the reloaded card would sit in a different pose.
+        angle: wrapAngle((layer.angle ?? 0) + delta),
       } as Partial<CardLayer>);
     }
   }
@@ -1028,6 +1081,13 @@ export class EditorEngine {
     }
     const strokeWidth = clampStrokeWidth(options.width);
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    // Anchor cap (validator MAX_PATH_POINTS): re-simplify the SAME raw samples
+    // with a coarser epsilon instead of truncating — the stroke keeps its shape.
+    let points = createFreehandPath(working);
+    for (const epsilon of [5, 10, 20, 40, 80]) {
+      if (points.length <= MAX_PATH_POINTS) break;
+      points = createFreehandPath(working, { simplifyEpsilon: epsilon });
+    }
     // The layer box is DERIVED from the geometry (never hand-computed), so a
     // freshly drawn stroke and a later-edited one always agree on the box.
     const newLayer = normalizePathLayer<PathLayer>(
@@ -1046,7 +1106,7 @@ export class EditorEngine {
         color: null,
         background: null,
         closed: false,
-        points: createFreehandPath(working),
+        points,
         stroke: options.color,
         strokeWidth,
         strokeStyle: options.style ?? this.state.brushStyle,
