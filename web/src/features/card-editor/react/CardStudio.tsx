@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Redo2, Undo2, Save, AlertCircle, CheckCircle2, Eye, RotateCcw, Layers, Palette, Sliders, Wrench, Sparkles } from "lucide-react";
+import { Redo2, Undo2, Save, AlertCircle, CheckCircle2, Eye, RotateCcw, Layers, Palette, Sliders, Sparkles } from "lucide-react";
 import type { Business } from "@/lib/businesses";
 import { EditorEngine } from "../engine/EditorEngine";
 import { createDocumentFromBusiness, type TemplateKey } from "../domain/factory";
@@ -28,7 +28,7 @@ import { auditDocument, budgetForTier } from "../domain/saveLimits";
 import { describeEntitlementErrors, extractEntitlementErrors, limitOf } from "@/lib/entitlements";
 import { EditorStage } from "./EditorStage";
 import { useEntitlements } from "@/components/cards/FeatureGate";
-import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel, DrawingPanel } from "./EditorPanels";
+import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel } from "./EditorPanels";
 import { TemplatesPanel } from "./TemplatesPanel";
 import { useCardEditor } from "./useCardEditor";
 
@@ -72,7 +72,7 @@ export function CardStudio({
   const state = useCardEditor(engine);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [preview, setPreview] = useState(false);
-  const [activeTab, setActiveTab] = useState<"templates" | "tools" | "inspector" | "layers" | "bg">("tools");
+  const [activeTab, setActiveTab] = useState<"templates" | "inspector" | "layers" | "bg">("templates");
   const saveTimer = useRef<number | null>(null);
   // Saves are SERIALIZED: at most one request on the wire, the newest document
   // always queued next — so an out-of-order response can never write an older
@@ -191,7 +191,6 @@ export function CardStudio({
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.dirty, state.doc]);
 
   // Warn on exit with unsaved changes (existing pattern in card-maker).
@@ -223,29 +222,21 @@ export function CardStudio({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
   return (
     <div className="space-y-4">
-      {/* macOS MacBook Pro Studio Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/15 bg-gradient-to-r from-slate-900/90 via-[#0c1626]/95 to-slate-900/90 p-3 shadow-2xl backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          {/* macOS traffic light buttons */}
-          <div className="flex items-center gap-1.5 pl-1">
-            <span className="h-3 w-3 rounded-full bg-rose-500/80 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-            <span className="h-3 w-3 rounded-full bg-amber-500/80 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-            <span className="h-3 w-3 rounded-full bg-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-          </div>
-
-          <div className="h-4 w-px bg-white/15 mx-0.5" />
-
+      {/* Studio header: compact (56px), information-dense, no decoration.
+          Save status comes from the REAL persistence state (SaveQueue + dirty flag). */}
+      <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/15 bg-[#0c1626]/95 p-2.5 shadow-lg backdrop-blur-xl">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => engine.undo()}
             disabled={!state.canUndo}
             title="واگرد (Ctrl+Z)"
-            className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 hover:text-white disabled:opacity-40 transition"
+            aria-label="واگرد"
+            className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 hover:text-white disabled:opacity-40 transition"
           >
             <Undo2 className="h-4 w-4" />
           </button>
@@ -254,7 +245,8 @@ export function CardStudio({
             onClick={() => engine.redo()}
             disabled={!state.canRedo}
             title="بازانجام (Ctrl+Y)"
-            className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 hover:text-white disabled:opacity-40 transition"
+            aria-label="بازانجام"
+            className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 hover:text-white disabled:opacity-40 transition"
           >
             <Redo2 className="h-4 w-4" />
           </button>
@@ -315,118 +307,108 @@ export function CardStudio({
         </div>
       </div>
 
-      {/* Stage + tabbed panels (panels hidden in preview mode) */}
-      <div className="grid gap-5 lg:grid-cols-[1fr_370px]">
-        <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} />
+      {/* Studio workspace: vertical tool rail (right, RTL-first) + canvas + inspector.
+          The rail replaces the old horizontal "ابزارها" tab — tools stay one click
+          away while the inspector keeps its full height. min-w-0 lets the stage
+          shrink instead of overflowing at narrow widths. */}
+      <div className="flex items-stretch justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} />
+        </div>
         {preview ? null : (
-          <div className="flex flex-col space-y-3">
-            {/* 5 Tab Navigation */}
-            <div className="grid grid-cols-5 gap-1 rounded-2xl border border-white/10 bg-[#0c1626]/90 p-1.5 shadow-xl backdrop-blur">
-              <button
-                type="button"
-                onClick={() => setActiveTab("templates")}
-                className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                  activeTab === "templates"
-                    ? "bg-amber-500/25 text-amber-300 shadow-sm ring-1 ring-amber-400/40"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                <span>قالب‌ها</span>
-              </button>
+          <div className="flex shrink-0 gap-3">
+            {/* Vertical tool rail — the drag/gate logic lives in Toolbox itself. */}
+            <Toolbox engine={engine} onUploadImage={onUploadImage} />
 
-              <button
-                type="button"
-                onClick={() => setActiveTab("tools")}
-                className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                  activeTab === "tools"
-                    ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Wrench className="h-3.5 w-3.5" />
-                <span>ابزارها</span>
-              </button>
+            {/* Tabbed panels (templates/inspector/layers/background) */}
+            <div className="flex w-[340px] flex-col space-y-3">
+              <div className="grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-[#0c1626]/90 p-1.5 shadow-xl backdrop-blur">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("templates")}
+                  className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
+                    activeTab === "templates"
+                      ? "bg-amber-500/25 text-amber-300 shadow-sm ring-1 ring-amber-400/40"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  <span>قالب‌ها</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab("inspector")}
-                className={`relative flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                  activeTab === "inspector"
-                    ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Sliders className="h-3.5 w-3.5" />
-                <span>ویژگی‌ها</span>
-                {state.selection.layerId && (
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("layers")}
-                className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                  activeTab === "layers"
-                    ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Layers className="h-3.5 w-3.5" />
-                <span>لایه‌ها ({state.doc.layers.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("bg")}
-                className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                  activeTab === "bg"
-                    ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Palette className="h-3.5 w-3.5" />
-                <span>پس‌زمینه</span>
-              </button>
-            </div>
-
-            {/* Active Tab Content */}
-            <div className="space-y-4">
-              {activeTab === "templates" && (
-                <TemplatesPanel engine={engine} business={business} />
-              )}
-
-              {activeTab === "tools" && (
-                <>
-                  <Toolbox engine={engine} onUploadImage={onUploadImage} />
-                  <DrawingPanel engine={engine} />
-                </>
-              )}
-
-              {activeTab === "inspector" && (
-                <>
-                  {state.selection.layerId ? (
-                    <InspectorPanel engine={engine} onUploadImage={onUploadImage} />
-                  ) : (
-                    <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-6 text-center text-slate-400">
-                      <Sliders className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />
-                      <p className="text-xs font-semibold text-white">لایه‌ای انتخاب نشده است</p>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        برای ویرایش ویژگی‌ها، یک المان را روی بوم یا از لیست لایه‌ها انتخاب کنید.
-                      </p>
-                    </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("inspector")}
+                  className={`relative flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
+                    activeTab === "inspector"
+                      ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>ویژگی‌ها</span>
+                  {state.selection.layerId && (
+                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
                   )}
-                </>
-              )}
+                </button>
 
-              {activeTab === "layers" && (
-                <LayersPanel engine={engine} doc={state.doc} />
-              )}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("layers")}
+                  className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
+                    activeTab === "layers"
+                      ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>لایه‌ها ({state.doc.layers.length})</span>
+                </button>
 
-              {activeTab === "bg" && (
-                <BackgroundPanel engine={engine} />
-              )}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("bg")}
+                  className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
+                    activeTab === "bg"
+                      ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                  <span>پس‌زمینه</span>
+                </button>
+              </div>
+
+              {/* Active Tab Content */}
+              <div className="space-y-4">
+                {activeTab === "templates" && (
+                  <TemplatesPanel engine={engine} business={business} />
+                )}
+
+                {activeTab === "inspector" && (
+                  <>
+                    {state.selection.layerId ? (
+                      <InspectorPanel engine={engine} onUploadImage={onUploadImage} />
+                    ) : (
+                      <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-6 text-center text-slate-400">
+                        <Sliders className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />
+                        <p className="text-xs font-semibold text-white">لایه‌ای انتخاب نشده است</p>
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          برای ویرایش ویژگی‌ها، یک المان را روی بوم یا از لیست لایه‌ها انتخاب کنید.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {activeTab === "layers" && (
+                  <LayersPanel engine={engine} doc={state.doc} />
+                )}
+
+                {activeTab === "bg" && (
+                  <BackgroundPanel engine={engine} />
+                )}
+              </div>
             </div>
           </div>
         )}

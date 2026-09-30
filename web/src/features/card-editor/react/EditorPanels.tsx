@@ -248,9 +248,13 @@ export function Toolbox({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-4">
-      <h3 className="mb-3 text-sm font-bold text-white">افزودن لایه</h3>
-      <div className="grid grid-cols-3 gap-2">
+    <div
+      className="relative flex w-16 flex-col items-center gap-1 rounded-2xl border border-white/10 bg-[#0c1626]/80 p-1.5 shadow-xl backdrop-blur"
+      role="toolbar"
+      aria-label="ابزارهای استودیو"
+    >
+      <h3 className="sr-only">افزودن لایه</h3>
+      <div className="flex w-full flex-col gap-1">
         {TOOLBOX.map(({ kind, icon: Icon, label }) => {
           const isPointer = kind === "pointer";
           const isDrawingTool = kind === "path" || kind === "pen" || kind === "curved_line";
@@ -277,21 +281,22 @@ export function Toolbox({
               type="button"
               onClick={() => activate(kind)}
               disabled={disabled}
-              title={lockReason ?? undefined}
+              title={lockReason ? `${label} — ${lockReason}` : label}
               aria-disabled={disabled}
-              className={`relative flex flex-col items-center gap-1.5 rounded-xl border p-2.5 text-[11px] font-semibold transition ${
+              aria-pressed={isSelected}
+              className={`relative flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-0.5 text-[8px] font-semibold leading-none transition ${
                 isSelected ? "border-cyan-400 bg-cyan-500/20 text-white" : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-cyan-400/40 hover:text-white"
               } disabled:opacity-40`}
             >
               {kind === "image" && uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
               ) : (
-                <Icon className={`h-4 w-4 ${isSelected ? "text-white" : "text-cyan-400"}`} />
+                <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-white" : "text-cyan-400"}`} />
               )}
-              {label}
+              <span className="w-full truncate text-center">{label}</span>
               {!kindAllowed && (
-                <span className="absolute left-1.5 top-1.5">
-                  <PremiumBadge label="قفل" />
+                <span className="absolute left-1 top-1">
+                  <PremiumBadge label="" />
                 </span>
               )}
             </button>
@@ -300,7 +305,7 @@ export function Toolbox({
       </div>
 
       {showShapePicker && (
-        <div className="mt-3 rounded-2xl border border-cyan-400/40 bg-[#081220] p-3 shadow-2xl space-y-3">
+        <div className="absolute right-full top-0 z-50 mr-2 w-80 space-y-3 rounded-2xl border border-cyan-400/40 bg-[#081220] p-3 shadow-2xl">
           <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-xs font-bold text-cyan-300">
             <span>اشکال هندسی پایه:</span>
             <button
