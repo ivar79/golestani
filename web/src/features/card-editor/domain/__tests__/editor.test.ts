@@ -3,6 +3,7 @@ import { HistoryStack } from "../history";
 import { EditorEngine } from "../../engine/EditorEngine";
 import { fitZoom, keepInside, snapCenter } from "../geometry";
 import { ARTBOARD, type CardDocument } from "../document";
+import { resolveLayerPathD } from "../path";
 
 function testDoc(): CardDocument {
   return {
@@ -262,6 +263,67 @@ describe("EditorEngine freehand drawing", () => {
     const exported = engine.snapshot().doc;
     const reparsed = JSON.parse(JSON.stringify(exported));
     expect(reparsed.layers.find((l: { id: string }) => l.id === id)).toBeDefined();
+  });
+
+  it("addBrushLayer stores a tight box + rawD that the shared resolver renders", () => {
+    const engine = new EditorEngine(testDoc());
+    // A small ribbon outline in artboard coordinates.
+    const outline = [
+      [100, 100],
+      [120, 108],
+      [140, 100],
+      [130, 90],
+      [110, 92],
+    ];
+    const id = engine.addBrushLayer(outline, "#22d3ee");
+    expect(id).not.toBeNull();
+    const layer = engine.getState().doc.layers.find((l) => l.id === id);
+    expect(layer?.kind).toBe("path");
+    if (layer?.kind !== "path") return;
+    // The stroke is NOT the whole artboard — it frames only its own ink.
+    expect(layer.width).toBeLessThan(ARTBOARD.width);
+    expect(layer.height).toBeLessThan(ARTBOARD.height);
+    expect(layer.x).toBeLessThanOrEqual(100);
+    expect(layer.y).toBeLessThanOrEqual(100);
+    expect(layer.fill).toBe("#22d3ee");
+    // The resolver (canvas + export) draws the stored rawD, so the stroke
+    // survives the release of the pointer.
+    expect(resolveLayerPathD(layer)).toBe(layer.rawD);
+    expect(resolveLayerPathD(layer)).toContain("M ");
+  });
+
+  it("addBrushLayer drops a degenerate outline without leaving a layer", () => {
+    const engine = new EditorEngine(testDoc());
+    const before = engine.getState().doc.layers.length;
+    expect(engine.addBrushLayer([], "#22d3ee")).toBeNull();
+    expect(engine.addBrushLayer([[0, 0], [1, 1]], "#22d3ee")).toBeNull();
+    expect(engine.getState().doc.layers).toHaveLength(before);
+  });
+
+  it("addCurvedLine stores the canonical bend the resolver and handle read", () => {
+    const engine = new EditorEngine(testDoc());
+    const id = engine.addCurvedLine(50);
+    const layer = engine.getState().doc.layers.find((l) => l.id === id);
+    expect(layer?.kind).toBe("path");
+    if (layer?.kind !== "path") return;
+    expect(layer.bend).toBe(0.5);
+    // The geometry the renderer/export draws is the arc, not the anchors.
+    expect(resolveLayerPathD(layer)).toContain(" A ");
+  });
+
+  it("setPathBend changes the resolved arc live", () => {
+    const engine = new EditorEngine(testDoc());
+    const id = engine.addCurvedLine(0);
+    const layer = () => engine.getState().doc.layers.find((l) => l.id === id);
+    expect((layer() as { bend?: number }).bend).toBe(0);
+    expect(resolveLayerPathD(layer() as never)).not.toContain(" A ");
+
+    engine.setPathBend(id, 1);
+    expect((layer() as { bend?: number }).bend).toBe(1);
+    expect(resolveLayerPathD(layer() as never)).toContain(" A ");
+
+    engine.setPathBend(id, 10); // clamped to the resolver's supported range
+    expect((layer() as { bend?: number }).bend).toBe(1.5);
   });
 });
 

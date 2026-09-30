@@ -46,6 +46,11 @@ class CardDesignValidator
 
     private const MAX_PATH_POINTS = 500;
 
+    /** Cap for a serialized raw SVG path (`rawD`). The whole document is
+     * already capped at MAX_BYTES; this bounds a single path so a hostile or
+     * runaway stroke cannot consume the entire budget. */
+    private const MAX_RAW_D = 20_000;
+
     private const IMAGE_PREFIXES = ['storage/', '/storage/'];
 
     /**
@@ -167,6 +172,13 @@ class CardDesignValidator
             abort(422, 'شناسه لایه نامعتبر است.');
         }
 
+        // Optional user label (layers panel). Emitted ONLY when the input
+        // carries one, so stored documents stay byte-identical when a layer
+        // never had a name.
+        if (isset($layer['name']) && is_string($layer['name'])) {
+            $clean['name'] = $this->cleanString($layer['name'], 120);
+        }
+
         $clean['text'] = '';
         switch ($kind) {
             case 'text':
@@ -227,14 +239,43 @@ class CardDesignValidator
                 // Freehand Bezier strokes (EditorEngine freehand tool). Points
                 // are stored relative to the layer box; optional cubic handles
                 // hIn/hOut sit on each anchor.
+                // A path holds its geometry in ONE of two canonical shapes:
+                //   - `points`  (Bézier anchors / 2-point arc lines), or
+                //   - `rawD`    (committed freehand ribbons and the heritage
+                //                template ornaments — authored directly as SVG
+                //                path data, so `points` may legitimately be []).
+                // A layer with NEITHER is not a drawable path.
                 $clean['closed'] = (bool) ($layer['closed'] ?? false);
                 $points = $layer['points'] ?? [];
                 abort_if(! is_array($points) || ! array_is_list($points), 422, 'نقاط مسیر نامعتبر است.');
-                abort_if(count($points) < 2 || count($points) > self::MAX_PATH_POINTS, 422, 'تعداد نقاط مسیر نامعتبر است.');
+                abort_if(count($points) > self::MAX_PATH_POINTS, 422, 'تعداد نقاط مسیر نامعتبر است.');
+
+                $rawD = null;
+                $rawDInput = $layer['rawD'] ?? null;
+                if (is_string($rawDInput) && $rawDInput !== '') {
+                    // Present rawD is validated STRICTLY (never blind-trusted):
+                    // malformed path data, oversized paths or anything outside
+                    // the SVG grammar is a 422.
+                    $rawD = $this->validateRawDString($rawDInput);
+                }
+                if ($rawD === null) {
+                    abort_if(count($points) < 2, 422, 'تعداد نقاط مسیر نامعتبر است.');
+                } else {
+                    $clean['rawD'] = $rawD;
+                }
                 $clean['points'] = array_map(
                     fn ($point): array => $this->cleanPathPoint($point),
                     $points
                 );
+                // Canonical 2-point curved-line arc (signed sagitta ratio, see
+                // domain/curveLine.ts); legacy documents carry `curvature`
+                // (-100..100) instead, kept for backwards compatibility.
+                if (array_key_exists('bend', $layer)) {
+                    $clean['bend'] = $this->cleanNumber($layer['bend'] ?? 0, -1.5, 1.5);
+                }
+                if (array_key_exists('curvature', $layer)) {
+                    $clean['curvature'] = $this->cleanNumber($layer['curvature'] ?? 0, -100, 100);
+                }
                 $clean['stroke'] = $this->cleanColor($layer['stroke'] ?? null) ?? '#0ea5e9';
                 $clean['strokeWidth'] = $this->cleanNumber($layer['strokeWidth'] ?? 4, 0.5, 100);
                 $clean['strokeStyle'] = $this->cleanEnum($layer['strokeStyle'] ?? null, self::STROKE_STYLES, 'solid');
@@ -297,6 +338,147 @@ class CardDesignValidator
         }
 
         return $clean;
+    }
+
+    /**
+     * Strict whitelist for a raw SVG path (`rawD`) — the geometry model used by
+     * committed freehand ribbons and the heritage template ornaments.
+     *
+     * SECURITY: this string becomes the `d` attribute of an SVG element on the
+     * canvas, in the EXPORTED file and on the PUBLIC card. Only the SVG path
+     * grammar is accepted:
+     *   - the command set MmZzLlHhVvCcSsQqTtAa, and nothing else as a letter —
+     *     any other character outside [0-9 ,.eE+-] is REJECTED, which blocks
+     *     <, >, (), ;, quotes and `#` (and therefore script:, url(), HTML and
+     *     external resource references) at the grammar level;
+     *   - argument counts are validated per command, including implicit
+     *     repeats, so a malformed path is REJECTED, never stored;
+     *   - length is capped;
+     *   - the data must open with a moveto.
+     * Rendering escapes attribute values anyway — this keeps the STORED
+     * document honest, so it can carry nothing but geometry.
+     *
+     * @return string the validated path data (returned verbatim)
+     */
+    private function validateRawDString(string $value): string
+    {
+        if ($value === '' || strlen($value) > self::MAX_RAW_D) {
+            abort(422, 'مسیر خام نامعتبر است.');
+        }
+
+        $argCount = [
+            'M' => 2, 'm' => 2, 'L' => 2, 'l' => 2, 'H' => 1, 'h' => 1,
+            'V' => 1, 'v' => 1, 'C' => 6, 'c' => 6, 'S' => 4, 's' => 4,
+            'Q' => 4, 'q' => 4, 'T' => 2, 't' => 2, 'A' => 7, 'a' => 7,
+            'Z' => 0, 'z' => 0,
+        ];
+
+        $length = strlen($value);
+        $i = 0;
+        // The first command must open a subpath, and a new one must open after
+        // every close. Anything else is not a drawable path.
+        $expecting = ['M', 'm'];
+
+        while ($i < $length) {
+            $char = $value[$i];
+
+            if (ctype_space($char) || $char === ',') {
+                $i++;
+                continue;
+            }
+
+            if (isset($argCount[$char])) {
+                // An empty expectation means "any command"; after a Z (or at
+                // the very start) only a moveto may (re)open a subpath.
+                if ($expecting !== [] && ! in_array($char, $expecting, true)) {
+                    abort(422, 'مسیر خام نامعتبر است.');
+                }
+                $count = $argCount[$char];
+                $i++;
+                for ($a = 0; $a < $count; $a++) {
+                    [, $i] = $this->readRawDNumber($value, $i, true);
+                }
+                // Implicit repeats: M/L/T/Q/C… keep consuming arg groups.
+                // Z/z take NO arguments, so nothing may trail one (a stray
+                // number after a closepath is malformed, not a repeat).
+                while ($count > 0) {
+                    $restart = $i;
+                    [$num, $i] = $this->readRawDNumber($value, $i);
+                    if ($num === null) {
+                        $i = $restart;
+                        break;
+                    }
+                    for ($a = 1; $a < $count; $a++) {
+                        [, $i] = $this->readRawDNumber($value, $i, true);
+                    }
+                }
+                $expecting = ($char === 'Z' || $char === 'z') ? ['M', 'm'] : [];
+                continue;
+            }
+
+            abort(422, 'مسیر خام نامعتبر است.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Read one SVG path number (optionally signed, with a decimal point and/or
+     * an exponent). Returns [null, $start] when the input here is not a
+     * number, so the caller can back out for an implicit-repeat boundary —
+     * or abort when the number is REQUIRED (a command argument).
+     *
+     * @return array{0: string|null, 1: int}
+     */
+    private function readRawDNumber(string $value, int $i, bool $required = false): array
+    {
+        $length = strlen($value);
+
+        // Separators between numbers are optional in SVG (1 2, 1,2, 1-2); any
+        // leading whitespace/commas here are just separators.
+        while ($i < $length && (ctype_space($value[$i]) || $value[$i] === ',')) {
+            $i++;
+        }
+
+        $start = $i;
+        $seenDigit = false;
+
+        if ($i < $length && ($value[$i] === '+' || $value[$i] === '-')) {
+            $i++;
+        }
+        while ($i < $length && ctype_digit($value[$i])) {
+            $i++;
+            $seenDigit = true;
+        }
+        if ($i < $length && $value[$i] === '.') {
+            $i++;
+            while ($i < $length && ctype_digit($value[$i])) {
+                $i++;
+                $seenDigit = true;
+            }
+        }
+        if ($seenDigit && $i < $length && ($value[$i] === 'e' || $value[$i] === 'E')) {
+            $j = $i + 1;
+            if ($j < $length && ($value[$j] === '+' || $value[$j] === '-')) {
+                $j++;
+            }
+            if ($j < $length && ctype_digit($value[$j])) {
+                while ($j < $length && ctype_digit($value[$j])) {
+                    $j++;
+                }
+                $i = $j;
+            }
+        }
+
+        if (! $seenDigit) {
+            if ($required) {
+                abort(422, 'مسیر خام نامعتبر است.');
+            }
+
+            return [null, $start];
+        }
+
+        return [substr($value, $start, $i - $start), $i];
     }
 
     /**

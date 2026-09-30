@@ -63,6 +63,34 @@ import {
   type RasterScale,
 } from "@/features/card-editor/export/exportCard";
 
+/**
+ * Structured API diagnostic — the loader/saver catch blocks used to swallow
+ * everything into a generic message, which made a backend 422 (validation)
+ * indistinguishable from a network blip. This logs the request + response
+ * shape (never secrets) in DEVELOPMENT so the root cause is visible, while
+ * production keeps showing only the friendly message.
+ *
+ * The logged payload is the HTTP envelope only — the response body is
+ * included in dev (it is what names the failing validation rule) but never
+ * surfaced to the user, so backend internals cannot leak into the UI.
+ */
+function logCardApiError(scope: string, error: unknown): void {
+  if (process.env.NODE_ENV !== "development") return;
+  const e = error as {
+    response?: { status?: number; data?: unknown };
+    message?: string;
+    config?: { method?: string; url?: string };
+  };
+  // eslint-disable-next-line no-console -- dev-only diagnostic for the card API contract
+  console.error(`[CardMaker][${scope}]`, {
+    status: e?.response?.status,
+    method: e?.config?.method,
+    url: e?.config?.url,
+    data: e?.response?.data,
+    message: e?.message,
+  });
+}
+
 export type BusinessCardResponse = {
   id?: number;
   template?: CardTemplate;
@@ -203,7 +231,11 @@ export default function CardMakerPage() {
         setFontFamily(ff);
         setSavedSnapshot(`${tpl}|${thm}|${fs}|${ff}`);
       })
-      .catch(() => {
+      .catch((err) => {
+        // 422 here means the STORED document fails today's validator (or the
+        // request shape changed) — the diagnostic names the rule; the UI keeps
+        // the last known-good state and stays usable.
+        logCardApiError("load-card", err);
         setSavedSnapshot("classic|navy|medium|sans");
       })
       .finally(() => {
@@ -293,6 +325,10 @@ export default function CardMakerPage() {
       setStaleError(null);
       setMessage({ text: "کارت با موفقیت ذخیره شد." });
     } catch (err) {
+      // A save refusal is either an entitlement boundary (403, surfaced with
+      // the exact capability) or a validation rejection (422). Both are logged
+      // in dev; only the friendly message reaches the user in production.
+      logCardApiError("save-design", err);
       // Backend is authoritative: a stale capability payload is corrected here.
       const entitlementErrors = extractEntitlementErrors(err);
       if (entitlementErrors) {

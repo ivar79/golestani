@@ -63,3 +63,42 @@ export function outlineToD(pts: number[][]): string {
   }
   return `${d} Z`;
 }
+
+/**
+ * Frame a COMMITTED brush stroke as a self-contained layer: the outline is
+ * re-originated into the layer's own box, so a stroke behaves like every other
+ * layer (a tight selection frame, real move/resize/rotate) instead of claiming
+ * the whole artboard as its bounds.
+ *
+ * Returns null for a degenerate outline (the caller drops the stroke).
+ */
+export function brushStrokeLayerGeometry(
+  outline: number[][],
+  pad = 2,
+): { d: string; x: number; y: number; width: number; height: number } | null {
+  if (!outline || outline.length < 4) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of outline) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
+
+  const local = outline.map(([x, y]) => [x - minX + pad, y - minY + pad]);
+  const d = outlineToD(local);
+  if (!d) return null;
+
+  return {
+    d,
+    x: minX - pad,
+    y: minY - pad,
+    width: maxX - minX + pad * 2,
+    height: maxY - minY + pad * 2,
+  };
+}

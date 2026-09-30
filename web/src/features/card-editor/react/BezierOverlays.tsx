@@ -372,12 +372,14 @@ export function ArcBendHandleOverlay({
   zoom: number;
 }) {
   if (layer.points.length !== 2) return null;
+  // `bend` is the canonical model (legacy `curvature` is normalized onto it at
+  // parse time), so the handle sits on the arc the resolver actually draws.
   const lSpec = {
     x1: layer.points[0].x,
     y1: layer.points[0].y,
     x2: layer.points[1].x,
     y2: layer.points[1].y,
-    bend: layer.bend ?? 0.4,
+    bend: layer.bend ?? 0,
   };
   const h = curveBendHandlePos(lSpec);
   const isTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;

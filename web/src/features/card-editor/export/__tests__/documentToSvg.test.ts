@@ -278,6 +278,29 @@ describe("serializeDocument — paths", () => {
   it("emits no fill for an open unfilled path", () => {
     expect(serializeDocument(doc([pathLayer()]))).toContain('fill="none"');
   });
+
+  it("serializes rawD verbatim (ornaments + committed brush strokes)", () => {
+    const svg = serializeDocument(doc([pathLayer({ points: [], rawD: "M 0 0 L 10 10 Z" })]));
+    expect(svg).toContain('data-layer="p1"');
+    expect(svg).toContain('d="M 0 0 L 10 10 Z"');
+    // An empty-points layer must not collapse into an empty path.
+    expect(svg).not.toContain('d=""');
+  });
+
+  it("serializes a 2-point curved line as a true SVG arc (bend, not anchors)", () => {
+    const svg = serializeDocument(doc([pathLayer({ bend: 1 })]));
+    expect(svg).toContain("<path");
+    expect(svg).toMatch(/ A \d+(\.\d+)? \d+(\.\d+)? 0 [01] /);
+  });
+
+  it("turns a gradient path fill into <defs> + url(#…)", () => {
+    const svg = serializeDocument(
+      doc([pathLayer({ points: [], rawD: "M 0 0 L 10 10 Z", fill: "linear-gradient(135deg, #BF953F 0%, #AA771C 100%)" })]),
+    );
+    expect(svg).toContain("<defs>");
+    expect(svg).toContain('id="path-grad-p1"');
+    expect(svg).toContain('fill="url(#path-grad-p1)"');
+  });
 });
 
 describe("serializeDocument — text", () => {

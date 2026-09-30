@@ -478,4 +478,175 @@ class CardDesignJsonTest extends TestCase
             ])->assertStatus(422);
         }
     }
+
+    /**
+     * rawD PATH LAYERS — the freehand brush and the heritage ornaments carry
+     * their geometry as SVG path data and legitimately have points: []. Before
+     * the validator knew about rawD, every such save was a 422 ("تعداد نقاط
+     * مسیر نامعتبر است") — a drawn stroke or an applied VIP template could
+     * never be saved. This is the ROOT CAUSE of the reported 422.
+     */
+    public function test_raw_d_path_layer_round_trips(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D12', 'slug' => 'design-json-12', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true, 'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path']]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'brush', 'kind' => 'path', 'name' => 'قلم آزاد',
+            'x' => 90, 'y' => 90, 'width' => 54, 'height' => 22,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 8, 'color' => '#22d3ee', 'background' => null,
+            'text' => '',
+            'closed' => true, 'points' => [],
+            'rawD' => 'M 0 0 Q 10 22 27 11 Q 44 0 54 11 Q 40 22 27 22 Q 14 22 0 11 Z',
+            'stroke' => null, 'strokeWidth' => 0, 'fill' => '#22d3ee',
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic',
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id')['brush'];
+
+        $this->assertSame([], $stored['points']);
+        $this->assertSame($design['layers'][2]['rawD'], $stored['rawD']);
+        $this->assertSame('#22d3ee', $stored['fill']);
+        $this->assertSame('قلم آزاد', $stored['name']);
+    }
+
+    /** A 2-point curved line persists the canonical `bend` (legacy `curvature` too). */
+    public function test_curved_line_bend_round_trips(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D13', 'slug' => 'design-json-13', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true, 'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path']]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'arc', 'kind' => 'path', 'name' => 'خط منحنی',
+            'x' => 100, 'y' => 280, 'width' => 500, 'height' => 100,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 9, 'color' => null, 'background' => null,
+            'text' => '',
+            'closed' => false,
+            'points' => [
+                ['x' => 0, 'y' => 100, 'hIn' => null, 'hOut' => null],
+                ['x' => 500, 'y' => 100, 'hIn' => null, 'hOut' => null],
+            ],
+            'bend' => 0.5,
+            'stroke' => '#0ea5e9', 'strokeWidth' => 4, 'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'template' => 'classic',
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id')['arc'];
+
+        $this->assertSame(0.5, $stored['bend']);
+        $this->assertSame('خط منحنی', $stored['name']);
+    }
+
+    /**
+     * rawD is NEVER blind-trusted: it becomes the `d` attribute of an SVG
+     * element in the canvas, the export and the PUBLIC card, so only the SVG
+     * path grammar is accepted. Every one of these is a 422.
+     */
+    public function test_malformed_raw_d_is_rejected(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D14', 'slug' => 'design-json-14', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $badPaths = [
+            'HTML/script injection' => 'M 0 0 L <script>alert(1)</script>',
+            'external reference' => 'M 0 0 L 10 10 url(https://evil.com/x.svg)',
+            'attribute breakout' => 'M 0 0 " onmouseover="alert(1)',
+            'css expression' => 'M 0 0 L 10 10 ; } .x{fill:red}',
+            'not starting with a moveto' => 'L 0 0 L 10 10',
+            'arc without its 7 arguments' => 'M 0 0 A 50 50 0 0',
+            'unbalanced curve arguments' => 'M 0 0 C 10 10 20 20',
+            'unknown command' => 'M 0 0 X 10 10',
+            'non-numeric garbage' => 'M abc def',
+            'trailing junk after closepath' => 'M 0 0 L 10 10 Z 5 6',
+        ];
+
+        foreach ($badPaths as $label => $rawD) {
+            $design = $this->validDesign();
+            $design['layers'][] = [
+                'id' => 'evil', 'kind' => 'path',
+                'x' => 0, 'y' => 0, 'width' => 10, 'height' => 10,
+                'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+                'z' => 1, 'color' => null, 'background' => null,
+                'text' => '',
+                'closed' => true, 'points' => [],
+                'rawD' => $rawD,
+                'stroke' => null, 'strokeWidth' => 0, 'fill' => '#0ea5e9',
+            ];
+
+            $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+                'design_json' => $design,
+            ])->assertStatus(422, "rawD must be rejected: {$label}");
+        }
+    }
+
+    /** A path with neither anchors nor rawD is still nothing drawable. */
+    public function test_path_without_geometry_is_still_rejected(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D15', 'slug' => 'design-json-15', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'empty', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 10, 'height' => 10,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'text' => '',
+            'closed' => true, 'points' => [],
+            'stroke' => null, 'strokeWidth' => 0, 'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertStatus(422);
+    }
+
+    /** rawD is length-capped so one path cannot swallow the document budget. */
+    public function test_oversized_raw_d_is_rejected(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D16', 'slug' => 'design-json-16', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'huge', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 10, 'height' => 10,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'text' => '',
+            'closed' => true, 'points' => [],
+            'rawD' => 'M 0 0 '.str_repeat('L 1 1 ', 6000),
+            'stroke' => null, 'strokeWidth' => 0, 'fill' => '#0ea5e9',
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertStatus(422);
+    }
 }

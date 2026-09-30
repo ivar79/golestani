@@ -8,7 +8,7 @@
  * layers, so existing designs are preserved, never reset.
  */
 import type { Business } from "@/lib/businesses";
-import { ARTBOARD, type BadgeLayer, type CardDocument, type ImageLayer, type QrLayer, type ShapeLayer, type TextLayer } from "./document";
+import { ARTBOARD, type BadgeLayer, type CardLayer, type CardDocument, type ImageLayer, type QrLayer, type ShapeLayer, type TextLayer } from "./document";
 
 export type TemplateKey = "classic" | "midnight" | "emerald" | "local" | "creative";
 
@@ -171,8 +171,21 @@ export function parseDocument(json: string | null | undefined): CardDocument | n
   try {
     const parsed = JSON.parse(json) as CardDocument;
     if (parsed?.version !== 1 || !Array.isArray(parsed.layers) || !parsed.artboard) return null;
-    return parsed;
+    return { ...parsed, layers: parsed.layers.map(normalizeLegacyLayer) };
   } catch {
     return null;
   }
+}
+
+/**
+ * Bring a stored layer up to the CURRENT document model. Today that means the
+ * curved-line contract: older builds persisted `curvature` (-100..100) and
+ * left `bend` unset, which made the arc model and the bend handle disagree.
+ * `bend` wins whenever it is present, otherwise the legacy value is converted
+ * once, at load — never on save (stored data is never mutated here).
+ */
+function normalizeLegacyLayer(layer: CardLayer): CardLayer {
+  if (layer.kind !== "path" || layer.bend !== undefined || layer.curvature === undefined) return layer;
+  if (layer.points.length !== 2) return layer;
+  return { ...layer, bend: Math.max(-1.5, Math.min(1.5, layer.curvature / 100)) };
 }

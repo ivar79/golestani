@@ -26,7 +26,7 @@ import type {
   ShapeLayer,
   TextLayer,
 } from "../domain/document";
-import { pathD } from "../domain/path";
+import { resolveLayerPathD } from "../domain/path";
 import { resolveShapePaint, type SvgPrimitive } from "../domain/shapes";
 import { resolveStroke } from "../domain/stroke";
 import {
@@ -179,12 +179,29 @@ function shapeMarkup(layer: ShapeLayer, defs: string[]): string {
     .join("");
 }
 
-function pathMarkup(layer: PathLayer): string {
+function pathMarkup(layer: PathLayer, defs: string[]): string {
   const stroke = resolveStroke(layer, "#0ea5e9");
-  const d = pathD(layer.points, layer.closed);
+  // The RESOLVER is the single geometry contract — rawD ornaments and
+  // bend arcs serialize with exactly the same `d` the canvas renders.
+  const d = resolveLayerPathD(layer);
   if (!d) return "";
-  const fill = layer.fill ? escapeXml(svgColor(layer.fill)) : "none";
-  return `<path d="${d}" fill="${fill}"${strokeAttrs(stroke)}/>`;
+
+  // A path fill may be a solid colour or an editor gradient (ornaments);
+  // the gradient becomes a real <defs> entry like a shape fill.
+  let fill = "none";
+  if (layer.fill) {
+    if (isGradientCss(layer.fill)) {
+      const spec = parseGradientCss(layer.fill);
+      if (spec) {
+        const id = `path-grad-${layer.id}`;
+        defs.push(gradientMarkup(id, spec, layer.width, layer.height));
+        fill = `url(#${id})`;
+      }
+    } else {
+      fill = escapeXml(svgColor(layer.fill));
+    }
+  }
+  return `<path d="${escapeXml(d)}" fill="${fill}"${strokeAttrs(stroke)}/>`;
 }
 
 function textMarkup(layer: TextLayer, embeddedVazir: boolean): string {
@@ -348,7 +365,7 @@ function layerBody(
     case "shape":
       return shapeMarkup(layer, defs);
     case "path":
-      return pathMarkup(layer);
+      return pathMarkup(layer, defs);
     case "text":
       return textMarkup(layer, options.embeddedVazir);
     case "image":

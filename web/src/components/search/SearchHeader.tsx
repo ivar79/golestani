@@ -73,7 +73,8 @@ export default function SearchHeader() {
           className="flex shrink-0 items-center transition-opacity duration-200 hover:opacity-80"
         >
           <CmsBrandLogo variant="symbol" tone={logoTone} height={34} className="sm:hidden" priority />
-          <CmsBrandLogo variant="primary" tone={logoTone} width={128} className="hidden sm:block" />
+          {/* LCP سربرگ جستجو در نمای دسکتاپ — اولین تصویر above-the-fold. */}
+          <CmsBrandLogo variant="primary" tone={logoTone} width={128} className="hidden sm:block" priority />
         </Link>
 
         <div className="flex items-center gap-2">

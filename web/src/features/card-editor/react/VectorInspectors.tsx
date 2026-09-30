@@ -388,24 +388,26 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
         </div>
       </div>
 
-      {/* Arc Curvature Slider (Canva-like intuitive curve control) */}
+      {/* Arc Curvature Slider (Canva-like intuitive curve control).
+          `bend` is the canonical model; the slider presents it as a ±100%
+          percentage, matching the -100..100 `curvature` of older builds. */}
       {isTwoPointCurve && (
         <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/[0.05] p-3 space-y-2.5">
           <SliderRow
             label="انحنای کمان (قوس خط)"
-            value={layer.curvature ?? 0}
+            value={Math.round((layer.bend ?? 0) * 100)}
             min={-100}
             max={100}
             step={2}
             suffix="%"
-            onLive={(value) => engine.setPathCurvature(layer.id, value)}
+            onLive={(value) => engine.setPathBend(layer.id, value / 100)}
             onCommit={() => engine.commitTransient()}
           />
           <div className="grid grid-cols-3 gap-1.5 pt-1">
             <button
               type="button"
               onClick={() => {
-                engine.setPathCurvature(layer.id, -50);
+                engine.setPathBend(layer.id, -0.5);
                 engine.commitTransient();
               }}
               className="rounded-lg border border-white/10 bg-white/5 py-1 text-[10px] font-semibold text-slate-300 hover:text-white"
@@ -415,7 +417,7 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
             <button
               type="button"
               onClick={() => {
-                engine.setPathCurvature(layer.id, 0);
+                engine.setPathBend(layer.id, 0);
                 engine.commitTransient();
               }}
               className="rounded-lg border border-white/10 bg-white/5 py-1 text-[10px] font-semibold text-slate-300 hover:text-white"
@@ -425,7 +427,7 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
             <button
               type="button"
               onClick={() => {
-                engine.setPathCurvature(layer.id, 50);
+                engine.setPathBend(layer.id, 0.5);
                 engine.commitTransient();
               }}
               className="rounded-lg border border-white/10 bg-white/5 py-1 text-[10px] font-semibold text-slate-300 hover:text-white"

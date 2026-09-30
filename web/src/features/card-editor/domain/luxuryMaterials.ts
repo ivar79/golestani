@@ -125,6 +125,11 @@ export function calculateArcHandles(
 
 /**
  * Generate a curved line / arc path layer.
+ *
+ * `bend` (a signed sagitta ratio, ±1 = semicircle) is the CANONICAL model —
+ * the resolver, the on-canvas bend handle and the export all consume it.
+ * `curvature` (a -100..100 percentage) is kept only so documents saved by
+ * older builds still type-check; it is normalized onto `bend` at parse time.
  */
 export function createCurvedLineLayer(
   x = 100,
@@ -162,11 +167,18 @@ export function createCurvedLineLayer(
     strokeOpacity: 1,
     fill: null,
     curvature,
+    bend: clampBend(curvature / 100),
     points: [
       { x: p0.x, y: p0.y, hIn: null, hOut: h0 },
       { x: p1.x, y: p1.y, hIn: h1, hOut: null },
     ],
   };
+}
+
+/** Keep a sagitta ratio inside the resolver's supported range. */
+export function clampBend(bend: number): number {
+  if (!Number.isFinite(bend)) return 0;
+  return Math.max(-1.5, Math.min(1.5, bend));
 }
 
 /**

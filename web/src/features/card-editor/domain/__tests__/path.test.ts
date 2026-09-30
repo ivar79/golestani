@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFreehandPath, pathBBox, pathD, type PathPoint } from "../path";
+import { createFreehandPath, pathBBox, pathD, resolveLayerPathD, type PathPoint } from "../path";
 
 describe("createFreehandPath", () => {
   it("returns an empty array for no input", () => {
@@ -102,5 +102,52 @@ describe("pathBBox", () => {
 
   it("falls back to a zero box for no points", () => {
     expect(pathBBox([])).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+  });
+});
+
+describe("resolveLayerPathD", () => {
+  const line: PathPoint[] = [
+    { x: 0, y: 0, hIn: null, hOut: null },
+    { x: 100, y: 0, hIn: null, hOut: null },
+  ];
+
+  it("builds a 2-point curved line from points + bend as a circular arc", () => {
+    const d = resolveLayerPathD({ points: line, bend: 1 });
+    expect(d).toContain(" A ");
+    expect(d.startsWith("M 0 0")).toBe(true);
+  });
+
+  it("collapses a near-zero bend to a straight line", () => {
+    expect(resolveLayerPathD({ points: line, bend: 0 })).toBe("M 0 0 L 100 0");
+  });
+
+  it("uses rawD verbatim when the layer has no bend (ornaments, committed brush strokes)", () => {
+    const d = "M 0 0 Q 5 10 10 0 Z";
+    expect(resolveLayerPathD({ points: [], closed: true, rawD: d })).toBe(d);
+  });
+
+  it("prefers bend over rawD for an EDITABLE 2-point curve", () => {
+    // Dragging the bend handle must change the drawing even if rawD lingers.
+    const d = resolveLayerPathD({ points: line, rawD: "M 0 0 L 100 0", bend: 0.5 });
+    expect(d).toContain(" A ");
+  });
+
+  it("falls back to Bézier anchors for multi-point paths without bend/rawD", () => {
+    const points: PathPoint[] = [
+      { x: 0, y: 0, hOut: { x: 10, y: 0 } },
+      { x: 50, y: 0 },
+      { x: 100, y: 0 },
+    ];
+    expect(resolveLayerPathD({ points, closed: false })).toBe(pathD(points, false));
+  });
+
+  it("ignores bend on a path that is not a 2-point line", () => {
+    const points: PathPoint[] = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 100, y: 0 },
+    ];
+    // bend is meaningless with 3 anchors — anchors still govern.
+    expect(resolveLayerPathD({ points, bend: 1 })).toBe(pathD(points, false));
   });
 });

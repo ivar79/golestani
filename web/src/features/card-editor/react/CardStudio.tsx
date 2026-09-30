@@ -93,12 +93,19 @@ export function CardStudio({
     } catch (error) {
       // The server is the entitlement authority: when it refuses a save, say
       // WHICH capability refused it instead of a generic failure. A locked
-      // control must never look like a transient error.
+      // control must never look like a transient error. A 422 is a structural
+      // rejection (the document does not satisfy today's validator); its body
+      // names the failing rule for the developer, the user gets a calm hint.
+      const status = (error as { response?: { status?: number } })?.response?.status;
       setSaveStatus({
         kind: "error",
         message:
           describeEntitlementErrors(extractEntitlementErrors(error)) ??
-          (error instanceof Error ? error.message : "ذخیره‌سازی ناموفق بود."),
+          (status === 422
+            ? "سند کارت با ساختار مجاز سرور همخوانی نیست — بخشی از طرح ذخیره نشد."
+            : error instanceof Error
+              ? error.message
+              : "ذخیره‌سازی ناموفق بود."),
       });
     }
   };

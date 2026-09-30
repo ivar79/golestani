@@ -254,10 +254,28 @@ export function pathD(points: PathPoint[], closed = false): string {
 }
 
 /**
- * Resolve the SVG path 'd' string for any PathLayer, supporting rawD, circular Arc bend, and Bezier anchors.
+ * THE path resolver — the single place a PathLayer's geometry becomes an SVG
+ * `d` string. Every consumer (canvas preview, SVG/PDF export, public card) must
+ * call this, never `pathD` directly, or the three can drift.
+ *
+ * Priority (one geometry, one contract):
+ *   1. EDITABLE CURVED LINE — a 2-point line carrying a `bend` sagitta ratio.
+ *      Geometry is built from `points + bend` as a true circular arc, so
+ *      dragging the bend handle changes the drawing. `bend` is deliberately
+ *      checked BEFORE `rawD`: an editable curve must never be shadowed by a
+ *      stale pre-computed path.
+ *   2. RAW PATH (`rawD`) — geometry authored directly as SVG path data:
+ *      committed freehand ribbons (perfect-freehand outlines) and the
+ *      ornament generators used by the heritage templates. Kept verbatim so it
+ *      round-trips untouched (it is not anchor-editable).
+ *   3. BEZIER ANCHORS (`points`) — the pen tool / point editor model.
  */
-export function resolveLayerPathD(layer: { points: PathPoint[]; closed?: boolean; rawD?: string; bend?: number }): string {
-  if (layer.rawD) return layer.rawD;
+export function resolveLayerPathD(layer: {
+  points: PathPoint[];
+  closed?: boolean;
+  rawD?: string;
+  bend?: number;
+}): string {
   if (layer.bend !== undefined && layer.points && layer.points.length === 2) {
     return curveLineD({
       x1: layer.points[0].x,
@@ -267,6 +285,7 @@ export function resolveLayerPathD(layer: { points: PathPoint[]; closed?: boolean
       bend: layer.bend,
     });
   }
+  if (layer.rawD) return layer.rawD;
   return pathD(layer.points || [], layer.closed ?? false);
 }
 

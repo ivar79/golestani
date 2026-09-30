@@ -49,8 +49,9 @@ export default function AuthLayout({
           aria-label="رفتن به صفحه اصلی اینکارت"
           className="flex items-center transition-opacity duration-200 hover:opacity-80"
         >
-          <CmsBrandLogo variant="symbol" tone="light" height={36} className="sm:hidden" />
-          <CmsBrandLogo variant="primary" tone="light" width={140} className="hidden sm:block" />
+          {/* LCP صفحات ورود/ثبت‌نام: لوگو تنها محتوای above-the-fold است. */}
+          <CmsBrandLogo variant="symbol" tone="light" height={36} className="sm:hidden" priority />
+          <CmsBrandLogo variant="primary" tone="light" width={140} className="hidden sm:block" priority />
         </Link>
       </div>
 

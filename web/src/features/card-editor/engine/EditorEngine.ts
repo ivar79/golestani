@@ -36,11 +36,12 @@ import {
   straightenAllPoints,
   toggleAnchorAt,
 } from "../domain/path";
+import { brushStrokeLayerGeometry } from "../domain/freehand";
 import { clampStrokeWidth } from "../domain/stroke";
 import { POLYGON_DEFAULT_SIDES } from "../domain/shapes";
 import { framesBounds } from "../domain/geometry";
 import {
-  calculateArcHandles,
+  clampBend,
   createCurvedLineLayer,
   createWaveDividerLayer,
   createCornerSwooshLayer,
@@ -288,8 +289,18 @@ export class EditorEngine {
 
   /**
    * Add a freehand brush stroke as a pristine filled vector path layer.
+   *
+   * The stroke arrives as its perfect-freehand OUTLINE (artboard coordinates).
+   * `brushStrokeLayerGeometry` re-origins it into a tight layer box, so the
+   * stroke is a first-class layer — selectable, movable, resizable — and the
+   * committed `rawD` is the exact ribbon the live preview drew. Rendering goes
+   * through `resolveLayerPathD` (rawD), so the canvas, autosave, reload and
+   * export all show the same stroke.
    */
-  addBrushLayer(d: string, color = "#0ea5e9"): string {
+  addBrushLayer(outline: number[][], color = "#0ea5e9"): string | null {
+    const geometry = brushStrokeLayerGeometry(outline);
+    if (!geometry) return null;
+    const { d, x, y, width, height } = geometry;
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
     const layer: PathLayer = {
       id,
@@ -301,10 +312,10 @@ export class EditorEngine {
       fill: color,
       stroke: null,
       strokeWidth: 0,
-      x: 0,
-      y: 0,
-      width: ARTBOARD.width,
-      height: ARTBOARD.height,
+      x,
+      y,
+      width,
+      height,
       angle: 0,
       opacity: 1,
       locked: false,
@@ -346,19 +357,16 @@ export class EditorEngine {
   }
 
   /**
-   * Adjust arc curvature of a 2-point path layer in real-time.
+   * Adjust the arc of a 2-point curved line in real time.
+   *
+   * Writes ONLY `bend` — the canonical sagitta ratio the resolver, the bend
+   * handle and the export all read. The geometry comes from `points + bend`
+   * (domain/curveLine), so no Bézier handles are recomputed here.
    */
-  setPathCurvature(layerId: string, curvature: number): void {
+  setPathBend(layerId: string, bend: number): void {
     const target = this.state.doc.layers.find((l) => l.id === layerId);
     if (!target || target.kind !== "path" || target.points.length !== 2) return;
-    const p0 = target.points[0];
-    const p1 = target.points[1];
-    const { h0, h1 } = calculateArcHandles(p0, p1, curvature);
-    const nextPoints: PathPoint[] = [
-      { x: p0.x, y: p0.y, hIn: null, hOut: h0 },
-      { x: p1.x, y: p1.y, hIn: h1, hOut: null },
-    ];
-    this.transientPatch(layerId, { points: nextPoints, curvature } as Partial<CardLayer>);
+    this.transientPatch(layerId, { bend: clampBend(bend) } as Partial<CardLayer>);
   }
 
   /**

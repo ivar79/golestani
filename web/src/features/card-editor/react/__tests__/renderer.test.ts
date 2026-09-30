@@ -150,4 +150,34 @@ describe("PathVisual", () => {
     );
     expect(closed).toContain("Z");
   });
+
+  describe("resolver contract (rawD / bend)", () => {
+    it("renders a rawD layer (committed brush stroke / ornament) instead of an empty path", () => {
+      const markup = layerMarkup(pathLayer({ points: [], rawD: "M 0 0 L 10 10 Z" }));
+      // A brush stroke used to vanish on release because only `points` was read.
+      expect(markup).toContain('d="M 0 0 L 10 10 Z"');
+      expect(markup).not.toContain('d=""');
+    });
+
+    it("renders a 2-point curved line from points + bend (true SVG arc)", () => {
+      const markup = layerMarkup(pathLayer({ bend: 1 }));
+      expect(markup).toContain("<path");
+      expect(markup).toMatch(/ A \d+(\.\d+)? \d+(\.\d+)? 0 [01] /);
+    });
+
+    it("lets a live bend override a stale rawD on an editable 2-point curve", () => {
+      const markup = layerMarkup(pathLayer({ bend: 0.5, rawD: "M 0 0 L 100 50" }));
+      expect(markup).toContain(" A ");
+      expect(markup).not.toContain("M 0 0 L 100 50");
+    });
+
+    it("keeps gradient path fills as real SVG <defs> (ornament gold foil)", () => {
+      const markup = layerMarkup(
+        pathLayer({ points: [], rawD: "M 0 0 L 10 10 Z", fill: "linear-gradient(135deg, #BF953F 0%, #AA771C 100%)" }),
+      );
+      expect(markup).toContain("<linearGradient");
+      expect(markup).toContain('fill="url(#path-grad-p1)"');
+      expect(markup).toContain('stop-color="#BF953F"');
+    });
+  });
 });

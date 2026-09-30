@@ -223,10 +223,13 @@ export default function AppTaskbar() {
       onClick={closeAll}
       className="flex shrink-0 items-center gap-3 transition-opacity duration-200 hover:opacity-80"
     >
-      {/* priority: همین لوگو LCP موبایل است — هشدار Next/Image رفع می‌شود. */}
+      {/* priority: این لوگوها LCP هر صفحه‌ای هستند که این تسک‌بار را نشان
+          می‌دهد (داشبورد، کارت‌ساز، جستجو) —_above the fold. Next آن را به
+          loading=eager + fetchPriority=high + preload خودکار نگاشت می‌کند،
+          پس preload دستی برای همان منبع تکرار نمی‌شود. */}
       <CmsBrandLogo variant="symbol" tone="light" height={38} className="md:hidden" priority />
-      <CmsBrandLogo variant="primary" tone="light" width={135} className="hidden md:block xl:hidden" />
-      <CmsBrandLogo variant="primary" tone="light" width={155} className="hidden xl:block" />
+      <CmsBrandLogo variant="primary" tone="light" width={135} className="hidden md:block xl:hidden" priority />
+      <CmsBrandLogo variant="primary" tone="light" width={155} className="hidden xl:block" priority />
     </Link>
   );
 

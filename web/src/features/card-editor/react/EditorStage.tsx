@@ -529,10 +529,10 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
           simulatePressure: !isPenInputRef.current,
           last: true,
         });
-        const d = outlineToD(outline);
-        if (d) {
-          engine.addBrushLayer(d, state.brushColor || "#0ea5e9");
-        }
+        // The ENGINE owns the commit: it re-origins the outline into a tight
+        // layer box and stores the ribbon as rawD, which the shared resolver
+        // renders — so the stroke survives release, reload and export.
+        engine.addBrushLayer(outline, state.brushColor || "#0ea5e9");
       }
       brushPtsRef.current = [];
       brushSmoothRef.current = null;

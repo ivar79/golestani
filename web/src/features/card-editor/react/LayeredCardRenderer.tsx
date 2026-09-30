@@ -32,10 +32,10 @@ import type { CSSProperties } from "react";
 import type { CardDocument, CardLayer, ImageLayer, QrLayer, ShapeLayer, TextLayer, BadgeLayer, PathLayer } from "../domain/document";
 import { layerZ } from "../domain/document";
 import { mediaSrc } from "@/lib/media";
-import { pathD } from "../domain/path";
+import { resolveLayerPathD } from "../domain/path";
 import { resolveShapePaint, type SvgPrimitive } from "../domain/shapes";
 import { resolveStroke, type ResolvedStroke } from "../domain/stroke";
-import { gradientLine, gradientRadius, type SvgGradientSpec } from "../domain/svgGradient";
+import { gradientLine, gradientRadius, isGradientCss, parseGradientCss, svgColor, type SvgGradientSpec } from "../domain/svgGradient";
 
 /**
  * The layer FRAME — the only place a layer's geometry becomes CSS.
@@ -360,8 +360,24 @@ function ShapeVisual({ layer }: { layer: ShapeLayer }) {
   );
 }
 
+/**
+ * A path runs through the SHARED resolver (`resolveLayerPathD`) — the same
+ * contract the SVG/PDF exporter and the public card use — so a ribbon, an arc
+ * and an ornament render identically everywhere. The `rawD`/`bend` models are
+ * treated as opaque geometry here; this layer must never recompute them.
+ */
 function PathVisual({ layer }: { layer: PathLayer }) {
   const stroke = resolveStroke(layer, "#0ea5e9");
+  // Ornaments carry their fill as an editor gradient string; SVG `fill` cannot
+  // take CSS text, so it becomes a real <defs> gradient in the layer's own box
+  // (the same projection the shape visual uses).
+  const gradient = isGradientCss(layer.fill) ? parseGradientCss(layer.fill) : null;
+  const gradientId = gradient ? `path-grad-${layer.id}` : null;
+  const fill = !layer.fill
+    ? "none"
+    : gradient
+      ? `url(#${gradientId})`
+      : svgColor(layer.fill);
   return (
     <div style={{ width: "100%", height: "100%" }}>
       {/* `overflow: visible` lets a live-previewed stroke/curve show while it is
@@ -370,7 +386,12 @@ function PathVisual({ layer }: { layer: PathLayer }) {
         style={{ width: "100%", height: "100%", overflow: "visible" }}
         viewBox={`0 0 ${layer.width} ${layer.height}`}
       >
-        <path d={pathD(layer.points, layer.closed)} fill={layer.fill ?? "none"} {...strokeAttrs(stroke)} />
+        {gradient && gradientId ? (
+          <defs>
+            <GradientDefs id={gradientId} spec={gradient} width={layer.width} height={layer.height} />
+          </defs>
+        ) : null}
+        <path d={resolveLayerPathD(layer)} fill={fill} {...strokeAttrs(stroke)} />
       </svg>
     </div>
   );
