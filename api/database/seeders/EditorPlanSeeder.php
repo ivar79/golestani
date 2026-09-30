@@ -45,6 +45,7 @@ class EditorPlanSeeder extends Seeder
                 // plans on the free layer cap.
                 'features' => [
                     'card_editor' => true,
+                    'custom_templates' => false,
                     'card_templates' => ['classic', 'local', 'midnight'],
                     'card_themes' => ['navy', 'emerald', 'warm'],
                     'card_fonts' => ['sans', 'vazir'],
@@ -75,6 +76,7 @@ class EditorPlanSeeder extends Seeder
                 'is_active' => true,
                 'features' => [
                     'card_editor' => true,
+                    'custom_templates' => true,
                     'card_templates' => ['classic', 'local', 'midnight', 'emerald', 'creative'],
                     'card_themes' => ['navy', 'emerald', 'warm'],
                     'card_fonts' => ['sans', 'vazir', 'serif'],

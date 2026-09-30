@@ -33,6 +33,11 @@ class User extends Authenticatable
         'latitude',
         'longitude',
         'location_label',
+        // Designer program lifecycle (Template System): none → pending →
+        // approved/rejected (→ suspended). Managed ONLY by the admin program
+        // endpoints — never client-writable. Deliberately separate from the
+        // custom_templates ENTITLEMENT (FeatureGate) and from roles.
+        'designer_status',
         // P0: recovery_code removed from mass-assignment; it is only ever set
         // server-side (hash) by the artisan recovery-code command.
     ];
@@ -48,7 +53,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            // Enum default comes from the DB; a fresh (unsaved) model still
+            // answers 'none' so program checks never see null.
+            'designer_status' => 'string:default:none',
         ];
+    }
+
+    public function hasApprovedDesignerStatus(): bool
+    {
+        return ($this->designer_status ?? 'none') === 'approved';
     }
     public function designer(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(Designer::class); }
     public function businesses(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(Business::class); }

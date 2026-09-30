@@ -15,6 +15,8 @@ export type TemplateDef = {
   id: string;
   name: string;
   tier: TemplateTier;
+  /** Data-driven gallery grouping (persian | business | modern | ...). */
+  category: string;
   description: string;
   background: string;
   tag: string;
@@ -31,6 +33,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   // =========================================================================
   {
     id: "pro-persian-carpet-toranj",
+    category: "persian",
     name: "شاهکار فرش و قالی کاشان (لچک و ترنج)",
     tier: "pro",
     description: "کادر لچک‌وترنج شاهانه فرش کاشان با ترنج مرکزی و نقوش اسلیمی طلاکوب",
@@ -101,6 +104,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "pro-persian-architecture-gereh",
+    category: "persian",
     name: "معماری سنتی و گره‌چینی شمسه ایرانی",
     tier: "pro",
     description: "گره‌چینی شمسه ۱۲ پر معماری صفوی با جلوه طلاکوب و نقوش هندسی اصیل",
@@ -145,6 +149,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "pro-laser-cut-walnut-wood",
+    category: "persian",
     name: "برش لیزری چوب گردو (لوکس)",
     tier: "pro",
     description: "بافت طبیعی چوب گردو با شبکه‌بندی مشبک و شش‌ضلعی‌های لیزری",
@@ -189,6 +194,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "pro-gol-o-morgh-miniature",
+    category: "persian",
     name: "نگارگری گل و مرغ ایرانی",
     tier: "pro",
     description: "زمینه لاجوردی فاخر با شمسه ده پر و کادر طلایی شاهانه",
@@ -239,6 +245,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "pro-gold-foil-embossed",
+    category: "persian",
     name: "هولوگرام و طلاکوب برجسته VIP",
     tier: "pro",
     description: "کارت مشکی مات با خطوط طلاکوب، گرادیان طلایی و QR اختصاصی",
@@ -282,6 +289,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "pro-marble-stone-gold",
+    category: "business",
     name: "مرمر مشکی و رگه‌های طلایی",
     tier: "pro",
     description: "بافت مرمر سلطنتی با رگه‌ها و فریم طلاکوب برای برندهای لوکس",
@@ -329,6 +337,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   // =========================================================================
   {
     id: "starter-modern-dark-gradient",
+    category: "modern",
     name: "مدرن تیره با گرادیان نئونی",
     tier: "starter",
     description: "طرح مدرن سرمه‌ای و بنفش نئونی مناسب کسب‌وکارهای مدرن",
@@ -371,6 +380,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "starter-emerald-executive",
+    category: "business",
     name: "زمردی مدیران و وکلا",
     tier: "starter",
     description: "ترکیب سبز زمردی و خطوط طلایی برای وکلا و مشاوران حقوقی",
@@ -414,6 +424,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "starter-creative-diagonal",
+    category: "modern",
     name: "آتلیه خلاق و دیزاینرها",
     tier: "starter",
     description: "بلاک‌های قطری مدرن با کنتراست بالا برای طراحان و عکاسان",
@@ -451,6 +462,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "starter-tech-developer",
+    category: "business",
     name: "فناوری، هوش مصنوعی و نرم‌افزار",
     tier: "starter",
     description: "استایل مانیتوری کدر با فونت برنامه‌نویسی و المان‌های هوش مصنوعی",
@@ -494,6 +506,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "starter-medical-health",
+    category: "business",
     name: "پزشکی، سلامت و کلینیک تخصصی",
     tier: "starter",
     description: "زمینه پاک فیروزه‌ای و آبی آرامش‌بخش ویژه پزشکان و کلینیک‌ها",
@@ -531,6 +544,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "starter-real-estate-gold",
+    category: "business",
     name: "املاک و مستغلات لوکس",
     tier: "starter",
     description: "کارت مشکی سورمه‌ای با لوگوی طلایی مناسب مشاورین املاک برتر",
@@ -572,6 +586,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   // =========================================================================
   {
     id: "free-classic-navy",
+    category: "general",
     name: "کلاسیک اداری سرمه‌ای",
     tier: "free",
     description: "طرح اداری ساده با پس‌زمینه سفید و کادر سرمه‌ای",
@@ -614,6 +629,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "free-minimal-white",
+    category: "general",
     name: "سفید مینیمال شرکتی",
     tier: "free",
     description: "کارت تمام‌سفید مینیمال با فونت تایپوگرافی خوانا",
@@ -651,6 +667,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   },
   {
     id: "free-local-shop",
+    category: "general",
     name: "فروشگاه و کسب‌وکار محلی",
     tier: "free",
     description: "کارت فروشگاهی با تاکید بر شماره تماس و آدرس آتلیه",

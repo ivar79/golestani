@@ -30,6 +30,11 @@ return [
     'catalog' => [
         'card_editor' => ['bool', 'کارت‌ساز دیجیتال', 'کارت ویزیت', true],
 
+        // PRIVATE custom templates: upload/keep personal templates and apply
+        // them to own cards. Deliberately SEPARATE from the designer program
+        // (users.designer_status = program identity; this = entitlement).
+        'custom_templates' => ['bool', 'قالب اختصاصی شخصی', 'کارت ویزیت', false],
+
         'card_templates' => ['list', 'قالب‌های کارت', 'کارت ویزیت', ['classic', 'local']],
         'card_themes' => ['list', 'پالت‌های رنگی', 'کارت ویزیت', ['navy', 'emerald']],
         'card_fonts' => ['list', 'قلم‌ها', 'کارت ویزیت', ['sans', 'vazir']],
@@ -68,6 +73,7 @@ return [
         'description' => 'شروع رایگان با امکانات پایه برای هر کسب‌وکار.',
         'capabilities' => [
             'card_editor' => true,
+            'custom_templates' => false,
             'card_templates' => ['classic', 'local'],
             'card_themes' => ['navy', 'emerald'],
             'card_fonts' => ['sans', 'vazir'],
