@@ -13,9 +13,18 @@ import { upstreamMediaUrl } from "@/lib/media";
  * Strictness: only `storage/…` image paths are proxied, traversal is refused,
  * non-image upstream content types are rejected, and responses are cached hard
  * because card media is content-addressed by an immutable stored filename.
+ *
+ * SECURITY: `storage/templates/users/**` is the PRIVATE personal-template
+ * namespace and is refused here UNCONDITIONALLY — this proxy has no session,
+ * so serving it would let anyone who knows a path read another user's
+ * private artwork. Private assets go through the API's ownership-checked
+ * `/assets/private/{path}` endpoint instead (the frontend fetches them with
+ * the auth token and renders from data URLs). Prefix checking is defense in
+ * depth; the registry + ownership check on the API side is the boundary.
  */
 
 const ALLOWED_PATH = /^storage\/[A-Za-z0-9._\-/]+$/;
+const PRIVATE_TEMPLATE_PREFIX = "storage/templates/users/";
 const CACHE_CONTROL = "public, max-age=0, s-maxage=31536000, stale-while-revalidate=604800";
 const SHORT_CACHE = "public, s-maxage=30";
 
@@ -28,6 +37,11 @@ export async function GET(
 
   if (!ALLOWED_PATH.test(relative) || relative.includes("..")) {
     return new NextResponse("Invalid media path", { status: 400 });
+  }
+
+  // Private template namespace: never proxied without a session (see above).
+  if (relative.startsWith(PRIVATE_TEMPLATE_PREFIX)) {
+    return new NextResponse("Private asset — use the authorized endpoint", { status: 403 });
   }
 
   const upstream = upstreamMediaUrl(process.env.NEXT_PUBLIC_API_URL ?? "", relative);

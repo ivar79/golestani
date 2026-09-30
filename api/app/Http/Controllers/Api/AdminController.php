@@ -146,11 +146,52 @@ class AdminController extends Controller
         return response()->json(SiteSetting::orderBy('key')->get());
     }
 
+    /** The ONLY settings keys an admin may write, with their value types.
+     * The CMS homepage/pricing/SEO/greeting keys stay writable exactly as
+     * before (they are already whitelisted on the READ side by
+     * homepageSettings); the whitelist's job is refusing ARBITRARY NEW keys,
+     * not breaking existing CMS flows. */
+    private const WRITABLE_SETTINGS = [
+        // Designer program master switch (bool as string '1'/'0').
+        'designer_program_enabled' => 'bool',
+    ];
+
+    /** Keys governed by the CMS whitelist (string payloads, pre-existing). */
+    private const CMS_SETTING_PREFIXES = ['homepage.', 'pricing.', 'seo.', 'dashboard.'];
+
+    private function isWritableSetting(string $key): bool
+    {
+        if (array_key_exists($key, self::WRITABLE_SETTINGS)) {
+            return true;
+        }
+        foreach (self::CMS_SETTING_PREFIXES as $prefix) {
+            if (str_starts_with($key, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function saveSetting(Request $request, string $key): JsonResponse
     {
         abort_unless(preg_match('/^[A-Za-z0-9._-]+$/', $key) === 1, 422);
-        $data = $request->validate(['value' => ['nullable', 'string', 'max:10000']]);
-        $setting = SiteSetting::updateOrCreate(['key' => $key], ['value' => $data['value'] ?? null]);
+        // Whitelist: an arbitrary setting write would let any admin endpoint
+        // mutation reconfigure parts of the product silently. Unknown keys —
+        // even valid-looking ones — are refused.
+        abort_unless($this->isWritableSetting($key), 422, 'کلید تنظیمات مجاز نیست.');
+
+        // Only the explicitly-typed keys carry a bool contract; CMS keys are
+        // plain strings (?? keeps the lookup total for prefix-whitelisted keys).
+        if ((self::WRITABLE_SETTINGS[$key] ?? 'string') === 'bool') {
+            $data = $request->validate(['value' => ['required', 'boolean']]);
+            $value = $data['value'] ? '1' : '0';
+        } else {
+            $data = $request->validate(['value' => ['nullable', 'string', 'max:10000']]);
+            $value = $data['value'] ?? null;
+        }
+
+        $setting = SiteSetting::updateOrCreate(['key' => $key], ['value' => $value]);
         self::flushHomepageCache();
 
         return response()->json($setting);

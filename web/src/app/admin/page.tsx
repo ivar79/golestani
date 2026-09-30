@@ -53,6 +53,7 @@ import AdminUsersTab from "@/components/admin/AdminUsersTab";
 import AdminTaxonomiesTab from "@/components/admin/AdminTaxonomiesTab";
 import AdminHealthTab from "@/components/admin/AdminHealthTab";
 import AdminPlansTab from "@/components/admin/AdminPlansTab";
+import AdminCardTemplatesTab from "@/components/admin/AdminCardTemplatesTab";
 import AdminDesignersTab from "@/components/admin/AdminDesignersTab";
 import AdminSubscriptionsTab from "@/components/admin/AdminSubscriptionsTab";
 import AdminReportsTab from "@/components/admin/AdminReportsTab";
@@ -64,6 +65,7 @@ const TABS = [
   { id: "Taxonomies", label: "داده‌های پایه", icon: Database },
   { id: "Health", label: "سلامت و سوابق", icon: Activity },
   { id: "Plans", label: "پلن‌ها و درآمد", icon: CreditCard },
+  { id: "CardTemplates", label: "قالب‌های کارت", icon: LayoutDashboard },
   { id: "Subscriptions", label: "اشتراک‌ها و رسیدها", icon: ReceiptText },
   { id: "Designers", label: "مدیریت طراحان", icon: Palette },
   { id: "Reports", label: "گزارش‌های مردمی", icon: AlertCircle },
@@ -77,7 +79,6 @@ const TABS = [
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
-
 const HOMEPAGE_GROUPS = [
   {
     id: "brand",
@@ -932,6 +933,12 @@ export default function AdminPage() {
           {tab === "Plans" && (
             <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
               <AdminPlansTab />
+            </div>
+          )}
+
+          {tab === "CardTemplates" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminCardTemplatesTab />
             </div>
           )}
 
