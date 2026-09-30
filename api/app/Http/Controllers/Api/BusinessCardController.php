@@ -517,11 +517,21 @@ class BusinessCardController extends Controller
         return ['text', 'image', 'qr', 'badge', 'shape', 'path'];
     }
 
-    /** Full universe of values per list capability (editor catalogs). */
+    /** Full universe of values per list capability (editor catalogs). The
+     * card_templates universe now comes from the canonical SERVER-SIDE
+     * builtin catalog (generated from templatesCatalog.ts), so it can never
+     * drift from the real gallery again — previously a hand-list of 5 ids
+     * silently desynced from the 15-template TS catalog. */
     private function knownValues(string $capability): array
     {
         return match ($capability) {
-            'card_templates' => ['classic', 'midnight', 'emerald', 'local', 'creative'],
+            // The universe = LEGACY constrained-editor keys ∪ the layered
+            // builtin catalog ids. Both are real values of cards.template /
+            // the gallery, so `locked` must know both to stay truthful.
+            'card_templates' => array_values(array_unique(array_merge(
+                ['classic', 'midnight', 'emerald', 'local', 'creative'],
+                app(\App\Services\TemplateService::class)->builtinIds()
+            ))),
             'card_themes' => ['navy', 'emerald', 'warm'],
             'card_fonts' => ['sans', 'vazir', 'serif'],
             'card_exports' => ['png', 'jpg', 'svg', 'pdf'],

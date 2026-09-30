@@ -5,6 +5,10 @@ use App\Http\Controllers\Api\AdminTaxonomyController;
 use App\Http\Controllers\Api\AdvertisementController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\BusinessCardController;
+use App\Http\Controllers\Api\CardTemplateController;
+use App\Http\Controllers\Api\Designer\DesignerTemplateController;
+use App\Http\Controllers\Api\MyTemplateController;
+use App\Http\Controllers\Api\PrivateAssetController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\BusinessEntitlementController;
 use App\Http\Controllers\Api\BusinessReportController;
@@ -114,6 +118,41 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/subscriptions/{subscription}/receipt', [SubscriptionController::class, 'receipt']);
 });
 Route::middleware(['auth:sanctum', 'role:admin'])->get('/admin/reports/revenue', [SubscriptionController::class, 'reports']);
+
+// ---- Data-driven Template System (Phase 5) -----------------------------
+// Public gallery read (entitlement flags attach when business_id is passed).
+Route::get('/card-templates', [CardTemplateController::class, 'index']);
+// THE apply contract — server-side authorize + clone + new ids + fills.
+Route::middleware('auth:sanctum')->group(function (): void {
+    Route::post('/card-templates/builtin/{templateId}/apply', [CardTemplateController::class, 'applyBuiltin']);
+    Route::post('/card-templates/{templateId}/apply', [CardTemplateController::class, 'applyDb']);
+    // PRIVATE personal templates (custom_templates entitlement).
+    Route::get('/my/templates', [MyTemplateController::class, 'index']);
+    Route::post('/my/templates', [MyTemplateController::class, 'store']);
+    Route::put('/my/templates/{template}', [MyTemplateController::class, 'update']);
+    Route::delete('/my/templates/{template}', [MyTemplateController::class, 'destroy']);
+    Route::post('/my/templates/{template}/apply', [MyTemplateController::class, 'apply']);
+    Route::post('/my/templates-asset', [MyTemplateController::class, 'uploadAsset']);
+    // Ownership-checked private asset door (personal template artwork).
+    Route::get('/assets/private/{path}', [PrivateAssetController::class, 'show'])->where('path', '.*');
+});
+
+// ---- Designer program + gallery submissions ----------------------------
+Route::middleware('auth:sanctum')->prefix('designer')->group(function (): void {
+    Route::get('/program/status', [DesignerTemplateController::class, 'programStatus']);
+    Route::post('/program/request', [DesignerTemplateController::class, 'requestProgram']);
+    Route::get('/templates', [DesignerTemplateController::class, 'index']);
+    Route::post('/templates', [DesignerTemplateController::class, 'store']);
+});
+// Admin moderation + CRUD for DB templates.
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin/templates')->group(function (): void {
+    Route::get('/', [DesignerTemplateController::class, 'adminIndex']);
+    Route::post('/', [DesignerTemplateController::class, 'adminStore']);
+    Route::get('/{template}/plans', [DesignerTemplateController::class, 'adminPlans']);
+    Route::put('/{template}', [DesignerTemplateController::class, 'adminUpdate']);
+    Route::delete('/{template}', [DesignerTemplateController::class, 'adminDestroy']);
+    Route::patch('/{template}/moderate', [DesignerTemplateController::class, 'moderate']);
+});
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function (): void {
     Route::get('/taxonomies', [AdminTaxonomyController::class, 'index']);
     Route::post('/taxonomies', [AdminTaxonomyController::class, 'store']);
