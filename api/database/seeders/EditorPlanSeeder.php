@@ -38,7 +38,11 @@ class EditorPlanSeeder extends Seeder
                 'is_public' => true,
                 'is_featured' => false,
                 'is_active' => true,
-                // Full free entitlements + bigger quotas.
+                // Full free entitlements + bigger quotas + layered-editor keys.
+                // NOTE: every editor cap the UI mirrors MUST be spelled out here —
+                // a missing key falls through to the free-tier default, which is
+                // exactly how the first seeder accidentally kept professional
+                // plans on the free layer cap.
                 'features' => [
                     'card_editor' => true,
                     'card_templates' => ['classic', 'local', 'midnight'],
@@ -46,6 +50,10 @@ class EditorPlanSeeder extends Seeder
                     'card_fonts' => ['sans', 'vazir'],
                     'card_exports' => ['png', 'jpg'],
                     'print_file' => false,
+                    'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path'],
+                    'card_premium_layer_kinds' => [],
+                    'max_layers' => 30,
+                    'max_premium_elements' => null,
                     'max_cards' => 3,
                     'max_showcases' => 3,
                     'max_ads' => 0,
@@ -70,9 +78,18 @@ class EditorPlanSeeder extends Seeder
                     'card_templates' => ['classic', 'local', 'midnight', 'emerald', 'creative'],
                     'card_themes' => ['navy', 'emerald', 'warm'],
                     'card_fonts' => ['sans', 'vazir', 'serif'],
-                    'card_exports' => ['png', 'jpg'],
+                    // Full export freedom — the vector upgrade's SVG/PDF formats
+                    // belong to the tier that pays for the full studio.
+                    'card_exports' => ['png', 'jpg', 'svg', 'pdf'],
                     'print_file' => true,
-                    'max_cards' => 10,
+                    // null = UNLIMITED (FeatureGate::limit contract). The free
+                    // structural validator cap (120) remains the only bound —
+                    // it is a security cap, not a plan quota.
+                    'max_layers' => null,
+                    'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path'],
+                    'card_premium_layer_kinds' => [],
+                    'max_premium_elements' => null,
+                    'max_cards' => null,
                     'max_showcases' => 10,
                     'max_ads' => 2,
                     'showcase' => true,
