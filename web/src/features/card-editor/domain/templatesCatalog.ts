@@ -112,7 +112,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
         x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 0.9,
         locked: true, hidden: false, color: null, background: null,
         closed: true, points: [], rawD: multiLayerShamsehD(870, 190, 140),
-        fill: "none", stroke: "#BF953F", strokeWidth: 2,
+        fill: null, stroke: "#BF953F", strokeWidth: 2,
       } satisfies PathLayer,
       {
         id: uid("text"), kind: "text",
@@ -156,7 +156,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
         x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 0.65,
         locked: true, hidden: false, color: null, background: null,
         closed: true, points: [], rawD: laserCutLatticeD(ARTBOARD.width - 240, 20, 220, ARTBOARD.height - 40, 48),
-        fill: "none", stroke: "#BF953F", strokeWidth: 1.5,
+        fill: null, stroke: "#BF953F", strokeWidth: 1.5,
       } satisfies PathLayer,
       {
         id: uid("text"), kind: "text",
@@ -206,7 +206,7 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
         x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 0.8,
         locked: true, hidden: false, color: null, background: null,
         closed: true, points: [], rawD: shamsehD(860, 270, 150, 10, 4),
-        fill: "none", stroke: "#FCF6BA", strokeWidth: 2,
+        fill: null, stroke: "#FCF6BA", strokeWidth: 2,
       } satisfies PathLayer,
       {
         id: uid("text"), kind: "text",

@@ -17,12 +17,13 @@
  *   /storage/… path (blob URLs can never round-trip the whitelist).
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Redo2, Undo2, Save, AlertCircle, CheckCircle2, Eye, Layers, Palette, Sliders, Wrench, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Redo2, Undo2, Save, AlertCircle, CheckCircle2, Eye, RotateCcw, Layers, Palette, Sliders, Wrench, Sparkles } from "lucide-react";
 import type { Business } from "@/lib/businesses";
 import { EditorEngine } from "../engine/EditorEngine";
 import { createDocumentFromBusiness, type TemplateKey } from "../domain/factory";
 import type { CardDocument } from "../domain/document";
+import { SaveQueue } from "../domain/saveQueue";
 import { describeEntitlementErrors, extractEntitlementErrors } from "@/lib/entitlements";
 import { EditorStage } from "./EditorStage";
 import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel, DrawingPanel } from "./EditorPanels";
@@ -71,6 +72,10 @@ export function CardStudio({
   const [preview, setPreview] = useState(false);
   const [activeTab, setActiveTab] = useState<"templates" | "tools" | "inspector" | "layers" | "bg">("tools");
   const saveTimer = useRef<number | null>(null);
+  // Saves are SERIALIZED: at most one request on the wire, the newest document
+  // always queued next — so an out-of-order response can never write an older
+  // revision over newer edits.
+  const saveQueue = useMemo(() => new SaveQueue(), []);
 
   // Automatically switch to inspector tab when a layer is selected. Adjusted
   // DURING RENDER (the React "adjust state when something changes" pattern)
@@ -82,33 +87,64 @@ export function CardStudio({
     if (state.selection.layerId) setActiveTab("inspector");
   }
 
-  const persist = async () => {
-    setSaveStatus({ kind: "saving" });
-    try {
+  /**
+   * Enqueue a save through the serialized queue.
+   *
+   * Truthfulness contract (the header never lies about persistence):
+   *   - a result from a SUPERSEDED save never touches save state;
+   *   - the document is marked clean ONLY when nothing changed during the
+   *     request — an edit that landed mid-flight keeps the dirty flag so the
+   *     autosave timer re-fires instead of a false "ذخیره شد";
+   *   - on failure the local document is untouched (no rollback) and the user
+   *     gets a Retry button — the engine state is always the latest work.
+   */
+  const persist = useCallback(() => {
+    saveQueue.save(async (guard) => {
       // engine.snapshot() reads current state outside render (autosave runs
-      // from effects/handlers only — never during render).
-      await onSaved(engine.snapshot().doc);
-      engine.markSaved();
-      setSaveStatus({ kind: "saved" });
-    } catch (error) {
-      // The server is the entitlement authority: when it refuses a save, say
-      // WHICH capability refused it instead of a generic failure. A locked
-      // control must never look like a transient error. A 422 is a structural
-      // rejection (the document does not satisfy today's validator); its body
-      // names the failing rule for the developer, the user gets a calm hint.
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      setSaveStatus({
-        kind: "error",
-        message:
-          describeEntitlementErrors(extractEntitlementErrors(error)) ??
-          (status === 422
-            ? "سند کارت با ساختار مجاز سرور همخوانی نیست — بخشی از طرح ذخیره نشد."
-            : error instanceof Error
-              ? error.message
-              : "ذخیره‌سازی ناموفق بود."),
-      });
-    }
-  };
+      // from effects/handlers only — never during render). Snapshotting at RUN
+      // time means a queued save always carries the newest document.
+      const payload = engine.snapshot().doc;
+      const payloadJson = JSON.stringify(payload);
+      setSaveStatus({ kind: "saving" });
+      try {
+        await onSaved(payload);
+        // A newer save started while this one was on the wire — its result owns
+        // the header, a stale completion must not flip the status.
+        if (!guard.isCurrent()) return;
+        // Only mark clean when the document has not moved since the snapshot.
+        if (JSON.stringify(engine.snapshot().doc) === payloadJson) {
+          engine.markSaved();
+          setSaveStatus({ kind: "saved" });
+        } else {
+          // Edits landed mid-flight: the dirty flag stays on, the autosave
+          // timer re-fires, and the header shows the truthful amber hint.
+          setSaveStatus({ kind: "idle" });
+        }
+      } catch (error) {
+        if (!guard.isCurrent()) return;
+        // The server is the entitlement authority: when it refuses a save, say
+        // WHICH capability refused it instead of a generic failure. A locked
+        // control must never look like a transient error. A 422 is a structural
+        // rejection (the document does not satisfy today's validator); its body
+        // names the failing rule for the developer, the user gets a calm hint.
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        setSaveStatus({
+          kind: "error",
+          message:
+            describeEntitlementErrors(extractEntitlementErrors(error)) ??
+            (status === 422
+              ? "سند کارت با ساختار مجاز سرور همخوانی نیست — بخشی از طرح ذخیره نشد."
+              : error instanceof Error
+                ? error.message
+                : "ذخیره‌سازی ناموفق بود."),
+        });
+      }
+    });
+  }, [engine, onSaved, saveQueue]);
+
+  // Always-current reference (the keyboard/autosave effects bind once).
+  const persistRef = useRef(persist);
+  persistRef.current = persist;
 
   // Publish the live document to the host page (vector export input). Runs on
   // committed state only — transient drag frames never leave the editor.
@@ -121,7 +157,7 @@ export function CardStudio({
   useEffect(() => {
     if (!state.dirty) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => void persist(), 1500);
+    saveTimer.current = window.setTimeout(() => void persistRef.current(), 1500);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
@@ -152,7 +188,7 @@ export function CardStudio({
         engine.redo();
       } else if (key === "s") {
         e.preventDefault();
-        void persist();
+        void persistRef.current();
       }
     };
     window.addEventListener("keydown", handler);
@@ -206,10 +242,22 @@ export function CardStudio({
               <CheckCircle2 className="h-3.5 w-3.5" /> ذخیره شد
             </span>
           )}
-          {saveStatus.kind === "saving" && <span className="text-[11px] text-slate-400">در حال ذخیره…</span>}
+          {saveStatus.kind === "saving" && (
+            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+              <RotateCcw className="h-3.5 w-3.5 animate-spin" /> در حال ذخیره…
+            </span>
+          )}
           {saveStatus.kind === "error" && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-300">
-              <AlertCircle className="h-3.5 w-3.5" /> {saveStatus.message}
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-300">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {saveStatus.message}
+              <button
+                type="button"
+                onClick={() => void persistRef.current()}
+                title="تلاش دوباره برای ذخیره طرح"
+                className="flex items-center gap-1 rounded-lg border border-rose-400/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-200 hover:bg-rose-500/20 transition"
+              >
+                <RotateCcw className="h-3 w-3" /> تلاش دوباره
+              </button>
             </span>
           )}
           {state.dirty && saveStatus.kind === "idle" && <span className="text-[11px] text-amber-300">تغییرات ذخیره‌نشده…</span>}
@@ -226,8 +274,9 @@ export function CardStudio({
           </button>
           <button
             type="button"
-            onClick={() => void persist()}
-            disabled={saveStatus.kind === "saving"}
+            onClick={() => void persistRef.current()}
+            disabled={!state.dirty && saveStatus.kind !== "error"}
+            title="ذخیره طرح (Ctrl+S)"
             className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 px-4 py-2 text-xs font-bold text-slate-950 hover:from-cyan-300 hover:to-sky-400 shadow-lg shadow-cyan-500/20 disabled:opacity-50 transition"
           >
             <Save className="h-3.5 w-3.5" />
