@@ -253,6 +253,86 @@ export function pathD(points: PathPoint[], closed = false): string {
   return d;
 }
 
+
+/**
+ * Scale the common absolute SVG commands used by imported/legacy raw paths.
+ * The parser intentionally preserves command structure and supports the
+ * commands emitted by this editor (M/L/C/Q/S/T/H/V/A/Z).
+ */
+export function scalePathD(d: string, sx: number, sy: number): string {
+  if (!d) return d;
+  const tokens = d.match(/[a-zA-Z]|-?(?:\d*\.\d+|\d+\.?\d*)(?:e[-+]?\d+)?/g);
+  if (!tokens) return d;
+  const arity: Record<string, number> = {
+    M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0,
+  };
+  let i = 0;
+  let cmd = "";
+  const out: string[] = [];
+  const upper = (v: string) => v.toUpperCase();
+  const pushNumber = (n: number) => out.push(String(Math.round(n * 1e6) / 1e6));
+
+  while (i < tokens.length) {
+    if (/^[a-zA-Z]$/.test(tokens[i])) {
+      cmd = tokens[i++];
+      out.push(cmd);
+      if (upper(cmd) === "Z") continue;
+    }
+    if (!cmd || upper(cmd) === "Z") continue;
+    const count = arity[upper(cmd)];
+    if (count === undefined || i + count > tokens.length) return d;
+
+    const rel = cmd === cmd.toLowerCase();
+    const values = tokens.slice(i, i + count).map(Number);
+    if (values.some((n) => !Number.isFinite(n))) return d;
+
+    switch (upper(cmd)) {
+      case "M":
+      case "L":
+      case "T":
+        pushNumber(values[0] * sx);
+        pushNumber(values[1] * sy);
+        break;
+      case "H":
+        pushNumber(values[0] * sx);
+        break;
+      case "V":
+        pushNumber(values[0] * sy);
+        break;
+      case "C":
+        for (let k = 0; k < 6; k += 2) {
+          pushNumber(values[k] * sx);
+          pushNumber(values[k + 1] * sy);
+        }
+        break;
+      case "S":
+      case "Q":
+        for (let k = 0; k < 4; k += 2) {
+          pushNumber(values[k] * sx);
+          pushNumber(values[k + 1] * sy);
+        }
+        break;
+      case "A":
+        pushNumber(values[0] * sx);
+        pushNumber(values[1] * sy);
+        // x-axis rotation and flags remain unchanged.
+        pushNumber(values[2]);
+        pushNumber(values[3]);
+        pushNumber(values[4]);
+        pushNumber(values[5] * sx);
+        pushNumber(values[6] * sy);
+        break;
+      default:
+        return d;
+    }
+    i += count;
+    // Relative path coordinates are deltas, so the same scale factors are
+    // correct. `rel` is intentionally retained for readability/documentation.
+    void rel;
+  }
+  return out.join(" ");
+}
+
 /**
  * THE path resolver — the single place a PathLayer's geometry becomes an SVG
  * `d` string. Every consumer (canvas preview, SVG/PDF export, public card) must

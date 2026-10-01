@@ -39,10 +39,15 @@ import {
   Trash2,
   Type,
   Waves,
+  Spline,
+  MoreHorizontal,
+  Combine,
+  SquareStack,
 } from "lucide-react";
 import type { CardDocument, CardLayer, BadgeLayer, LayerKind, QrLayer, ShapeKind } from "../domain/document";
 import { LAYER_KIND_LABELS, SHAPE_KIND_LABELS } from "../domain/document";
 import { EDITOR_PALETTE } from "../domain/palette";
+import type { CurveProfile } from "../domain/curveLine";
 import {
   STROKE_LINE_CAP_LABELS,
   STROKE_LINE_JOIN_LABELS,
@@ -53,7 +58,8 @@ import {
 
 /** Structural access to badge-only fields (used for the style editor). */
 type BadgeLayerLike = Pick<BadgeLayer, "style">;
-import type { EditorEngine } from "../engine/EditorEngine";
+import type { EditorEngine, NumericField } from "../engine/EditorEngine";
+import { BOOLEAN_OP_LABELS, type BooleanOp } from "../domain/geometry/booleanOps";
 import { useCardEditor } from "./useCardEditor";
 import { ColorPickerField } from "./ColorPickerField";
 import { GradientField } from "./GradientField";
@@ -67,6 +73,114 @@ import {
   layerKindAllowed,
   layerLimitState,
 } from "@/lib/entitlements";
+
+/**
+ * One inspector field that accepts Figma-style expressions: `+10`, `*2`,
+ * `50%`, `1/3`. All parsing and clamping live in the ENGINE
+ * (`setNumericField`) — this component stays a thin, controlled-free input:
+ * it keeps only what is being typed and lets the document be the truth.
+ */
+function NumericFieldInput({
+  engine,
+  layerId,
+  field,
+  label,
+  value,
+}: {
+  engine: EditorEngine;
+  layerId: string;
+  field: NumericField;
+  label: string;
+  value: number;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState(false);
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] text-slate-500">{label}</span>
+      <input
+        type="text"
+        inputMode="decimal"
+        dir="ltr"
+        value={text ?? String(Math.round(value * 10) / 10)}
+        onChange={(e) => {
+          setText(e.target.value);
+          setInvalid(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== "Tab") return;
+          const raw = text;
+          if (raw === null) return; // untouched — nothing to commit
+          const ok = engine.setNumericField(layerId, field, raw);
+          setInvalid(!ok);
+          if (ok) setText(null);
+          e.preventDefault();
+        }}
+        onBlur={() => {
+          const raw = text;
+          if (raw === null) return;
+          if (engine.setNumericField(layerId, field, raw)) {
+            setText(null);
+            setInvalid(false);
+          }
+          // An invalid entry keeps the text on screen (red) so the user can fix
+          // it instead of silently snapping back.
+        }}
+        title="عدد، یا عبارت: ‎+10‎ ، ‎*2‎ ، ‎50%‎ ، ‎1/3‎"
+        className={`w-full rounded-lg border bg-white/5 p-1.5 text-xs text-white tabular-nums outline-none focus:border-cyan-400 ${
+          invalid ? "border-rose-500 text-rose-300" : "border-white/15"
+        }`}
+      />
+    </label>
+  );
+}
+
+/**
+ * The four Figma boolean operations, enabled when ≥2 path layers are selected.
+ * The result replaces the operands and inherits the BOTTOM layer's look —
+ * exactly the Illustrator/Figma convention.
+ */
+function BooleanToolbar({ engine, selectedCount }: { engine: EditorEngine; selectedCount: number }) {
+  const enabled = selectedCount >= 2;
+  const ops: { op: BooleanOp; icon: typeof Combine; hint: string }[] = [
+    { op: "union", icon: Combine, hint: "ترکیب همه در یک شکل" },
+    { op: "subtract", icon: SquareStack, hint: "کم کردن بالایی‌ها از پایینی" },
+    { op: "intersect", icon: Combine, hint: "فقط هم‌پوشانی" },
+    { op: "exclude", icon: SquareStack, hint: "هم‌پوشانی حذف می‌شود" },
+  ];
+  return (
+    <div
+      className="rounded-xl border p-3 space-y-2"
+      style={{ borderColor: enabled ? "rgba(52,211,153,0.35)" : "rgba(255,255,255,0.08)", background: enabled ? "rgba(16,185,129,0.06)" : "rgba(255,255,255,0.02)" }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold" style={{ color: enabled ? "#6ee7b7" : "#64748b" }}>
+          عملیات ترکیب شکل (Boolean)
+        </span>
+        <span className="text-[9px] text-slate-500">{enabled ? "۴ عملیات" : "≥۲ مسیر لازم است"}</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {ops.map(({ op, icon: Icon, hint }) => (
+          <button
+            key={op}
+            type="button"
+            disabled={!enabled}
+            title={`${BOOLEAN_OP_LABELS[op]} — ${hint}`}
+            onClick={() => engine.booleanSelection(op)}
+            className={`flex flex-col items-center gap-1 rounded-lg border py-2 text-[10px] font-semibold transition ${
+              enabled
+                ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/25"
+                : "cursor-not-allowed border-white/10 bg-white/[0.03] text-slate-600"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {BOOLEAN_OP_LABELS[op]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Toolbox entries: a layer kind, or one of the two DRAWING tools or direct curved line. */
 type ToolboxEntry = LayerKind | "pointer" | "pen" | "curved_line";
@@ -184,6 +298,8 @@ export function Toolbox({
   const entitlements = useEntitlements();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [showShapePicker, setShowShapePicker] = useState(false);
+  const [showCurvePicker, setShowCurvePicker] = useState(false);
+  const [showMoreTools, setShowMoreTools] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -199,14 +315,17 @@ export function Toolbox({
     }
     if (kind === "shape") {
       if (addBlocked || !layerKindAllowed(entitlements.capabilities, "shape")) return;
+      setShowCurvePicker(false);
+      setShowMoreTools(false);
       setShowShapePicker((v) => !v);
       return;
     }
     setShowShapePicker(false);
     if (kind === "curved_line") {
       if (addBlocked || !layerKindAllowed(entitlements.capabilities, "path")) return;
-      engine.setTool("select");
-      engine.addCurvedLine(40);
+      setShowShapePicker(false);
+      setShowMoreTools(false);
+      setShowCurvePicker((v) => !v);
       return;
     }
     // Both DRAWING tools create a `path` layer, so both answer to the same
@@ -247,76 +366,101 @@ export function Toolbox({
     }
   }
 
+  const primaryTools: ToolboxEntry[] = ["pointer", "text", "shape", "curved_line", "pen", "path"];
+  const secondaryTools: ToolboxEntry[] = ["image", "qr", "badge"];
+
+  const renderToolButton = (kind: ToolboxEntry, compact = false) => {
+    const item = TOOLBOX.find((entry) => entry.kind === kind)!;
+    const Icon = item.icon;
+    const isPointer = kind === "pointer";
+    const isDrawingTool = kind === "path" || kind === "pen" || kind === "curved_line";
+    const kindAllowed = isPointer
+      ? true
+      : isDrawingTool
+        ? layerKindAllowed(entitlements.capabilities, "path")
+        : layerKindAllowed(entitlements.capabilities, kind);
+    const addsLayer = !isPointer;
+    const disabled =
+      !kindAllowed ||
+      (addsLayer && addBlocked) ||
+      (kind === "image" && (uploading || !onUploadImage));
+    const isSelected =
+      (kind === "pointer" && state.tool === "select") ||
+      (kind === "path" && state.tool === "draw") ||
+      (kind === "pen" && state.tool === "pen");
+    return (
+      <button
+        key={kind}
+        type="button"
+        onClick={() => activate(kind)}
+        disabled={disabled}
+        title={item.label}
+        aria-pressed={isSelected}
+        className={`group relative flex ${compact ? "h-9 w-9" : "h-10 w-10"} items-center justify-center rounded-xl border transition ${
+          isSelected
+            ? "border-cyan-300/80 bg-cyan-400/15 text-white shadow-[0_0_22px_rgba(34,211,238,0.12)]"
+            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+        } disabled:opacity-35`}
+      >
+        {kind === "image" && uploading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+        ) : (
+          <Icon className={`h-[17px] w-[17px] ${isSelected ? "text-cyan-200" : "text-slate-300 group-hover:text-white"}`} />
+        )}
+        <span className="pointer-events-none absolute right-full mr-2 hidden whitespace-nowrap rounded-lg border border-white/10 bg-[#101722]/95 px-2 py-1 text-[10px] font-semibold text-white shadow-xl backdrop-blur-md group-hover:block">
+          {item.label}
+        </span>
+        {!kindAllowed && <span className="absolute -left-1 -top-1"><PremiumBadge label="" /></span>}
+      </button>
+    );
+  };
+
   return (
     <div
-      className="relative flex w-16 flex-col items-center gap-1 rounded-2xl border border-white/10 bg-[#0c1626]/80 p-1.5 shadow-xl backdrop-blur"
+      className="relative z-[5000] flex shrink-0 flex-col items-center gap-1.5 rounded-[20px] border border-white/[0.09] bg-[#0a111c]/90 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.38)] backdrop-blur-2xl"
       role="toolbar"
       aria-label="ابزارهای استودیو"
     >
-      <h3 className="sr-only">افزودن لایه</h3>
-      <div className="flex w-full flex-col gap-1">
-        {TOOLBOX.map(({ kind, icon: Icon, label }) => {
-          const isPointer = kind === "pointer";
-          const isDrawingTool = kind === "path" || kind === "pen" || kind === "curved_line";
-          const kindAllowed = isPointer
-            ? true
-            : isDrawingTool
-              ? layerKindAllowed(entitlements.capabilities, "path")
-              : layerKindAllowed(entitlements.capabilities, kind);
-          // EVERY tool that produces a layer obeys the layer cap.
-          const addsLayer = !isPointer;
-          const disabled = !kindAllowed || (addsLayer && addBlocked) || (kind === "image" && (uploading || !onUploadImage));
-          const lockReason = !kindAllowed
-            ? "این قابلیت در پلن شما فعال نیست"
-            : (addsLayer && addBlocked)
-              ? "سقف تعداد لایه‌های کارت پر شده است"
-              : null;
-          const isSelected =
-            (kind === "pointer" && state.tool === "select") ||
-            (kind === "path" && state.tool === "draw") ||
-            (kind === "pen" && state.tool === "pen");
-          return (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => activate(kind)}
-              disabled={disabled}
-              title={lockReason ? `${label} — ${lockReason}` : label}
-              aria-disabled={disabled}
-              aria-pressed={isSelected}
-              className={`relative flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-0.5 text-[8px] font-semibold leading-none transition ${
-                isSelected ? "border-cyan-400 bg-cyan-500/20 text-white" : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-cyan-400/40 hover:text-white"
-              } disabled:opacity-40`}
-            >
-              {kind === "image" && uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-              ) : (
-                <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-white" : "text-cyan-400"}`} />
-              )}
-              <span className="w-full truncate text-center">{label}</span>
-              {!kindAllowed && (
-                <span className="absolute left-1 top-1">
-                  <PremiumBadge label="" />
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <h3 className="sr-only">ابزارهای استودیو</h3>
+
+      {primaryTools.map((kind) => renderToolButton(kind))}
+
+      <div className="my-0.5 h-px w-7 bg-white/10" />
+
+      <button
+        type="button"
+        onClick={() => {
+          setShowMoreTools((v) => !v);
+          setShowShapePicker(false);
+          setShowCurvePicker(false);
+        }}
+        title="ابزارهای بیشتر"
+        aria-expanded={showMoreTools}
+        className={`group relative flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+          showMoreTools
+            ? "border-amber-300/60 bg-amber-400/10 text-amber-200"
+            : "border-white/10 bg-white/[0.035] text-slate-400 hover:bg-white/[0.08] hover:text-white"
+        }`}
+      >
+        <MoreHorizontal className="h-[18px] w-[18px]" />
+        <span className="pointer-events-none absolute right-full mr-2 hidden whitespace-nowrap rounded-lg border border-white/10 bg-[#101722]/95 px-2 py-1 text-[10px] font-semibold text-white shadow-xl backdrop-blur-md group-hover:block">
+          ابزارهای بیشتر
+        </span>
+      </button>
+
+      {showMoreTools && (
+        <div className="absolute right-full top-0 z-[10000] mr-2 flex gap-1.5 rounded-2xl border border-white/10 bg-[#0b121e]/95 p-1.5 shadow-[0_24px_70px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+          {secondaryTools.map((kind) => renderToolButton(kind, true))}
+        </div>
+      )}
 
       {showShapePicker && (
-        <div className="absolute right-full top-0 z-50 mr-2 w-80 space-y-3 rounded-2xl border border-cyan-400/40 bg-[#081220] p-3 shadow-2xl">
-          <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-xs font-bold text-cyan-300">
-            <span>اشکال هندسی پایه:</span>
-            <button
-              type="button"
-              onClick={() => setShowShapePicker(false)}
-              className="text-slate-400 hover:text-white text-xs font-normal"
-            >
-              ✕ بستن
-            </button>
+        <div className="absolute right-full top-0 z-[10000] mr-2 w-[290px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-white">اشکال</span>
+            <button type="button" onClick={() => setShowShapePicker(false)} className="text-[10px] text-slate-500 hover:text-white">بستن</button>
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             {SHAPE_PRESETS.map((item, idx) => (
               <button
                 key={idx}
@@ -329,77 +473,57 @@ export function Toolbox({
                   });
                   setShowShapePicker(false);
                 }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white transition group"
+                title={item.label}
+                className="group flex h-12 flex-col items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/[0.035] text-slate-300 hover:border-cyan-300/40 hover:bg-cyan-400/10 hover:text-white"
               >
-                <div className="transition-transform group-hover:scale-110">
-                  {item.icon}
-                </div>
-                <span className="text-[10px] truncate max-w-full font-medium">{item.label}</span>
+                <span className="group-hover:scale-110 transition-transform">{item.icon}</span>
+                <span className="max-w-full truncate text-[8px]">{item.label}</span>
               </button>
             ))}
-          </div>
-
-          <div className="border-t border-white/10 pt-2.5">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
-                <Waves className="h-3.5 w-3.5" />
-                <span>خطوط منحنی و امواج تبلیغاتی:</span>
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  engine.setTool("select");
-                  engine.addCurvedLine(40);
-                  setShowShapePicker(false);
-                }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-2 text-cyan-200 hover:border-cyan-400 hover:bg-cyan-500/25 transition group"
-              >
-                <div className="h-4 w-6 border-t-2 border-cyan-400 rounded-t-full transition-transform group-hover:scale-110" />
-                <span className="text-[10px] font-bold">خط کمانی</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  engine.setTool("select");
-                  engine.addWavePreset("wave");
-                  setShowShapePicker(false);
-                }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-500/10 p-2 text-amber-200 hover:border-amber-400 hover:bg-amber-500/25 transition group"
-              >
-                <Waves className="h-4 w-4 text-amber-400 transition-transform group-hover:scale-110" />
-                <span className="text-[10px] font-bold">موج جداکننده</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  engine.setTool("select");
-                  engine.addWavePreset("swoosh");
-                  setShowShapePicker(false);
-                }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-500/10 p-2 text-sky-200 hover:border-sky-400 hover:bg-sky-500/25 transition group"
-              >
-                <Sparkles className="h-4 w-4 text-sky-400 transition-transform group-hover:scale-110" />
-                <span className="text-[10px] font-bold">روبان گوشه</span>
-              </button>
-            </div>
           </div>
         </div>
       )}
 
-      {addBlocked && (
-        <p className="mt-2 text-[10px] font-semibold text-amber-300">
-          سقف لایه‌های پلن شما پر شده است — برای افزودن لایهٔ جدید، لایه‌ای را حذف کنید یا پلن را ارتقا دهید.
-        </p>
+      {showCurvePicker && (
+        <div className="absolute right-full top-[94px] z-[10000] mr-2 w-[300px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-white">
+              <Spline className="h-3.5 w-3.5 text-cyan-300" />
+              خط منحنی
+            </span>
+            <button type="button" onClick={() => setShowCurvePicker(false)} className="text-[10px] text-slate-500 hover:text-white">بستن</button>
+          </div>
+          <p className="mb-2 text-[9px] leading-4 text-slate-500">قوس، سینوسی متقارن و موج نامتقارن را به‌صورت مسیر واقعی و قابل ویرایش بساز.</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              ["arc", "قوس", "⌒"],
+              ["sine", "سینوسی متقارن", "〰"],
+              ["sine-asymmetric", "سینوسی نامتقارن", "∿"],
+              ["s", "موج S", "S"],
+            ] as const).map(([profile, label, glyph]) => (
+              <button
+                key={profile}
+                type="button"
+                onClick={() => {
+                  if (addBlocked || !layerKindAllowed(entitlements.capabilities, "path")) return;
+                  engine.setTool("select");
+                  engine.addCurvedLine(42, profile as CurveProfile);
+                  setShowCurvePicker(false);
+                }}
+                className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 text-right hover:border-cyan-300/40 hover:bg-cyan-400/10"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-lg text-cyan-200 group-hover:text-white">{glyph}</span>
+                <span className="text-[10px] font-semibold text-slate-300 group-hover:text-white">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
-      {!addBlocked && layerLimit.remaining !== null && (
-        <p className="mt-2 text-[10px] text-slate-500">
-          {layerLimit.remaining} لایه تا سقف پلن شما باقی است.
-        </p>
-      )}
+
+      {addBlocked ? (
+        <span className="mt-1 text-center text-[8px] leading-3 text-amber-300">سقف لایه پر است</span>
+      ) : null}
+
       <input
         ref={imageInputRef}
         type="file"
@@ -407,10 +531,7 @@ export function Toolbox({
         className="hidden"
         onChange={(e) => void onImagePicked(e.target.files?.[0] ?? null)}
       />
-      {uploadError && <p className="mt-2 text-[10px] font-semibold text-rose-300">{uploadError}</p>}
-      <p className="mt-3 text-[10px] leading-4 text-slate-500">
-        لایه QR از endpoint رسمی کارت شما پر می‌شود ({state.doc.layers.find((l) => l.kind === "qr") ? "موجود" : "افزودن جدید"}).
-      </p>
+      {uploadError ? <p className="max-w-[110px] text-center text-[9px] font-semibold text-rose-300">{uploadError}</p> : null}
     </div>
   );
 }
@@ -932,64 +1053,33 @@ export function InspectorPanel({
 
       {selected.kind === "shape" && <ShapeInspectorSection engine={engine} layer={selected} />}
 
-      {/* TRANSFORM — exact numeric position/size/rotation for the selected layer. */}
+      {/* BOOLEAN — the four Figma operations (needs ≥2 selected paths). */}
+      <BooleanToolbar engine={engine} selectedCount={state.selection.ids.length} />
+
+      {/* TRANSFORM — exact numeric position/size/rotation, with Figma-style
+          expressions: `+10`, `*2`, `50%`, `1/3` (Enter or blur commits). */}
       <div>
         <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">موقعیت و اندازه</span>
         <div className="grid grid-cols-2 gap-2">
-          <label className="block">
-            <span className="mb-1 block text-[10px] text-slate-500">X (افقی)</span>
-            <input
-              type="number"
-              step={1}
-              value={Math.round(selected.x)}
-              onChange={(e) => engine.setLayerBox(selected.id, { x: Number(e.target.value) } as never)}
-              className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white tabular-nums outline-none focus:border-cyan-400"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[10px] text-slate-500">Y (عمودی)</span>
-            <input
-              type="number"
-              step={1}
-              value={Math.round(selected.y)}
-              onChange={(e) => engine.setLayerBox(selected.id, { y: Number(e.target.value) } as never)}
-              className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white tabular-nums outline-none focus:border-cyan-400"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[10px] text-slate-500">عرض</span>
-            <input
-              type="number"
-              step={1}
-              min={8}
-              value={Math.round(selected.width)}
-              onChange={(e) => engine.setLayerBox(selected.id, { width: Math.max(8, Number(e.target.value)) } as never)}
-              className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white tabular-nums outline-none focus:border-cyan-400"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[10px] text-slate-500">ارتفاع</span>
-            <input
-              type="number"
-              step={1}
-              min={8}
-              value={Math.round(selected.height)}
-              onChange={(e) => engine.setLayerBox(selected.id, { height: Math.max(8, Number(e.target.value)) } as never)}
-              className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white tabular-nums outline-none focus:border-cyan-400"
-            />
-          </label>
+          <NumericFieldInput engine={engine} layerId={selected.id} field="x" label="X (افقی)" value={selected.x} />
+          <NumericFieldInput engine={engine} layerId={selected.id} field="y" label="Y (عمودی)" value={selected.y} />
+          <NumericFieldInput engine={engine} layerId={selected.id} field="width" label="عرض" value={selected.width} />
+          <NumericFieldInput engine={engine} layerId={selected.id} field="height" label="ارتفاع" value={selected.height} />
         </div>
-        <label className="mt-2 block">
-          <span className="mb-1 block text-[10px] text-slate-500">چرخش: {Math.round(selected.angle)}°</span>
-          <input
-            type="range"
-            min={-180}
-            max={180}
-            value={Math.round(selected.angle)}
-            onChange={(e) => engine.setLayerBox(selected.id, { angle: Number(e.target.value) } as never)}
-            className="w-full accent-cyan-400"
-          />
-        </label>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <NumericFieldInput engine={engine} layerId={selected.id} field="angle" label="چرخش (درجه)" value={selected.angle ?? 0} />
+          <div className="flex items-end pb-1">
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              value={Math.round(selected.angle)}
+              onChange={(e) => engine.setLayerBox(selected.id, { angle: Number(e.target.value) } as never)}
+              className="w-full accent-cyan-400"
+              title="چرخش سریع"
+            />
+          </div>
+        </div>
         {/* Quick transform actions */}
         <div className="mt-2 flex gap-2">
           <button

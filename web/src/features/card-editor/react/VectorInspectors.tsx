@@ -31,6 +31,7 @@ import { ShapeSvg } from "./LayeredCardRenderer";
 import { StrokeEditor } from "./StrokeEditor";
 import { useCardEditor } from "./useCardEditor";
 import { LUXURY_MATERIALS } from "../domain/luxuryMaterials";
+import { curveProfilePoints, type CurveProfile } from "../domain/curveLine";
 import { useEntitlements, PremiumBadge } from "@/components/cards/FeatureGate";
 import { Lock } from "lucide-react";
 import Link from "next/link";
@@ -387,6 +388,61 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
           </button>
         </div>
       </div>
+
+      {layer.pathMode === "curve" && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-white">پروفایل منحنی</span>
+            <span className="text-[9px] text-slate-500">مسیر واقعی / قابل ویرایش</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              ["arc", "قوس"],
+              ["sine", "سینوسی متقارن"],
+              ["sine-asymmetric", "سینوسی نامتقارن"],
+              ["s", "موج S"],
+            ] as const).map(([profile, label]) => {
+              const active = (layer.curveProfile ?? (isTwoPointCurve ? "arc" : "sine")) === profile;
+              return (
+                <button
+                  key={profile}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    const nextProfile = profile as CurveProfile;
+                    const nextPoints = curveProfilePoints(
+                      Math.max(40, layer.width),
+                      Math.max(40, layer.height),
+                      nextProfile,
+                      0.38,
+                    );
+                    engine.updateLayer(layer.id, {
+                      curveProfile: nextProfile,
+                      bend: nextProfile === "arc" ? layer.bend ?? 0.42 : undefined,
+                      points: nextPoints,
+                      rawD: undefined,
+                    } as never);
+                  }}
+                  className={`rounded-lg border px-2 py-1.5 text-[9px] font-semibold transition ${
+                    active
+                      ? "border-cyan-300/60 bg-cyan-400/10 text-cyan-200"
+                      : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => engine.setPathEditing(layer.id)}
+            className="w-full rounded-lg border border-cyan-300/20 bg-cyan-400/[0.04] py-1.5 text-[9px] font-bold text-cyan-200 hover:bg-cyan-400/10"
+          >
+            ویرایش نقاط و دستگیره‌ها
+          </button>
+        </div>
+      )}
 
       {/* Arc Curvature Slider (Canva-like intuitive curve control).
           `bend` is the canonical model; the slider presents it as a ±100%

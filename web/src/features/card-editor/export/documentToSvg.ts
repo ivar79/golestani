@@ -27,6 +27,12 @@ import type {
   TextLayer,
 } from "../domain/document";
 import { resolveLayerPathD } from "../domain/path";
+import {
+  paintedRegions,
+  regionFacePathD,
+  regionFillRule,
+  regionStylePaint,
+} from "../domain/geometry/documentRegions";
 import { resolveShapePaint, type SvgPrimitive } from "../domain/shapes";
 import { resolveStroke } from "../domain/stroke";
 import {
@@ -154,6 +160,9 @@ function strokeAttrs(stroke: ReturnType<typeof resolveStroke>): string {
     `stroke-opacity="${stroke.opacity}"`,
   ];
   if (stroke.dasharray) parts.push(`stroke-dasharray="${stroke.dasharray}"`);
+  if (stroke.dasharray && stroke.dashoffset !== undefined) {
+    parts.push(`stroke-dashoffset="${n(stroke.dashoffset)}"`);
+  }
   return ` ${parts.join(" ")}`;
 }
 
@@ -175,6 +184,35 @@ function shapeMarkup(layer: ShapeLayer, defs: string[]): string {
     .map((primitive) => {
       const fillAttr = primitive.tag === "line" ? 'fill="none"' : `fill="${fill}"`;
       return `<${PRIMITIVE_TAGS[primitive.tag]} ${primitiveAttrs(primitive)} ${fillAttr}${stroke}/>`;
+    })
+    .join("");
+}
+
+/**
+ * Serialize the document's region paint (§10/§13).
+ *
+ * A face is ONE `<path>` whose subpaths are the outer loop plus its holes; the
+ * document's fill rule decides how they combine. Region paint can be a solid
+ * colour or a real gradient (built from the same `regionStylePaint` the canvas
+ * uses), so nothing about it is preview-only.
+ */
+function regionMarkup(doc: CardDocument, defs: string[]): string {
+  const painted = paintedRegions(doc);
+  if (painted.length === 0) return "";
+  const rule = regionFillRule(doc);
+  return painted
+    .map(({ face, style }) => {
+      const paint = regionStylePaint(style);
+      let fill = escapeXml(svgColor(paint.fill));
+      if (paint.gradient) {
+        const id = `region-grad-${face.id}`;
+        defs.push(gradientMarkup(id, paint.gradient, doc.artboard.width, doc.artboard.height));
+        fill = `url(#${id})`;
+      }
+      const d = regionFacePathD(face);
+      if (!d) return "";
+      const opacity = style.opacity !== undefined && style.opacity < 1 ? ` opacity="${n(style.opacity)}"` : "";
+      return `<path d="${escapeXml(d)}" fill="${fill}" fill-rule="${rule}"${opacity}/>`;
     })
     .join("");
 }
@@ -201,7 +239,11 @@ function pathMarkup(layer: PathLayer, defs: string[]): string {
       fill = escapeXml(svgColor(layer.fill));
     }
   }
-  return `<path d="${escapeXml(d)}" fill="${fill}"${strokeAttrs(stroke)}/>`;
+  // Fill rule is serialized only when the layer actually sets a non-default one,
+  // so pre-upgrade documents export byte-identically.
+  const fillRule =
+    layer.fillRule && layer.fillRule !== "nonzero" ? ` fill-rule="${layer.fillRule}"` : "";
+  return `<path d="${escapeXml(d)}" fill="${fill}"${fillRule}${strokeAttrs(stroke)}/>`;
 }
 
 function textMarkup(layer: TextLayer, embeddedVazir: boolean): string {
@@ -412,6 +454,11 @@ export function serializeDocument(doc: CardDocument, options: SerializeOptions =
   const background = resolveBackgroundPaint(doc.background, width, height, "grad-artboard");
   if (background.defs) defs.push(background.defs);
 
+  // LIVE-PAINT REGION FILLS: painted faces are emitted BEFORE the layer stack
+  // (under the artwork), exactly like the on-screen projection, so the boundary
+  // strokes stay on top and the exported card matches the preview byte for bite.
+  const regionPaint = regionMarkup(doc, defs);
+
   const body = doc.layers
     .map((layer) => {
       const inner = layerBody(layer, defs, { assets, embeddedVazir });
@@ -428,6 +475,7 @@ export function serializeDocument(doc: CardDocument, options: SerializeOptions =
     fontStyle +
     defsBlock +
     `<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${background.paint}"/>` +
+    regionPaint +
     body +
     `</svg>`
   );

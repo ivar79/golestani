@@ -265,7 +265,7 @@ describe("EditorEngine freehand drawing", () => {
     expect(reparsed.layers.find((l: { id: string }) => l.id === id)).toBeDefined();
   });
 
-  it("addBrushLayer stores a tight box + rawD that the shared resolver renders", () => {
+  it("addBrushLayer stores a tight box + editable Bezier the shared resolver renders", () => {
     const engine = new EditorEngine(testDoc());
     // A small ribbon outline in artboard coordinates.
     const outline = [
@@ -286,10 +286,17 @@ describe("EditorEngine freehand drawing", () => {
     expect(layer.x).toBeLessThanOrEqual(100);
     expect(layer.y).toBeLessThanOrEqual(100);
     expect(layer.fill).toBe("#22d3ee");
-    // The resolver (canvas + export) draws the stored rawD, so the stroke
-    // survives the release of the pointer.
-    expect(resolveLayerPathD(layer)).toBe(layer.rawD);
-    expect(resolveLayerPathD(layer)).toContain("M ");
+    // The brush pipeline commits EDITABLE vector geometry now: real anchors,
+    // no `rawD` shadow document. The resolver (canvas + export) rebuilds the
+    // `d` from those anchors, so the stroke survives the pointer release AND
+    // stays node-editable/resizable afterwards.
+    expect(layer.pathMode).toBe("freehand");
+    expect(layer.closed).toBe(true);
+    expect(layer.points.length).toBeGreaterThanOrEqual(3);
+    expect(layer.rawD).toBeUndefined();
+    const d = resolveLayerPathD(layer);
+    expect(d).toContain("M ");
+    expect(d.endsWith("Z")).toBe(true);
   });
 
   it("addBrushLayer drops a degenerate outline without leaving a layer", () => {

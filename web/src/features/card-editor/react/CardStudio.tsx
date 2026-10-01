@@ -225,10 +225,10 @@ export function CardStudio({
   }, [engine]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Studio header: compact (56px), information-dense, no decoration.
           Save status comes from the REAL persistence state (SaveQueue + dirty flag). */}
-      <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/15 bg-[#0c1626]/95 p-2.5 shadow-lg backdrop-blur-xl">
+      <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-white/[0.08] bg-[#0a1019]/90 p-2.5 shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -252,9 +252,9 @@ export function CardStudio({
           </button>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-300 font-medium mr-1">
-            <span className="font-bold text-cyan-300">InkArt Studio</span>
-            <span className="text-[10px] text-slate-500">|</span>
-            <span className="text-slate-400">کارت ویزیت ۸.۵×۵.۵</span>
+            <span className="font-semibold tracking-tight text-white">InkArt Studio</span>
+            <span className="h-1 w-1 rounded-full bg-emerald-400/80" />
+            <span className="text-[10px] text-slate-500">Card Designer</span>
           </div>
         </div>
 
@@ -311,7 +311,7 @@ export function CardStudio({
           The rail replaces the old horizontal "ابزارها" tab — tools stay one click
           away while the inspector keeps its full height. min-w-0 lets the stage
           shrink instead of overflowing at narrow widths. */}
-      <div className="flex items-stretch justify-between gap-4">
+      <div className="relative flex items-stretch justify-between gap-3 rounded-[26px] border border-white/[0.06] bg-[radial-gradient(circle_at_50%_18%,rgba(28,45,65,0.22),transparent_48%),#070c14] p-2 shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
         <div className="min-w-0 flex-1">
           <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} />
         </div>
@@ -321,8 +321,8 @@ export function CardStudio({
             <Toolbox engine={engine} onUploadImage={onUploadImage} />
 
             {/* Tabbed panels (templates/inspector/layers/background) */}
-            <div className="flex w-[340px] flex-col space-y-3">
-              <div className="grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-[#0c1626]/90 p-1.5 shadow-xl backdrop-blur">
+            <div className="flex w-[300px] flex-col space-y-2.5">
+              <div className="grid grid-cols-4 gap-1 rounded-[18px] border border-white/[0.08] bg-[#0b121d]/80 p-1 shadow-[0_16px_40px_rgba(0,0,0,0.25)] backdrop-blur-2xl">
                 <button
                   type="button"
                   onClick={() => setActiveTab("templates")}

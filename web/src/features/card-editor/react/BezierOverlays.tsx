@@ -100,25 +100,48 @@ function DragNode({
 }) {
   const dragging = useRef(false);
 
+  /** Where the dragged node started, in BOARD coordinates (group-drag base). */
+  const groupDragStart = useRef<{ x: number; y: number } | null>(null);
+
   const handlePointerDown = (event: React.PointerEvent<SVGGElement>) => {
     event.stopPropagation();
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     dragging.current = true;
     engine.beginTransient();
-    if (kind === "anchor") engine.selectAnchor({ layerId: layer.id, index });
+    if (kind === "anchor") {
+      // MULTI-NODE (Figma): a plain click focuses one node; shift-click toggles
+      // it in the group. The gesture below moves the WHOLE group.
+      engine.selectAnchor({ layerId: layer.id, index }, event.shiftKey);
+      groupDragStart.current = {
+        x: layer.x + layer.points[index].x,
+        y: layer.y + layer.points[index].y,
+      };
+    }
   };
 
   const handlePointerMove = (event: React.PointerEvent<SVGGElement>) => {
     if (!dragging.current) return;
     event.stopPropagation();
-    const local = toLayerLocal(toBoardPoint(event), layer);
+    const board = toBoardPoint(event);
     if (kind === "anchor") {
-      engine.transientMoveAnchor(layer.id, index, local);
+      // Group drag when several nodes are selected (marquee / shift-click); a
+      // single selected node takes the original single-node drag. The delta is
+      // measured from the DOWN point, so the gesture never accumulates drift.
+      const indices = engine.selectedAnchorIndices(layer.id);
+      if (indices.length > 1 && groupDragStart.current) {
+        engine.beginAnchorGesture(layer.id, indices);
+        engine.transientMoveAnchors({
+          x: board.x - groupDragStart.current.x,
+          y: board.y - groupDragStart.current.y,
+        });
+        return;
+      }
+      engine.transientMoveAnchor(layer.id, index, toLayerLocal(board, layer));
     } else {
       // Alt/Option breaks the handle mirror — the modifier contract every
       // vector editor uses to make a "corner" point.
-      engine.transientMoveHandle(layer.id, index, kind, local, !event.altKey);
+      engine.transientMoveHandle(layer.id, index, kind, toLayerLocal(board, layer), !event.altKey);
     }
   };
 
@@ -126,6 +149,7 @@ function DragNode({
     if (!dragging.current) return;
     event.stopPropagation();
     dragging.current = false;
+    groupDragStart.current = null;
     engine.commitPathEdit(layer.id);
   };
 
@@ -371,7 +395,7 @@ export function ArcBendHandleOverlay({
   layer: PathLayer;
   zoom: number;
 }) {
-  if (layer.points.length !== 2) return null;
+  if (layer.points.length !== 2 || (layer.curveProfile && layer.curveProfile !== "arc")) return null;
   // `bend` is the canonical model (legacy `curvature` is normalized onto it at
   // parse time), so the handle sits on the arc the resolver actually draws.
   const lSpec = {
@@ -401,13 +425,14 @@ export function ArcBendHandleOverlay({
       };
       const localPt = toLayerLocal(pt, layer);
       const newBend = bendFromPointer(lSpec, localPt, zoom);
-      engine.updateLayer(layer.id, { bend: newBend });
+      engine.transientPatch(layer.id, { bend: newBend });
     };
 
     const onPointerUp = (ue: PointerEvent) => {
       target.releasePointerCapture(ue.pointerId);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      engine.commitTransient();
     };
 
     window.addEventListener("pointermove", onPointerMove);
@@ -440,8 +465,8 @@ export function ArcBendHandleOverlay({
           cx={h.x}
           cy={h.y}
           r={6 / zoom}
-          fill="#ffffff"
-          stroke="#7c3aed"
+          fill="#07111d"
+          stroke="#67e8f9"
           strokeWidth={2 / zoom}
           pointerEvents="none"
         />

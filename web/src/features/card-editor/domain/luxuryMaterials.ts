@@ -7,6 +7,7 @@
  */
 
 import type { PathLayer } from "./document";
+import { curveProfilePoints, type CurveProfile } from "./curveLine";
 
 export type LuxuryMaterialKey =
   | "none"
@@ -138,20 +139,29 @@ export function createCurvedLineLayer(
   height = 100,
   curvature = 40,
   color = "#0ea5e9",
+  profile: CurveProfile = "arc",
 ): PathLayer {
   const id = `path-${Math.random().toString(36).slice(2, 9)}`;
-  const p0 = { x: 0, y: height };
-  const p1 = { x: width, y: height };
-  const { h0, h1 } = calculateArcHandles(p0, p1, curvature);
+  const points = curveProfilePoints(width, height, profile, Math.min(0.44, Math.abs(curvature) / 100));
+  const isArc = profile === "arc";
 
   return {
     id,
-    name: "خط منحنی کمانی",
+    name:
+      profile === "sine"
+        ? "موج سینوسی"
+        : profile === "sine-asymmetric"
+          ? "موج سینوسی نامتقارن"
+          : profile === "s"
+            ? "موج S"
+            : "خط منحنی کمانی",
     kind: "path",
+    pathMode: "curve",
+    curveProfile: profile,
     x,
     y,
     width,
-    height: Math.max(height, 20),
+    height: Math.max(height, 40),
     angle: 0,
     opacity: 1,
     locked: false,
@@ -167,11 +177,8 @@ export function createCurvedLineLayer(
     strokeOpacity: 1,
     fill: null,
     curvature,
-    bend: clampBend(curvature / 100),
-    points: [
-      { x: p0.x, y: p0.y, hIn: null, hOut: h0 },
-      { x: p1.x, y: p1.y, hIn: h1, hOut: null },
-    ],
+    ...(isArc ? { bend: clampBend(curvature / 100) } : {}),
+    points,
   };
 }
 

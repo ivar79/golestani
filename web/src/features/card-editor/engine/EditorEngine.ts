@@ -15,34 +15,100 @@ import type {
   LayerKind,
   PathLayer,
   PathPoint,
+  RegionSettings,
+  RegionStyleEntry,
   ShapeKind,
   StrokeLineCap,
   StrokeLineJoin,
   StrokeStyleKind,
 } from "../domain/document";
-import { ARTBOARD } from "../domain/document";
+import { ARTBOARD, DEFAULT_REGION_SETTINGS } from "../domain/document";
 import { HistoryStack } from "../domain/history";
 import {
   autoSmoothPoints,
   cornerAnchorAt,
-  createFreehandPath,
   insertAnchor,
   moveAnchor,
   moveHandle,
+  nearestSegmentParam,
   normalizePathLayer,
+  pathD,
   pathPadding,
+  resolveLayerPathD,
+  scalePathD,
   removeAnchor,
   smoothAnchorAt,
   straightenAllPoints,
   toggleAnchorAt,
 } from "../domain/path";
-import { brushStrokeLayerGeometry } from "../domain/freehand";
+import { outlineToEditablePath } from "../domain/freehand";
+import {
+  CURVE_KIND_LABELS,
+  DEFAULT_CURVE_SPEC,
+  bakeCurve,
+  curveAnchors,
+  curveChordLength,
+  normalizeCurveSpec,
+  reverseCurveSpec,
+  type CurveKind,
+  type CurveSpec,
+} from "../domain/curveGeometry";
+import {
+  JOIN_TOLERANCE_DEFAULT,
+  SNAP_TOLERANCE_DEFAULT,
+  anchorSnapTargets,
+  anchorsInRect,
+  autoCloseWithinTolerance,
+  breakPathAt,
+  deleteAnchors,
+  extendPath,
+  joinPointLists,
+  moveAnchorsBy,
+  nearestAnchor,
+  normalizeAnchorIndices,
+  reshapePath,
+  reversePoints,
+  setAnchorTypes,
+  snapToTargets,
+  type Rect as WorldRect,
+  type SnapTarget,
+} from "../domain/pathOps";
+import {
+  BOOLEAN_OP_LABELS,
+  booleanContours,
+  type BooleanOp,
+} from "../domain/geometry/booleanOps";
+import { toWorldSubPaths, type Pt as GeoPt, type SubPath } from "../domain/geometry/canonical";
+import {
+  buildSnapIndex,
+  equalSpacingGuides,
+  measureBetween,
+  snapPointSmart,
+  type Guide,
+  type SnapIndex,
+  type SnapResult,
+} from "../domain/snapping";
+import { parseNumericInput } from "../domain/numericInput";
+import { rotatePoint } from "../domain/rotation";
+import {
+  DEFAULT_FREEHAND_OPTIONS,
+  freehandPipeline,
+  normalizeFreehandOptions,
+  simplifyAnchors,
+  type FreehandMode,
+  type FreehandOptions,
+} from "../domain/freehandModes";
+import {
+  faceContainsPoint,
+  remapRegionStyles,
+  type RegionFace,
+} from "../domain/geometry/regions";
+import { regionsForDocument } from "../domain/geometry/documentRegions";
 import { clampStrokeWidth } from "../domain/stroke";
+import type { CurveProfile } from "../domain/curveLine";
 import {
   budgetForTier,
-  fitRawDToBudget,
   MAX_PATH_POINTS,
-  MAX_RAW_D_STRUCTURAL,
   type SaveBudget,
 } from "../domain/saveLimits";
 import { POLYGON_DEFAULT_SIDES } from "../domain/shapes";
@@ -79,8 +145,38 @@ export function wrapAngle(deg: number): number {
 /** The active tool. `draw` is freehand, `pen` is the Bezier pen. */
 export type EditorTool = "select" | "draw" | "pen";
 
+/**
+ * Selection domains (§16): what a click actually selects. `region` is the
+ * Live-Paint face mode (§9) — the geometry it selects is a FACE, not a path.
+ */
+export type SelectionDomain = "object" | "path" | "node" | "region";
+
 /** Which anchor (and therefore which path layer) the point editor is editing. */
 export type AnchorSelection = { layerId: string; index: number };
+
+/** Inspector fields that accept a numeric expression (`+10`, `*2`, `50%`). */
+export type NumericField = "x" | "y" | "width" | "height" | "angle" | "strokeWidth" | "fontSize";
+
+/**
+ * Per-field bounds for numeric entry. The clamps exist because the resulting
+ * value goes straight into the document (and therefore into the saved card), so
+ * a typo like `9999999` must not be able to produce an unrenderable layer.
+ */
+export const NUMERIC_FIELD_LIMITS: Record<NumericField, { min: number; max: number; decimals: number }> = {
+  x: { min: -20000, max: 20000, decimals: 2 },
+  y: { min: -20000, max: 20000, decimals: 2 },
+  width: { min: 1, max: 20000, decimals: 2 },
+  height: { min: 1, max: 20000, decimals: 2 },
+  angle: { min: -360, max: 360, decimals: 2 },
+  strokeWidth: { min: 0, max: 400, decimals: 2 },
+  fontSize: { min: 4, max: 800, decimals: 2 },
+};
+
+/** Read one numeric field off any layer kind (0 when the layer has none). */
+function readLayerNumber(layer: CardLayer, field: string): number {
+  const value = (layer as unknown as Record<string, unknown>)[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
 
 export type SelectionState = {
   layerId: string | null;
@@ -103,6 +199,26 @@ export type EngineState = {
   brushLinecap: StrokeLineCap;
   brushLinejoin: StrokeLineJoin;
   brushOpacity: number;
+  /** How the freehand gesture is interpreted at commit time. */
+  freehandMode: FreehandMode;
+  /** Fitting pipeline tuning (smoothing / fidelity / snapping / auto-close). */
+  freehandTuning: FreehandOptions;
+  /**
+   * SELECTION MODEL (§16). The four domains are deliberately distinct: an
+   * object selection is not a path selection, a node selection is not a region
+   * selection. Keeping this explicit stops "select all" from meaning four
+   * different things depending on the tool that happened to be active.
+   */
+  selectionDomain: SelectionDomain;
+  /** Face id under the cursor in region mode (view state, never persisted). */
+  hoveredRegion: string | null;
+  /** Face id selected in region mode — a FACE, never the path that bounds it. */
+  selectedRegion: string | null;
+  /**
+   * The path a Pen draft is CONTINUING ("continue from endpoint"), if any.
+   * Set by `continuePathFrom`; consumed once by `finishPen`.
+   */
+  penContinuation: { layerId: string; end: "start" | "end" } | null;
   /** Live pointer samples for the freehand tool (transient, never persisted). */
   workingStroke: { x: number; y: number }[] | null;
   /** Live anchors for the Pen tool (transient, never persisted). */
@@ -111,9 +227,27 @@ export type EngineState = {
   penMode: "curvature" | "corner";
   /**
    * The anchor/handle under edit on a COMMITTED path layer. View state, like
-   * `selection`: it lives in the engine but never in undo history.
+   * `selection`: it lives in the engine but never in undo history. It is the
+   * PRIMARY node; `anchorSelection` is the whole group it belongs to.
    */
   selectedAnchor: AnchorSelection | null;
+  /**
+   * MULTI-NODE SELECTION (Figma's node marquee / shift-click). Always contains
+   * `selectedAnchor` as its first entry when that is non-null — a single-node
+   * selection is just a one-element group, so no code path has to special-case
+   * "one node" versus "many".
+   */
+  anchorSelection: AnchorSelection[];
+  /**
+   * Snapping (§ smart guides). When on, a drag lands on anchors, box edges and
+   * the artboard instead of on raw pixels; the guides below report what it hit.
+   */
+  snapping: boolean;
+  /**
+   * Live smart guides for the gesture in progress. VIEW STATE ONLY: guides are a
+   * projection of one drag and are never persisted (`docs` stay clean).
+   */
+  snapGuides: Guide[];
   /**
    * The path layer whose POINTS are being edited (double-click a curve, or the
    * "ویرایش نقاط" button). View state — never in history. Only one path can be
@@ -142,11 +276,6 @@ export class EditorEngine {
     this.savePolicy = { budget, unlimited: budget.unlimited };
   }
 
-  /** The rawD budget a NEW stroke should target. */
-  private get strokeBudget(): number {
-    return this.savePolicy.unlimited ? MAX_RAW_D_STRUCTURAL : this.savePolicy.budget.rawDBytes;
-  }
-
   constructor(initialDoc: CardDocument) {
     this.state = {
       doc: initialDoc,
@@ -158,10 +287,19 @@ export class EditorEngine {
       brushLinecap: "round",
       brushLinejoin: "round",
       brushOpacity: 1,
+      freehandMode: "free",
+      freehandTuning: { ...DEFAULT_FREEHAND_OPTIONS },
+      selectionDomain: "object",
+      hoveredRegion: null,
+      selectedRegion: null,
+      penContinuation: null,
       workingStroke: null,
       penDraft: null,
       penMode: "curvature",
       selectedAnchor: null,
+      anchorSelection: [],
+      snapping: true,
+      snapGuides: [],
       editingPathId: null,
       canUndo: false,
       canRedo: false,
@@ -180,6 +318,21 @@ export class EditorEngine {
   getState = (): EngineState => this.state;
 
   private emit(next: Partial<EngineState>): void {
+    // THE NODE-SELECTION INVARIANT: a caller that only sets `selectedAnchor`
+    // (every single-node code path in the engine) means exactly that one node,
+    // so the group collapses to it. Callers that manage a group pass both.
+    if (next.selectedAnchor !== undefined && next.anchorSelection === undefined) {
+      next = { ...next, anchorSelection: next.selectedAnchor ? [next.selectedAnchor] : [] };
+    }
+    const doc = next.doc;
+    // REGION PAINT IS TOPOLOGY-BOUND (§11): every time geometry changes outside
+    // a live gesture, the saved paint is remapped onto the freshly computed
+    // faces, so an edited boundary can never leave fills stranded at old
+    // coordinates. Inside a drag the remap is deliberately skipped (§17: it
+    // would run on every pointer sample) and done once in `commitTransient`.
+    if (doc && doc !== this.state.doc && !this.transientTouched && (doc.regions?.length ?? 0) > 0) {
+      next = { ...next, doc: this.remapRegions(doc) };
+    }
     this.state = { ...this.state, ...next };
     for (const listener of this.listeners) listener();
   }
@@ -332,38 +485,36 @@ export class EditorEngine {
    * Add a freehand brush stroke as a pristine filled vector path layer.
    *
    * The stroke arrives as its perfect-freehand OUTLINE (artboard coordinates).
-   * `brushStrokeLayerGeometry` re-origins it into a tight layer box, so the
-   * stroke is a first-class layer — selectable, movable, resizable — and the
-   * committed `rawD` is the exact ribbon the live preview drew. Rendering goes
-   * through `resolveLayerPathD` (rawD), so the canvas, autosave, reload and
-   * export all show the same stroke.
+   * `outlineToEditablePath` re-origins it into a tight layer box AND refits the
+   * ribbon as editable cubic anchors (RDP simplify → Catmull-Rom handles), so
+   * the stroke is a first-class, node-editable layer — selectable, movable,
+   * resizable, and convertible to a Pen path — instead of a frozen `rawD`
+   * string. Rendering goes through `resolveLayerPathD` (points), so the canvas,
+   * autosave, reload and export all show the same stroke.
    */
   addBrushLayer(outline: number[][], color = "#0ea5e9"): string | null {
-    const geometry = brushStrokeLayerGeometry(outline);
+    const geometry = outlineToEditablePath(outline, 2, this.savePolicy.unlimited ? 96 : Math.min(72, this.savePolicy.budget.pathPoints));
     if (!geometry) return null;
-    // Tier-aware budget fit: unlimited tiers keep the stroke byte-for-byte
-    // (their budget IS the structural cap); capped tiers get the lossless
-    // optimize ladder first. Either way the geometry is never truncated.
-    const { d } = fitRawDToBudget(geometry.d, this.strokeBudget);
-    const x = geometry.x;
-    const y = geometry.y;
-    const width = geometry.width;
-    const height = geometry.height;
+
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
     const layer: PathLayer = {
       id,
       kind: "path",
+      pathMode: "freehand",
       name: "قلم آزاد",
-      points: [],
-      rawD: d,
+      points: geometry.points,
       closed: true,
       fill: color,
       stroke: null,
       strokeWidth: 0,
-      x,
-      y,
-      width,
-      height,
+      strokeStyle: this.state.brushStyle,
+      strokeLinecap: this.state.brushLinecap,
+      strokeLinejoin: this.state.brushLinejoin,
+      strokeOpacity: this.state.brushOpacity,
+      x: geometry.x,
+      y: geometry.y,
+      width: geometry.width,
+      height: geometry.height,
       angle: 0,
       opacity: 1,
       locked: false,
@@ -371,6 +522,7 @@ export class EditorEngine {
       color,
       background: null,
     };
+
     this.pushHistory();
     const layers = [...this.state.doc.layers, layer];
     this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(id) });
@@ -380,8 +532,8 @@ export class EditorEngine {
   /**
    * Add a smooth curved line / arc (Canva-like curved line).
    */
-  addCurvedLine(curvature = 40): string {
-    const layer = createCurvedLineLayer(100, 280, 500, 80, curvature);
+  addCurvedLine(curvature = 40, profile: CurveProfile = "arc"): string {
+    const layer = createCurvedLineLayer(100, 280, 500, 100, curvature, "#0ea5e9", profile);
     this.pushHistory();
     const layers = [...this.state.doc.layers, layer];
     this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(layer.id) });
@@ -555,27 +707,35 @@ export class EditorEngine {
   transientResize(layerId: string, handle: ResizeHandle, pointer: { x: number; y: number }): void {
     const target = this.state.doc.layers.find((l) => l.id === layerId);
     if (!target || target.locked) return;
-    const angle = (target.angle ?? 0) * (Math.PI / 180);
-    // Layer frame corners in artboard space (about the layer center).
-    const center = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+    this.beginTransient();
+
+    let startTarget = target;
+    if (this.transientDocStart) {
+      try {
+        const startDoc = JSON.parse(this.transientDocStart) as CardDocument;
+        startTarget = startDoc.layers.find((l) => l.id === layerId) ?? target;
+      } catch {
+        startTarget = target;
+      }
+    }
+
+    const angle = (startTarget.angle ?? 0) * (Math.PI / 180);
+    const center = { x: startTarget.x + startTarget.width / 2, y: startTarget.y + startTarget.height / 2 };
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    // Pointer → layer-local (unrotated) coords, centered at the layer center.
     const dx = pointer.x - center.x;
     const dy = pointer.y - center.y;
     const localX = dx * cos + dy * sin;
     const localY = -dx * sin + dy * cos;
-
-    const halfW = target.width / 2;
-    const halfH = target.height / 2;
-
-    // New local extents: clamp the dragged edge to a readable minimum, keeping
-    // the opposite edge fixed (e.g. dragging E leaves W untouched).
+    const halfW = startTarget.width / 2;
+    const halfH = startTarget.height / 2;
     const MIN = 8;
+
     let newRight = handle.includes("e") ? localX : halfW;
     let newLeft = handle.includes("w") ? localX : -halfW;
     let newBottom = handle.includes("s") ? localY : halfH;
     let newTop = handle.includes("n") ? localY : -halfH;
+
     if (newRight - newLeft < MIN) {
       if (handle.includes("e")) newRight = newLeft + MIN;
       else if (handle.includes("w")) newLeft = newRight - MIN;
@@ -587,18 +747,47 @@ export class EditorEngine {
 
     const newW = newRight - newLeft;
     const newH = newBottom - newTop;
-    // New local center relative to the anchor, then un-rotate to artboard space.
     const localCenterX = (newLeft + newRight) / 2;
     const localCenterY = (newTop + newBottom) / 2;
     const worldCenterX = center.x + localCenterX * cos - localCenterY * sin;
     const worldCenterY = center.y + localCenterX * sin + localCenterY * cos;
 
-    this.transientPatch(layerId, {
+    const patch: Partial<CardLayer> = {
       width: newW,
       height: newH,
       x: worldCenterX - newW / 2,
       y: worldCenterY - newH / 2,
-    } as Partial<CardLayer>);
+    };
+
+    if (startTarget.kind === "path") {
+      const sx = newW / Math.max(1, startTarget.width);
+      const sy = newH / Math.max(1, startTarget.height);
+      // A parametric curve is scaled THROUGH its parameters, so Length and
+      // Amplitude stay truthful after a resize (x scales length, y scales
+      // amplitude — exactly equivalent to scaling the generated anchors).
+      if (startTarget.curve) {
+        (patch as Partial<PathLayer>).curve = normalizeCurveSpec({
+          ...startTarget.curve,
+          length: startTarget.curve.length * sx,
+          amplitude: startTarget.curve.amplitude * sy,
+        });
+      }
+      if (startTarget.rawD) {
+        (patch as Partial<PathLayer>).rawD = scalePathD(startTarget.rawD, sx, sy);
+      } else if (startTarget.points.length > 0) {
+        (patch as Partial<PathLayer>).points = startTarget.points.map((point) => ({
+          x: point.x * sx,
+          y: point.y * sy,
+          hIn: point.hIn ? { x: point.hIn.x * sx, y: point.hIn.y * sy } : point.hIn ?? null,
+          hOut: point.hOut ? { x: point.hOut.x * sx, y: point.hOut.y * sy } : point.hOut ?? null,
+        }));
+      }
+    }
+
+    this.transientTouched = true;
+    const next = { ...target, ...(patch as object) } as CardLayer;
+    const layers = this.state.doc.layers.map((layer) => (layer.id === layerId ? next : layer));
+    this.emit({ doc: { ...this.state.doc, layers } });
   }
 
   /**
@@ -723,12 +912,25 @@ export class EditorEngine {
     const anchorY = handle.includes("n") ? bottom : top;
 
     for (const layer of members) {
-      this.transientPatch(layer.id, {
+      const patch: Partial<CardLayer> = {
         x: anchorX + (layer.x - anchorX) * scaleX,
         y: anchorY + (layer.y - anchorY) * scaleY,
         width: Math.max(MIN, layer.width * scaleX),
         height: Math.max(MIN, layer.height * scaleY),
-      } as Partial<CardLayer>);
+      };
+      if (layer.kind === "path") {
+        if (layer.rawD) {
+          (patch as Partial<PathLayer>).rawD = scalePathD(layer.rawD, scaleX, scaleY);
+        } else if (layer.points.length > 0) {
+          (patch as Partial<PathLayer>).points = layer.points.map((point) => ({
+            x: point.x * scaleX,
+            y: point.y * scaleY,
+            hIn: point.hIn ? { x: point.hIn.x * scaleX, y: point.hIn.y * scaleY } : point.hIn ?? null,
+            hOut: point.hOut ? { x: point.hOut.x * scaleX, y: point.hOut.y * scaleY } : point.hOut ?? null,
+          }));
+        }
+      }
+      this.transientPatch(layer.id, patch);
     }
   }
 
@@ -779,7 +981,23 @@ export class EditorEngine {
    * numeric fields path and by the arrow-key scaling shortcuts.
    */
   setLayerBox(layerId: string, box: { x: number; y: number; width: number; height: number; angle?: number }): void {
+    const target = this.state.doc.layers.find((layer) => layer.id === layerId);
+    if (!target || target.locked) return;
     const patch: Partial<CardLayer> = { ...box } as Partial<CardLayer>;
+    if (target.kind === "path") {
+      const sx = box.width / Math.max(1, target.width);
+      const sy = box.height / Math.max(1, target.height);
+      if (target.rawD) {
+        (patch as Partial<PathLayer>).rawD = scalePathD(target.rawD, sx, sy);
+      } else if (target.points.length > 0) {
+        (patch as Partial<PathLayer>).points = target.points.map((point) => ({
+          x: point.x * sx,
+          y: point.y * sy,
+          hIn: point.hIn ? { x: point.hIn.x * sx, y: point.hIn.y * sy } : point.hIn ?? null,
+          hOut: point.hOut ? { x: point.hOut.x * sx, y: point.hOut.y * sy } : point.hOut ?? null,
+        }));
+      }
+    }
     this.updateLayer(layerId, patch);
   }
 
@@ -974,7 +1192,10 @@ export class EditorEngine {
     if (!touched) return; // gesture ended with no change
     // Using group: null ensures consecutive gestures don't coalesce into one history record
     this.history.commit(start, { group: null });
-    this.emit({ canUndo: this.history.canUndo, canRedo: this.history.canRedo, dirty: true });
+    // §11: the region paint is remapped ONCE here instead of on every pointer
+    // sample during the gesture (the remap is skipped while `transientTouched`).
+    const doc = this.remapRegions(this.state.doc);
+    this.emit({ doc, canUndo: this.history.canUndo, canRedo: this.history.canRedo, dirty: true });
   }
 
   /** End of a transient gesture (drag): record the pre-drag state once. */
@@ -1039,6 +1260,25 @@ export class EditorEngine {
   }
 
   /**
+   * Freehand mode (§6): `free` fits the stroke, `straight` produces an accurate
+   * two-anchor line, `constrained` snaps every segment to the configured angle
+   * increments (with axis lock).
+   */
+  setFreehandMode(mode: FreehandMode): void {
+    this.emit({ freehandMode: normalizeFreehandOptions({ mode }).mode });
+  }
+
+  /** Tuning for the freehand pipeline (smoothing / fidelity / snapping). */
+  setFreehandTuning(patch: Partial<FreehandOptions>): void {
+    this.emit({ freehandTuning: normalizeFreehandOptions({ ...this.state.freehandTuning, ...patch }) });
+  }
+
+  /** The snapping increments the constrained mode uses (degrees). */
+  setFreehandAngleSnapping(increments: number[]): void {
+    this.setFreehandTuning({ angleIncrements: increments });
+  }
+
+  /**
    * Live stroke decorations for the NEXT freehand stroke. The draw tool is
    * only useful if a new stroke can be dashed/dotted/translucent, so these
    * mirror the inspector controls instead of being hardcoded.
@@ -1081,19 +1321,28 @@ export class EditorEngine {
     }
     const strokeWidth = clampStrokeWidth(options.width);
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
-    // Anchor cap (validator MAX_PATH_POINTS): re-simplify the SAME raw samples
-    // with a coarser epsilon instead of truncating — the stroke keeps its shape.
-    let points = createFreehandPath(working);
-    for (const epsilon of [5, 10, 20, 40, 80]) {
-      if (points.length <= MAX_PATH_POINTS) break;
-      points = createFreehandPath(working, { simplifyEpsilon: epsilon });
-    }
+    // THE PIPELINE (§6): smoothing → fidelity → simplification → curve fitting.
+    // The anchor cap lives inside the pipeline (it re-fits the SAME samples with
+    // a coarser epsilon instead of truncating, so the stroke keeps its shape and
+    // still ends where the finger ended).
     // The layer box is DERIVED from the geometry (never hand-computed), so a
     // freshly drawn stroke and a later-edited one always agree on the box.
+    const fit = freehandPipeline(working, {
+      ...this.state.freehandTuning,
+      mode: this.state.freehandMode,
+      maxPoints: MAX_PATH_POINTS,
+    });
+    const points = fit.points;
+    if (points.length < 2) {
+      this.emit({ workingStroke: null });
+      return null;
+    }
+
     const newLayer = normalizePathLayer<PathLayer>(
       {
         id,
         kind: "path",
+        pathMode: "pen",
         x: 0,
         y: 0,
         width: 1,
@@ -1105,7 +1354,7 @@ export class EditorEngine {
         z: this.state.doc.layers.length + 1,
         color: null,
         background: null,
-        closed: false,
+        closed: fit.closed,
         points,
         stroke: options.color,
         strokeWidth,
@@ -1188,8 +1437,32 @@ export class EditorEngine {
   finishPen(closed: boolean): string | null {
     const draft = this.state.penDraft;
     if (!draft || draft.length < 2) {
-      this.emit({ penDraft: null });
+      this.emit({ penDraft: null, penContinuation: null });
       return null;
+    }
+    // CONTINUE FROM ENDPOINT (§5): the draft was seeded with the existing path's
+    // anchors, so finishing writes the merged anchors BACK into that layer —
+    // one record, one layer, no duplicate path left behind.
+    const continuation = this.state.penContinuation;
+    if (continuation) {
+      this.emit({ penContinuation: null });
+      const target = this.editablePath(continuation.layerId);
+      if (target) {
+        const merged = normalizePathLayer(
+          { ...target, points: draft, closed: closed && draft.length > 2 },
+          pathPadding(target.strokeWidth),
+        );
+        this.pushHistory();
+        const layers = this.state.doc.layers.map((layer) => (layer.id === target.id ? merged : layer));
+        this.emit({
+          doc: { ...this.state.doc, layers },
+          penDraft: null,
+          tool: "select",
+          selection: this.withSelection(target.id),
+          selectedAnchor: { layerId: target.id, index: draft.length - 1 },
+        });
+        return target.id;
+      }
     }
     const strokeWidth = clampStrokeWidth(this.state.brushWidth);
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
@@ -1240,11 +1513,571 @@ export class EditorEngine {
     this.emit({ penDraft: null });
   }
 
+  /* ------------------------------ curve tool (§4) ------------------------------ */
+
+  /**
+   * Create a parametric curve layer.
+   *
+   * The layer keeps its `curve` record, so Length / Amplitude / Frequency /
+   * Phase / Symmetry / tangents / direction stay editable forever — the tool
+   * produces live geometry, not a baked picture of it. The anchors it generates
+   * are ordinary Bezier points, so the pen, node editor, resize and export all
+   * treat it like any other path.
+   */
+  addCurve(kind: CurveKind = "sine", partial: Partial<CurveSpec> = {}): string {
+    const spec = normalizeCurveSpec({ ...DEFAULT_CURVE_SPEC, ...partial, kind });
+    const strokeWidth = clampStrokeWidth(this.state.brushWidth);
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer = normalizePathLayer<PathLayer>(
+      {
+        id,
+        kind: "path",
+        pathMode: "curve",
+        curve: spec,
+        points: curveAnchors(spec),
+        closed: false,
+        name: `منحنی — ${CURVE_KIND_LABELS[spec.kind]}`,
+        x: (ARTBOARD.width - spec.length) / 2,
+        y: ARTBOARD.height / 2 - 40,
+        width: spec.length,
+        height: Math.max(8, spec.amplitude * 2),
+        angle: 0,
+        opacity: 1,
+        locked: false,
+        hidden: false,
+        color: null,
+        background: null,
+        stroke: this.state.brushColor,
+        strokeWidth,
+        strokeStyle: this.state.brushStyle,
+        strokeLinecap: this.state.brushLinecap,
+        strokeLinejoin: this.state.brushLinejoin,
+        strokeOpacity: this.state.brushOpacity,
+        fill: null,
+      },
+      pathPadding(strokeWidth),
+    );
+    this.pushHistory();
+    const layers = [...this.state.doc.layers, layer];
+    this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(id) });
+    return id;
+  }
+
+  /** The parametric record of a curve layer (null when it is a plain path). */
+  curveSpec(layerId: string): CurveSpec | null {
+    const layer = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!layer || layer.kind !== "path" || !layer.curve) return null;
+    return normalizeCurveSpec(layer.curve);
+  }
+
+  /**
+   * Chord length of a curve layer, measured from its OWN generated geometry.
+   * This is the number the inspector must show — changing amplitude, frequency,
+   * phase, symmetry or rotation can never move it.
+   */
+  curveLength(layerId: string): number {
+    const layer = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!layer || layer.kind !== "path") return 0;
+    const spec = layer.curve ? normalizeCurveSpec(layer.curve) : null;
+    if (!spec || spec.kind === "custom") return curveChordLength(layer.points);
+    return curveChordLength(curveAnchors(spec));
+  }
+
+  /**
+   * Edit any curve parameter. The anchors and the layer box are re-derived from
+   * the spec in the same step, so the rendered geometry can never disagree with
+   * the parameters (one geometry, one contract).
+   *
+   * `transient: true` is for live slider drags: it updates without touching
+   * history (the caller commits once) — but the box IS re-origined here, because
+   * a parametric curve is edited through numbers, not by dragging its nodes.
+   */
+  setCurveParam(
+    layerId: string,
+    patch: Partial<CurveSpec>,
+    options: { transient?: boolean } = {},
+  ): void {
+    const layer = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!layer || layer.kind !== "path" || layer.locked || !layer.curve) return;
+    const spec = normalizeCurveSpec({ ...layer.curve, ...patch });
+    const points = spec.kind === "custom" ? layer.points : curveAnchors(spec);
+    const next = normalizePathLayer<PathLayer>(
+      { ...layer, curve: spec, points, closed: spec.kind === "custom" ? layer.closed : false, bend: undefined, rawD: undefined },
+      pathPadding(layer.strokeWidth),
+    );
+    const patch2 = {
+      curve: next.curve,
+      points: next.points,
+      closed: next.closed,
+      x: next.x,
+      y: next.y,
+      width: next.width,
+      height: next.height,
+      rawD: undefined,
+      bend: undefined,
+    } as Partial<CardLayer>;
+    if (options.transient) this.transientPatch(layerId, patch2);
+    else this.updateLayer(layerId, patch2);
+  }
+
+  /**
+   * Reverse a curve. Reversing is a SPEC operation, so every other parameter
+   * survives and reversing twice returns the original curve exactly.
+   */
+  reverseCurve(layerId: string): void {
+    const spec = this.curveSpec(layerId);
+    if (!spec) return;
+    this.setCurveParam(layerId, reverseCurveSpec(spec));
+  }
+
+  /**
+   * Convert to Path: freeze the parameters into plain anchors and DROP the
+   * record, so the result is ordinary editable Bezier geometry (§4).
+   */
+  convertCurveToPath(layerId: string): void {
+    const layer = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!layer || layer.kind !== "path" || layer.locked || !layer.curve) return;
+    const frozen = layer.curve.kind === "custom" ? layer.points : bakeCurve(layer.curve);
+    const copy = { ...layer } as PathLayer & { curve?: CurveSpec };
+    delete copy.curve;
+    const next = normalizePathLayer<PathLayer>(
+      { ...(copy as PathLayer), points: frozen, pathMode: "pen" },
+      pathPadding(layer.strokeWidth),
+    );
+    this.pushHistory();
+    const layers = this.state.doc.layers.map((l) => (l.id === layerId ? next : l));
+    this.emit({ doc: { ...this.state.doc, layers } });
+  }
+
+  /* ---------------------------- pen path surgery (§5) ---------------------------- */
+
+  /** Reverse a path's direction. Handles travel with their anchors. */
+  reversePath(layerId: string): void {
+    const layer = this.editablePath(layerId);
+    if (!layer) return;
+    // A parametric curve reverses through its spec (so its parameters survive);
+    // a plain path reverses by re-ordering its anchors.
+    if (layer.curve) {
+      this.reverseCurve(layerId);
+      return;
+    }
+    this.applyPathPoints(layer, reversePoints(layer.points));
+  }
+
+  /**
+   * Break a path at an anchor.
+   *
+   * CLOSED path → it opens (one layer, two ends at the break node).
+   * OPEN path   → it splits into TWO layers, each keeping the original
+   *               geometry, stroke and style.
+   */
+  breakPathAtAnchor(layerId: string, index: number): string[] {
+    const layer = this.editablePath(layerId);
+    if (!layer) return [];
+    const broken = breakPathAt(layer.points, layer.closed, index);
+    if (!broken || broken.first.length < 2) return [];
+
+    if (layer.closed) {
+      const next = normalizePathLayer<PathLayer>(
+        { ...layer, closed: false, points: broken.first, curve: undefined },
+        pathPadding(layer.strokeWidth),
+      );
+      this.updateLayer(layerId, {
+        closed: false,
+        points: next.points,
+        x: next.x,
+        y: next.y,
+        width: next.width,
+        height: next.height,
+      } as Partial<CardLayer>);
+      return [layerId];
+    }
+
+    if (broken.second.length < 2) return [];
+    const pad = pathPadding(layer.strokeWidth);
+    const firstLayer = normalizePathLayer<PathLayer>({ ...layer, points: broken.first, curve: undefined }, pad);
+    const secondId = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const secondLayer = normalizePathLayer<PathLayer>(
+      { ...layer, id: secondId, name: layer.name ? `${layer.name} (۲)` : undefined, points: broken.second, curve: undefined },
+      pad,
+    );
+    this.pushHistory();
+    const layers: CardLayer[] = [];
+    for (const candidate of this.state.doc.layers) {
+      if (candidate.id !== layerId) {
+        layers.push(candidate);
+        continue;
+      }
+      layers.push(firstLayer, secondLayer);
+    }
+    this.emit({
+      doc: { ...this.state.doc, layers },
+      selection: this.withSelection(secondId),
+      selectedAnchor: { layerId: secondId, index: 0 },
+    });
+    return [layerId, secondId];
+  }
+
+  /**
+   * Join two open paths end-to-end. The CLOSEST pair of ends wins, so clicking
+   * either end in either order gives the same result. Both layers must share an
+   * orientation (an unrotated path) — joining across rotations would have to
+   * bake a transform into the anchors, which is a different feature.
+   */
+  joinPaths(firstId: string, secondId: string, tolerance = JOIN_TOLERANCE_DEFAULT): string | null {
+    if (firstId === secondId) return null;
+    const first = this.editablePath(firstId);
+    const second = this.editablePath(secondId);
+    if (!first || !second || first.closed || second.closed) return null;
+    if (Math.abs((first.angle ?? 0) - (second.angle ?? 0)) > 0.01) return null;
+
+    // Put the second path into the first path's LOCAL space before joining.
+    const shiftX = second.x - first.x;
+    const shiftY = second.y - first.y;
+    const shifted = second.points.map((point) => ({
+      x: point.x + shiftX,
+      y: point.y + shiftY,
+      hIn: point.hIn ? { x: point.hIn.x + shiftX, y: point.hIn.y + shiftY } : point.hIn ?? null,
+      hOut: point.hOut ? { x: point.hOut.x + shiftX, y: point.hOut.y + shiftY } : point.hOut ?? null,
+    }));
+
+    const joined = joinPointLists(first.points, shifted, tolerance);
+    if (!joined) return null;
+
+    const pad = pathPadding(Math.max(first.strokeWidth, second.strokeWidth));
+    const merged = normalizePathLayer<PathLayer>(
+      { ...first, curve: undefined, points: joined.points },
+      pad,
+    );
+    this.pushHistory();
+    const layers = this.state.doc.layers
+      .filter((layer) => layer.id !== secondId)
+      .map((layer) => (layer.id === firstId ? merged : layer));
+    this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(firstId) });
+    return firstId;
+  }
+
+  /**
+   * Continue drawing from an existing path's endpoint (§5).
+   *
+   * The existing anchors BECOME the pen draft, so finishing the gesture writes
+   * the merged path straight back into the same layer.
+   */
+  continuePathFrom(layerId: string, end: "start" | "end" = "end"): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.closed) return false;
+    const draft = end === "start" ? reversePoints(layer.points) : layer.points.map((p) => ({ ...p }));
+    this.emit({
+      penDraft: draft,
+      penContinuation: { layerId, end },
+      tool: "pen",
+      selection: this.withSelection(null),
+      selectedAnchor: null,
+    });
+    return true;
+  }
+
+  /** Snap targets from every visible path (nodes + free ends). */
+  snapTargets(excludeLayerId?: string): SnapTarget[] {
+    const targets: SnapTarget[] = [];
+    for (const layer of this.state.doc.layers) {
+      if (layer.kind !== "path" || layer.hidden || layer.locked || layer.id === excludeLayerId) continue;
+      for (const target of anchorSnapTargets(layer.points, layer.id)) {
+        targets.push({ ...target, x: target.x + layer.x, y: target.y + layer.y });
+      }
+    }
+    return targets;
+  }
+
+  /** Snap an artboard-space point onto an existing node/endpoint (§5). */
+  snapPoint(point: { x: number; y: number }, tolerance = SNAP_TOLERANCE_DEFAULT, excludeLayerId?: string) {
+    return snapToTargets(point, this.snapTargets(excludeLayerId), tolerance);
+  }
+
+  /** Nearest anchor of ONE layer (node editing hit-test), artboard space. */
+  nearestAnchorAt(layerId: string, point: { x: number; y: number }, tolerance = SNAP_TOLERANCE_DEFAULT) {
+    const layer = this.editablePath(layerId);
+    if (!layer) return null;
+    const local = { x: point.x - layer.x, y: point.y - layer.y };
+    return nearestAnchor(layer.points, local, tolerance);
+  }
+
+  /* -------------------------- freehand extensions (§6) -------------------------- */
+
+  /**
+   * Keep drawing an existing path with a new freehand run ("extend").
+   * The run is fitted by the same pipeline the pencil uses, and it must start
+   * near one of the path's ends — otherwise it becomes its own layer instead of
+   * teleporting the existing stroke.
+   */
+  extendPathWithStroke(layerId: string, samples: { x: number; y: number }[]): string | null {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2 || samples.length < 2) return null;
+    const world = layer.points.map((point) => ({ x: point.x + layer.x, y: point.y + layer.y }));
+    const fit = freehandPipeline(samples, {
+      ...this.state.freehandTuning,
+      mode: this.state.freehandMode,
+      maxPoints: MAX_PATH_POINTS,
+    });
+    if (fit.points.length < 2) return null;
+    const extended = extendPath(world, fit.points, JOIN_TOLERANCE_DEFAULT);
+    if (!extended) return null;
+    const next = normalizePathLayer<PathLayer>(
+      { ...layer, x: 0, y: 0, points: extended, curve: undefined, closed: fit.closed || layer.closed },
+      pathPadding(layer.strokeWidth),
+    );
+    this.updateLayer(layerId, {
+      points: next.points,
+      x: next.x,
+      y: next.y,
+      width: next.width,
+      height: next.height,
+      closed: next.closed,
+    } as Partial<CardLayer>);
+    return layerId;
+  }
+
+  /**
+   * Reshape part of an existing path with a freshly drawn run (§6).
+   * Anchors outside [fromIndex, toIndex] keep their exact handles.
+   */
+  reshapePathRun(
+    layerId: string,
+    fromIndex: number,
+    toIndex: number,
+    samples: { x: number; y: number }[],
+  ): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || samples.length < 2) return false;
+    const world = layer.points.map((point) => ({ x: point.x + layer.x, y: point.y + layer.y }));
+    const fit = freehandPipeline(samples, {
+      ...this.state.freehandTuning,
+      mode: "free",
+      maxPoints: MAX_PATH_POINTS,
+    });
+    if (fit.points.length < 2) return false;
+    const reshaped = reshapePath(world, fromIndex, toIndex, fit.points);
+    if (!reshaped) return false;
+    const next = normalizePathLayer<PathLayer>(
+      { ...layer, x: 0, y: 0, points: reshaped, curve: undefined },
+      pathPadding(layer.strokeWidth),
+    );
+    this.updateLayer(layerId, {
+      points: next.points,
+      x: next.x,
+      y: next.y,
+      width: next.width,
+      height: next.height,
+    } as Partial<CardLayer>);
+    return true;
+  }
+
+  /** Simplify Path (§6/§15): drop redundant anchors, keep the shape. */
+  simplifyPathLayer(layerId: string, fidelity = this.state.freehandTuning.fidelity): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 3) return;
+    const simplified = simplifyAnchors(layer.points, fidelity, MAX_PATH_POINTS);
+    // Re-fit handles from the surviving anchors so the simplified path is still
+    // a smooth curve rather than a polygon.
+    const refit = autoSmoothPoints(simplified, layer.closed, 0.28);
+    this.applyPathPoints(layer, refit);
+  }
+
+  /** Auto-close an open path when its ends already touch. */
+  autoClosePath(layerId: string): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.closed) return false;
+    const closed = autoCloseWithinTolerance(layer.points, this.state.freehandTuning.closeTolerance);
+    if (!closed) return false;
+    const next = normalizePathLayer<PathLayer>({ ...layer, closed: true, points: closed }, pathPadding(layer.strokeWidth));
+    this.updateLayer(layerId, {
+      closed: true,
+      points: next.points,
+      x: next.x,
+      y: next.y,
+      width: next.width,
+      height: next.height,
+    } as Partial<CardLayer>);
+    return true;
+  }
+
+  /* --------------------- region / face system (§8–§13, §16) --------------------- */
+
+  /** All faces of the current document (memoised on the geometry — see §17). */
+  regionFaces(): RegionFace[] {
+    return this.facesFor(this.state.doc);
+  }
+
+  /** The face under a point, innermost first (§9). */
+  regionAt(point: { x: number; y: number }): RegionFace | null {
+    // The hit test uses the DOCUMENT's fill rule (§13), so a face the user can
+    // see is a face the user can click — never a different set of pixels.
+    const rule = (this.state.doc.regionSettings ?? DEFAULT_REGION_SETTINGS).fillRule;
+    const hits = this.regionFaces().filter((face) => faceContainsPoint(face, point, rule));
+    if (hits.length === 0) return null;
+    return hits.sort((a, b) => b.depth - a.depth || Math.abs(a.area) - Math.abs(b.area))[0];
+  }
+
+  /** Hover highlight for region mode (view state only). */
+  hoverRegionAt(point: { x: number; y: number } | null): void {
+    const key = point ? this.regionAt(point)?.id ?? null : null;
+    if (key === this.state.hoveredRegion) return;
+    this.emit({ hoveredRegion: key });
+  }
+
+  /** The paint attached to a face key, if any. */
+  regionStyleFor(key: string | null): RegionStyleEntry | null {
+    if (!key) return null;
+    return (this.state.doc.regions ?? []).find((style) => style.key === key) ?? null;
+  }
+
+  /** Region paint as a lookup (renderer + export read this). */
+  regionPaintMap(): Record<string, RegionStyleEntry> {
+    const map: Record<string, RegionStyleEntry> = {};
+    for (const style of this.state.doc.regions ?? []) map[style.key] = style;
+    return map;
+  }
+
+  /** Paint the face under a point. Returns the face key, or null when none. */
+  paintRegionAt(point: { x: number; y: number }, style: Omit<RegionStyleEntry, "key">): string | null {
+    const face = this.regionAt(point);
+    if (!face) return null;
+    this.paintRegion(face.id, style);
+    return face.id;
+  }
+
+  /** Paint one face. Paint never touches the paths that bound it (§10). */
+  paintRegion(key: string, style: Omit<RegionStyleEntry, "key">): void {
+    this.writeRegions((regions) => {
+      const next = regions.filter((entry) => entry.key !== key);
+      next.push({ ...style, key });
+      return next;
+    });
+  }
+
+  /** Remove the paint from one face (the geometry is untouched). */
+  clearRegion(key: string): void {
+    this.writeRegions((regions) => regions.filter((entry) => entry.key !== key));
+  }
+
+  /** Remove EVERY region fill ("clear live paint"). */
+  clearAllRegionPaint(): void {
+    this.writeRegions(() => []);
+  }
+
+  /** Gap tolerance + fill rule for region detection. */
+  setRegionSettings(patch: Partial<RegionSettings>): void {
+    const current = this.state.doc.regionSettings ?? DEFAULT_REGION_SETTINGS;
+    const next: RegionSettings = {
+      gapTolerance: Math.min(64, Math.max(0, Number.isFinite(patch.gapTolerance) ? (patch.gapTolerance as number) : current.gapTolerance)),
+      fillRule: patch.fillRule === "evenodd" || patch.fillRule === "nonzero" ? patch.fillRule : current.fillRule,
+    };
+    if (next.gapTolerance === current.gapTolerance && next.fillRule === current.fillRule) return;
+    this.pushHistory();
+    this.emit({ doc: { ...this.state.doc, regionSettings: next } });
+  }
+
+  /** §16 — switch the selection domain (object / path / node / region). */
+  setSelectionDomain(domain: SelectionDomain): void {
+    if (this.state.selectionDomain === domain) return;
+    this.emit({
+      selectionDomain: domain,
+      // Leaving a domain drops the state that only makes sense inside it, so a
+      // stale node focus or region highlight can never leak into the next one.
+      selectedAnchor: domain === "node" ? this.state.selectedAnchor : null,
+      editingPathId: domain === "node" ? this.state.editingPathId : null,
+      hoveredRegion: domain === "region" ? this.state.hoveredRegion : null,
+      selectedRegion: domain === "region" ? this.state.selectedRegion : null,
+    });
+  }
+
+  /** Select a FACE (region domain). Never selects the paths that bound it. */
+  selectRegion(key: string | null): void {
+    const face = this.regionFaces().find((candidate) => candidate.id === key) ?? null;
+    this.emit({
+      selectionDomain: "region",
+      selectedRegion: face ? face.id : null,
+      selection: { layerId: null, ids: [] },
+    });
+  }
+
+  /* ------------------------- region internals (§11/§17) ------------------------- */
+
+  private regionCache: { key: string; faces: RegionFace[] } | null = null;
+
+  /**
+   * The topology key: everything the face computation depends on, and nothing
+   * else. Two pointer samples inside the same geometry produce the same key, so
+   * the planar-graph pass runs once per real edit instead of once per frame.
+   */
+  private topologyKey(doc: CardDocument): string {
+    const settings = doc.regionSettings ?? DEFAULT_REGION_SETTINGS;
+    const parts: string[] = [];
+    for (const layer of doc.layers) {
+      if (layer.kind !== "path" || layer.hidden || layer.opacity <= 0) continue;
+      parts.push(`${layer.id}|${layer.x},${layer.y}|${layer.closed ? "c" : "o"}|${resolveLayerPathD(layer)}`);
+    }
+    return `${settings.gapTolerance}|${settings.fillRule}|${parts.join("~")}`;
+  }
+
+  /** The canonical face list for a document, memoised on its topology key. */
+  private facesFor(doc: CardDocument): RegionFace[] {
+    const key = this.topologyKey(doc);
+    if (this.regionCache && this.regionCache.key === key) return this.regionCache.faces;
+    const faces = regionsForDocument(doc);
+    this.regionCache = { key, faces };
+    return faces;
+  }
+
+  /**
+   * §11 — re-attach saved paint to the current faces after a geometry change.
+   * Called from `emit` (never inside a live drag) so every edit path in the
+   * engine gets the behaviour for free, including undo/redo and template apply.
+   */
+  private remapRegions(doc: CardDocument): CardDocument {
+    const previous = doc.regions ?? [];
+    if (previous.length === 0) return doc;
+    const faces = this.facesFor(doc);
+    const remapped = remapRegionStyles(previous, faces);
+    const same =
+      remapped.length === previous.length && remapped.every((style, i) => style.key === previous[i].key);
+    return same ? doc : { ...doc, regions: remapped.length > 0 ? remapped : [] };
+  }
+
+  /** One history record per paint action. */
+  private writeRegions(mutate: (regions: RegionStyleEntry[]) => RegionStyleEntry[]): void {
+    const current = this.state.doc.regions ?? [];
+    const next = mutate(current.map((style) => ({ ...style })));
+    if (JSON.stringify(next) === JSON.stringify(current)) return;
+    this.pushHistory();
+    this.emit({ doc: { ...this.state.doc, regions: next } });
+  }
+
   /* ---------------------------- path point editor ---------------------------- */
 
-  /** Focus an anchor (view state — the point editor overlay reads it). */
-  selectAnchor(selection: AnchorSelection | null): void {
-    this.emit({ selectedAnchor: selection });
+  /**
+   * Focus an anchor (view state — the point editor overlay reads it).
+   *
+   * `additive` is the shift-click contract: it toggles the node in the group
+   * instead of replacing it, and NEVER clears on a miss (a shift-click on empty
+   * space must not throw the group away).
+   */
+  selectAnchor(selection: AnchorSelection | null, additive = false): void {
+    if (!additive || selection === null) {
+      this.emit({ selectedAnchor: selection });
+      return;
+    }
+    const current = this.state.anchorSelection;
+    const found = current.findIndex(
+      (anchor) => anchor.layerId === selection.layerId && anchor.index === selection.index,
+    );
+    if (found !== -1) {
+      // Deselect: the last remaining node is promoted to primary.
+      const next = current.filter((_, index) => index !== found);
+      this.emit({ selectedAnchor: next.length > 0 ? next[next.length - 1] : null, anchorSelection: next });
+      return;
+    }
+    this.emit({ selectedAnchor: selection, anchorSelection: [...current, selection] });
   }
 
   /**
@@ -1349,6 +2182,8 @@ export class EditorEngine {
       this.emit({ doc: { ...this.state.doc, layers } });
     }
     this.commitTransient();
+    this.anchorGesture = null;
+    this.clearSnapGuides();
   }
 
   /** Insert an anchor on a segment (loss-less de Casteljau split). One record. */
@@ -1421,6 +2256,465 @@ export class EditorEngine {
       width: normalized.width,
       height: normalized.height,
     } as Partial<CardLayer>);
+  }
+
+  /* --------------------------- multi-node editing --------------------------- */
+
+  /**
+   * The path a node gesture acts on: the one in point-edit mode, or the single
+   * selected path. Returning null means "there is no node context" — every
+   * group operation below then does nothing instead of guessing.
+   */
+  anchorTargetId(): string | null {
+    if (this.state.editingPathId && this.editablePath(this.state.editingPathId)) return this.state.editingPathId;
+    const selected = this.state.selection.layerId;
+    return selected && this.editablePath(selected) ? selected : null;
+  }
+
+  /** The whole node group (a single node is a one-element group). */
+  anchorSelectionList(): AnchorSelection[] {
+    return this.state.anchorSelection;
+  }
+
+  /** Selected node INDICES of one path, cleaned and sorted (never duplicates). */
+  selectedAnchorIndices(layerId: string | null = this.anchorTargetId()): number[] {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer) return [];
+    return normalizeAnchorIndices(
+      layer.points.length,
+      this.state.anchorSelection.filter((anchor) => anchor.layerId === layer.id).map((anchor) => anchor.index),
+    );
+  }
+
+  /** Select every node of a path (⌘A in node mode). Returns how many were selected. */
+  selectAllAnchors(layerId: string | null = this.anchorTargetId()): number {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer || layer.points.length === 0) return 0;
+    const group = layer.points.map((_, index) => ({ layerId: layer.id, index }));
+    this.emit({ selectedAnchor: group[0], anchorSelection: group });
+    return group.length;
+  }
+
+  /**
+   * MARQUEE: select the nodes inside a rect drawn in ARTBOARD coordinates.
+   *
+   * The rect arrives in world space (that is what the pointer produces) and is
+   * converted into the path's own frame here, so the overlay never has to know
+   * about layer origins. `additive` keeps whatever was already selected.
+   */
+  selectAnchorsInRect(rect: WorldRect, additive = false, layerId: string | null = this.anchorTargetId()): number {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer) return 0;
+    const local: WorldRect = { x: rect.x - layer.x, y: rect.y - layer.y, width: rect.width, height: rect.height };
+    const found = anchorsInRect(layer.points, local, 0).map((index) => ({ layerId: layer.id, index }));
+    if (found.length === 0) {
+      if (additive) return 0;
+      this.clearAnchorSelection();
+      return 0;
+    }
+    const existing = additive
+      ? this.state.anchorSelection.filter((anchor) => !found.some((hit) => hit.layerId === anchor.layerId && hit.index === anchor.index))
+      : [];
+    const group = [...existing, ...found];
+    this.emit({ selectedAnchor: group[0], anchorSelection: group });
+    return found.length;
+  }
+
+  clearAnchorSelection(): void {
+    this.emit({ selectedAnchor: null, anchorSelection: [] });
+  }
+
+  /** Where a group drag starts: the geometry it is measured FROM. */
+  private anchorGesture: { layerId: string; indices: number[]; points: PathPoint[] } | null = null;
+
+  /**
+   * Begin a node drag. Idempotent: calling it again during the same gesture
+   * keeps the ORIGINAL geometry, which is what makes the drag a function of the
+   * total pointer delta instead of an accumulation of samples (no drift).
+   */
+  beginAnchorGesture(layerId: string | null = this.anchorTargetId(), indices?: number[]): number[] {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer) return [];
+    const list = normalizeAnchorIndices(layer.points.length, indices ?? this.selectedAnchorIndices(layer.id));
+    if (list.length === 0) return [];
+    if (!this.anchorGesture || this.anchorGesture.layerId !== layer.id) {
+      this.anchorGesture = { layerId: layer.id, indices: list, points: layer.points.map((point) => ({ ...point })) };
+    }
+    this.beginTransient();
+    return list;
+  }
+
+  /**
+   * Live group drag (transient — ONE history record at `commitPathEdit`).
+   *
+   * The delta is measured from the gesture's START geometry, and SNAPPING is
+   * applied to the primary node and transferred to the whole group: the group
+   * stays rigid and the node under the pointer is the one that lands exactly on
+   * the target, exactly like dragging a selection in Figma.
+   */
+  transientMoveAnchors(delta: { x: number; y: number }, options: { snap?: boolean } = {}): void {
+    const gesture = this.anchorGesture;
+    if (!gesture) return;
+    const layer = this.editablePath(gesture.layerId);
+    if (!layer) return;
+
+    let dx = delta.x;
+    let dy = delta.y;
+    let guides: Guide[] = [];
+    if (this.state.snapping && options.snap !== false && gesture.indices.length > 0) {
+      const primary = this.state.selectedAnchor?.layerId === gesture.layerId
+        ? this.state.selectedAnchor.index
+        : gesture.indices[0];
+      const start = gesture.points[primary] ?? gesture.points[gesture.indices[0]];
+      const target = { x: start.x + layer.x + dx, y: start.y + layer.y + dy };
+      const snapped = this.smartSnapPoint(target, { excludeIds: [gesture.layerId] });
+      dx += snapped.x - target.x;
+      dy += snapped.y - target.y;
+      guides = snapped.guides;
+    }
+
+    this.emit({ snapGuides: guides });
+    this.transientPatch(gesture.layerId, {
+      points: moveAnchorsBy(gesture.points, gesture.indices, dx, dy),
+    } as Partial<CardLayer>);
+  }
+
+  /**
+   * Move the selected nodes by a fixed delta (arrow keys, numeric fields).
+   * One history record per call, and the box is re-derived afterwards.
+   */
+  moveSelectedAnchors(dx: number, dy: number, layerId: string | null = this.anchorTargetId()): boolean {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer) return false;
+    const indices = this.selectedAnchorIndices(layer.id);
+    if (indices.length === 0 || (dx === 0 && dy === 0)) return false;
+    this.applyPathPoints(layer, moveAnchorsBy(layer.points, indices, dx, dy));
+    return true;
+  }
+
+  /**
+   * Delete every selected node in ONE record.
+   *
+   * Refused when the path would drop below the minimum drawable anchor count:
+   * deleting the last two nodes of a line would leave a layer that cannot be
+   * drawn or edited, which is never what the user meant.
+   */
+  deleteSelectedAnchors(layerId: string | null = this.anchorTargetId()): boolean {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer) return false;
+    const indices = this.selectedAnchorIndices(layer.id);
+    if (indices.length === 0) return false;
+    const next = deleteAnchors(layer.points, layer.closed, indices);
+    if (!next) return false;
+    this.applyPathPoints(layer, next);
+    const primary = Math.min(indices[0], next.length - 1);
+    this.emit({ selectedAnchor: { layerId: layer.id, index: primary }, anchorSelection: [{ layerId: layer.id, index: primary }] });
+    return true;
+  }
+
+  /** Smooth/corner a whole node group (§5 node toolbar). One record. */
+  setSelectedAnchorType(type: "smooth" | "corner", layerId: string | null = this.anchorTargetId()): boolean {
+    const layer = layerId ? this.editablePath(layerId) : null;
+    if (!layer) return false;
+    const indices = this.selectedAnchorIndices(layer.id);
+    if (indices.length === 0) return false;
+    this.applyPathPoints(layer, setAnchorTypes(layer.points, layer.closed, indices, type));
+    return true;
+  }
+
+  /**
+   * INSERT ON CLICK: add a node where the pointer touched the path.
+   *
+   * The segment is split with de Casteljau (`insertAnchor`), so the drawn curve
+   * does not move by a single pixel — the new node simply appears on it. Returns
+   * the new node's index, or null when the click was not on the path.
+   */
+  insertAnchorNearest(layerId: string, point: { x: number; y: number }, tolerance = SNAP_TOLERANCE_DEFAULT): number | null {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2) return null;
+    const hit = nearestSegmentParam(layer.points, layer.closed, { x: point.x - layer.x, y: point.y - layer.y });
+    if (!hit || hit.distance > tolerance) return null;
+    const next = insertAnchor(layer.points, layer.closed, hit.segIndex, hit.t);
+    if (next === layer.points) return null;
+    this.applyPathPoints(layer, next);
+    const index = Math.min(hit.segIndex + 1, next.length - 1);
+    this.emit({ selectedAnchor: { layerId, index } });
+    return index;
+  }
+
+  /* ------------------------------ smart guides ------------------------------ */
+
+  /**
+   * Turn snapping on/off. Guides are dropped with it: leaving a stale guide on
+   * screen after the feature is off would be a lie about what the geometry did.
+   */
+  setSnapping(enabled: boolean): void {
+    if (this.state.snapping === enabled) return;
+    this.emit({ snapping: enabled, snapGuides: [] });
+  }
+
+  /** Screen-space-ish snap radius in design px. */
+  setSnapTolerance(px: number): void {
+    if (!Number.isFinite(px)) return;
+    this.snapTolerance = Math.max(0, Math.min(64, px));
+  }
+
+  private snapTolerance = SNAP_TOLERANCE_DEFAULT;
+
+  /** Every snap target in the document (anchors, box edges/centres, artboard). */
+  snapIndex(excludeIds: string[] = []): SnapIndex {
+    return buildSnapIndex(this.state.doc, { excludeIds });
+  }
+
+  /**
+   * Snap ONE point and report the guides that explain it.
+   *
+   * The result is returned as data — the engine does not decide what a UI does
+   * with it, and the guides are never written into the document.
+   */
+  smartSnapPoint(
+    point: { x: number; y: number },
+    options: { excludeIds?: string[]; tolerance?: number; grid?: number; axisLock?: boolean } = {},
+  ): SnapResult {
+    return snapPointSmart(point, this.snapIndex(options.excludeIds ?? []), {
+      tolerance: options.tolerance ?? this.snapTolerance,
+      grid: options.grid,
+      axisLock: options.axisLock,
+      artboard: this.state.doc.artboard,
+    });
+  }
+
+  /** Equal-spacing guides for a box against the rest of the document. */
+  spacingGuides(
+    rect: WorldRect,
+    options: { excludeIds?: string[]; axis?: "x" | "y"; tolerance?: number } = {},
+  ): Guide[] {
+    const exclude = new Set(options.excludeIds ?? []);
+    const others = this.state.doc.layers
+      .filter((layer) => !layer.hidden && layer.opacity > 0 && !exclude.has(layer.id))
+      .map((layer) => ({ x: layer.x, y: layer.y, width: layer.width, height: layer.height }));
+    return equalSpacingGuides(rect, others, { tolerance: options.tolerance, axis: options.axis });
+  }
+
+  /** Distance readout between two points (Alt-hover measurement). */
+  measure(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const measured = measureBetween(from, to);
+    this.emit({ snapGuides: measured.guides });
+    return measured;
+  }
+
+  clearSnapGuides(): void {
+    if (this.state.snapGuides.length === 0) return;
+    this.emit({ snapGuides: [] });
+  }
+
+  /**
+   * Set the live guides directly. The engine is the single source of truth for
+   * what is on screen, so the gesture code that computes guides from a BOX drag
+   * (rather than a point) publishes them here instead of keeping its own copy.
+   */
+  publishSnapGuides(guides: Guide[]): void {
+    this.emit({ snapGuides: guides });
+  }
+
+  /* --------------------------- numeric field entry --------------------------- */
+
+  /**
+   * A numeric inspector field, with Figma-style expressions: `+10`, `-5`, `*2`,
+   * `/4`, `50%`, `1/3`.
+   *
+   * The expression grammar is walked by `domain/numericInput.ts` — a total,
+   * side-effect-free parser; `eval` is never involved, and an entry the grammar
+   * rejects writes NOTHING and returns false so the caller can keep the text.
+   */
+  setNumericField(layerId: string, field: NumericField, raw: string): boolean {
+    const layer = this.state.doc.layers.find((candidate) => candidate.id === layerId);
+    if (!layer || layer.locked) return false;
+    const limits = NUMERIC_FIELD_LIMITS[field];
+    const current = readLayerNumber(layer, field);
+    const parsed = parseNumericInput(raw, current, limits);
+    if (!parsed.ok) return false;
+
+    if (field === "strokeWidth" || field === "fontSize") {
+      this.updateLayer(layerId, { [field]: parsed.value } as Partial<CardLayer>);
+      return true;
+    }
+
+    // Geometry fields go through the ONE box path, so a width typed into the
+    // inspector re-scales a path's anchors exactly like a resize handle does.
+    const box = {
+      x: layer.x,
+      y: layer.y,
+      width: layer.width,
+      height: layer.height,
+      angle: layer.angle ?? 0,
+    };
+    if (field === "angle") box.angle = wrapAngle(parsed.value);
+    else if (field === "width") box.width = parsed.value;
+    else if (field === "height") box.height = parsed.value;
+    else if (field === "x") box.x = parsed.value;
+    else if (field === "y") box.y = parsed.value;
+    this.setLayerBox(layerId, box);
+    return true;
+  }
+
+  /* ------------------------------ boolean ops ------------------------------ */
+
+  /**
+   * World-space subpaths of a path layer, with the layer's ROTATION baked in.
+   *
+   * Regions work in the layer's unrotated frame because they are a hit test on
+   * the rendered geometry; a boolean needs the TRUE shape on the artboard, so
+   * the rotation is applied here — otherwise intersecting two rotated paths
+   * would use the wrong outlines.
+   */
+  private worldSubPaths(layer: PathLayer): SubPath[] {
+    const subpaths = toWorldSubPaths(layer);
+    const angle = layer.angle ?? 0;
+    if (!angle) return subpaths;
+    const origin = { x: layer.x + layer.width / 2, y: layer.y + layer.height / 2 };
+    const shift = (point: GeoPt): GeoPt => rotatePoint(point, origin, angle);
+    return subpaths.map((sub) => ({
+      start: shift(sub.start),
+      closed: sub.closed,
+      segments: sub.segments.map((segment) => ({
+        p0: shift(segment.p0),
+        c1: shift(segment.c1),
+        c2: shift(segment.c2),
+        p1: shift(segment.p1),
+      })),
+    }));
+  }
+
+  /** The path layers a boolean op may use, in document (z) order. */
+  booleanOperands(): PathLayer[] {
+    return this.selectedLayers().filter(
+      (layer): layer is PathLayer => layer.kind === "path" && !layer.locked,
+    );
+  }
+
+  /**
+   * UNION / SUBTRACT / INTERSECT / EXCLUDE the selected path layers.
+   *
+   * ORDER IS MEANING for `subtract`: the BOTTOM-most selected path is the base
+   * and every other one is cut out of it, which is the convention a designer
+   * already has from Illustrator — and it is deterministic, unlike "whatever the
+   * click order happened to be".
+   *
+   * The result inherits the BASE layer's appearance (fill, stroke, dash, opacity)
+   * and its z position; the operands are replaced unless `keepOriginals` is set.
+   * A result with a single loop stays a fully node-editable path; a result with
+   * holes (or several pieces) is written as one multi-subpath `d`, because the
+   * document stores exactly one subpath per path layer. Either way the geometry
+   * is exact Bézier, so it stays a boolean operand itself.
+   *
+   * Returns the new layer's id, or null when the operation had nothing to keep
+   * (e.g. intersecting two disjoint shapes) — in which case the document is left
+   * untouched rather than silently emptied.
+   */
+  booleanSelection(op: BooleanOp, options: { keepOriginals?: boolean } = {}): string | null {
+    const operands = this.booleanOperands();
+    if (operands.length < 2) return null;
+
+    const outcome = booleanContours(
+      operands.map((layer) => ({ id: layer.id, subpaths: this.worldSubPaths(layer) })),
+      op,
+    );
+    if (outcome.empty || outcome.anchorLoops.length === 0) return null;
+
+    const base = operands[0];
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const pad = pathPadding(base.strokeWidth ?? 0);
+    const shared = {
+      kind: "path" as const,
+      pathMode: "pen" as const,
+      name: `نتیجهٔ ${BOOLEAN_OP_LABELS[op]}`,
+      closed: true,
+      fill: base.fill ?? base.stroke ?? base.color ?? "#0ea5e9",
+      stroke: base.stroke ?? null,
+      strokeWidth: base.strokeWidth ?? 0,
+      strokeStyle: base.strokeStyle ?? ("solid" as const),
+      strokeLinecap: base.strokeLinecap ?? ("round" as const),
+      strokeLinejoin: base.strokeLinejoin ?? ("round" as const),
+      strokeOpacity: base.strokeOpacity ?? 1,
+      strokeDasharray: base.strokeDasharray ?? null,
+      strokeDashoffset: base.strokeDashoffset ?? 0,
+      opacity: base.opacity,
+      angle: 0,
+      locked: false,
+      hidden: false,
+      color: base.color ?? null,
+      background: base.background ?? null,
+    };
+
+    let created: PathLayer;
+    if (outcome.loops.length === 1) {
+      created = normalizePathLayer<PathLayer>(
+        {
+          ...shared,
+          id,
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          points: outcome.anchorLoops[0],
+          fillRule: "nonzero",
+        },
+        pad,
+      );
+    } else {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const loop of outcome.loops) {
+        for (const point of loop) {
+          if (point.x < minX) minX = point.x;
+          if (point.y < minY) minY = point.y;
+          if (point.x > maxX) maxX = point.x;
+          if (point.y > maxY) maxY = point.y;
+        }
+      }
+      const local = outcome.anchorLoops.map((loop) =>
+        loop.map((anchor) => ({
+          x: anchor.x - minX,
+          y: anchor.y - minY,
+          hIn: anchor.hIn ? { x: anchor.hIn.x - minX, y: anchor.hIn.y - minY } : null,
+          hOut: anchor.hOut ? { x: anchor.hOut.x - minX, y: anchor.hOut.y - minY } : null,
+        })),
+      );
+      created = {
+        ...shared,
+        id,
+        x: minX - pad,
+        y: minY - pad,
+        width: Math.max(1, maxX - minX + pad * 2),
+        height: Math.max(1, maxY - minY + pad * 2),
+        points: [],
+        rawD: local.map((loop) => pathD(loop, true)).join(" "),
+        // The loops never overlap, so either rule is exact; even-odd is the one
+        // that does not depend on the orientation surviving a round trip.
+        fillRule: "evenodd",
+      };
+    }
+
+    const ids = new Set(operands.map((layer) => layer.id));
+    const originIndex = this.state.doc.layers.findIndex((layer) => layer.id === base.id);
+    this.pushHistory();
+    let layers: CardLayer[];
+    if (options.keepOriginals) {
+      layers = [...this.state.doc.layers, created];
+    } else {
+      layers = this.state.doc.layers.filter((layer) => !ids.has(layer.id));
+      layers.splice(originIndex < 0 ? layers.length : Math.min(originIndex, layers.length), 0, created);
+    }
+    this.emit({
+      doc: { ...this.state.doc, layers },
+      selection: this.withSelection(id),
+      selectionDomain: "object",
+      selectedAnchor: null,
+    });
+    return id;
   }
 
   undo(): void {

@@ -11,6 +11,8 @@
  *     null) render with the template renderer and are untouched by this.
  */
 
+import type { CurveSpec } from "./curveGeometry";
+
 export type CardDocumentV1 = {
   version: 1;
   /** Fixed standard business-card artboard in design pixels (1050×600 ≈ 8.5×5.5cm). */
@@ -19,9 +21,63 @@ export type CardDocumentV1 = {
   background: string;
   /** Order = z-order; last renders on top. */
   layers: CardLayer[];
+  /**
+   * Live-Paint style region paint (see domain/geometry/regions.ts).
+   *
+   * Paint is attached to the FACES produced by intersecting paths, never to the
+   * paths themselves — so recolouring a region can never rewrite (or corrupt)
+   * the user's geometry. Keys are topology-derived, which is what lets an edit
+   * remap the paint instead of dropping it.
+   */
+  regions?: RegionStyleEntry[];
+  /** Region-detection settings (gap tolerance + fill rule). */
+  regionSettings?: RegionSettings;
 };
 
 export type CardDocument = CardDocumentV1;
+
+export type RegionFillKind = "solid" | "linear" | "radial";
+
+/** One painted region/face. */
+export type RegionStyleEntry = {
+  /** Matches the region's topology key at paint time. */
+  key: string;
+  fill: RegionFillKind;
+  color: string;
+  /** Gradient partner colour (linear/radial only). */
+  color2?: string;
+  /** Gradient direction in degrees (linear only). */
+  angle?: number;
+  /** 0..1, independent of the source layers' opacity. */
+  opacity?: number;
+};
+
+/**
+ * How the region builder closes gaps and resolves overlapping contours.
+ * `gapTolerance > 0` treats a small visual gap as closed for TOPOLOGY only —
+ * the anchors are never moved.
+ */
+/**
+ * SVG fill semantics (§13). ONE union, used by both a path's own fill and the
+ * region/face resolver, so "nonzero" can never mean two different things.
+ */
+export type FillRuleKind = "nonzero" | "evenodd";
+
+/** The presets the fill-rule control exposes. */
+export const FILL_RULE_LABELS: Record<FillRuleKind, string> = {
+  nonzero: "غیرصفر (nonzero)",
+  evenodd: "زوج-فرد (evenodd)",
+};
+
+export type RegionSettings = {
+  gapTolerance: number;
+  fillRule: FillRuleKind;
+};
+
+export const DEFAULT_REGION_SETTINGS: RegionSettings = { gapTolerance: 0, fillRule: "nonzero" };
+
+/** The presets the paint-tool UI exposes for closing gaps. */
+export const GAP_TOLERANCE_PRESETS = [0, 1, 2, 4, 8] as const;
 
 export type LayerBase = {
   id: string;
@@ -114,6 +170,15 @@ export type StrokeDecorations = {
   strokeLinejoin?: StrokeLineJoin;
   /** Stroke-only alpha (0..1) — independent of the layer's own opacity. */
   strokeOpacity?: number;
+  /**
+   * Explicit dash pattern in design px (§14). When present it REPLACES the
+   * preset rhythm from `strokeStyle`, which is what makes arbitrary dash
+   * patterns possible without inventing a new preset per rhythm.
+   * Empty/null means "no explicit pattern".
+   */
+  strokeDasharray?: number[] | null;
+  /** Where the dash pattern starts (§14), in design px. Any sign. */
+  strokeDashoffset?: number;
 };
 
 export type ShapeLayer = LayerBase & StrokeDecorations & {
@@ -150,6 +215,28 @@ export type PathLayer = LayerBase & StrokeDecorations & {
    * (±1 = semicircle; 0 = straight). See domain/curveLine.ts.
    */
   bend?: number;
+  /**
+   * Identifies which drawing interaction created the path. Optional for backward
+   * compatibility with saved documents.
+   */
+  pathMode?: "curve" | "pen" | "freehand";
+  /**
+   * Profile for the dedicated curve tool. `arc` preserves the legacy bend model.
+   */
+  curveProfile?: "arc" | "sine" | "sine-asymmetric" | "s";
+  /**
+   * PARAMETRIC CURVE RECORD (§4). When present, `points` are the geometry this
+   * spec was generated into, and every parameter (length, amplitude, frequency,
+   * phase, symmetry, end tangents, direction) stays editable. Dropping the field
+   * is exactly what "Convert to Path" does — the anchors then ARE the geometry.
+   */
+  curve?: CurveSpec;
+  /**
+   * SVG fill rule for this path's own fill (§13). Defaults to `nonzero`, which
+   * is the SVG default and the pre-upgrade behaviour. Nested subpaths of an
+   * evenodd path punch holes instead of filling solid.
+   */
+  fillRule?: FillRuleKind;
   stroke?: string | null;
   strokeWidth: number;
   fill: string | null;

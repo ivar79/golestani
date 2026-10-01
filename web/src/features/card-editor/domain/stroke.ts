@@ -42,6 +42,8 @@ export type StrokeSource = {
   strokeLinecap?: StrokeLineCap;
   strokeLinejoin?: StrokeLineJoin;
   strokeOpacity?: number;
+  strokeDasharray?: number[] | null;
+  strokeDashoffset?: number;
 };
 
 export type ResolvedStroke = {
@@ -50,6 +52,8 @@ export type ResolvedStroke = {
   width: number;
   /** SVG `stroke-dasharray`, or undefined for a solid line. */
   dasharray: string | undefined;
+  /** SVG `stroke-dashoffset`, or undefined when the pattern starts at 0. */
+  dashoffset: number | undefined;
   linecap: StrokeLineCap;
   linejoin: StrokeLineJoin;
   /** 0..1 — stroke-only alpha. */
@@ -95,6 +99,25 @@ export function dashArrayFor(style: StrokeStyleKind | undefined, width: number):
   }
 }
 
+/** Bounds for a user-authored dash pattern (design px). */
+export const DASH_SEGMENT_MAX = 400;
+export const DASH_SEGMENT_COUNT_MAX = 8;
+
+/**
+ * An EXPLICIT dash pattern (§14). Sanitised hard: non-positive or absurd values
+ * are dropped rather than passed to SVG (a 0-length dash makes some renderers
+ * paint nothing at all, which would look like a broken stroke).
+ */
+export function explicitDashArray(pattern: number[] | null | undefined): string | undefined {
+  if (!Array.isArray(pattern) || pattern.length === 0) return undefined;
+  const cleaned = pattern
+    .slice(0, DASH_SEGMENT_COUNT_MAX)
+    .map((value) => (Number.isFinite(value) ? Math.min(DASH_SEGMENT_MAX, Math.max(0, value)) : 0))
+    .map((value) => (value === 0 ? DASH_SEGMENT_MAX : value));
+  if (cleaned.length === 0 || cleaned.every((value) => value === DASH_SEGMENT_MAX)) return undefined;
+  return cleaned.map((value) => fmt(value)).join(" ");
+}
+
 /**
  * Turn any stroke-bearing layer into concrete SVG values.
  *
@@ -105,11 +128,16 @@ export function resolveStroke(source: StrokeSource, fallbackColor: string): Reso
   const rawWidth = Number(source.strokeWidth ?? 0);
   const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 0;
   const style = source.strokeStyle ?? "solid";
+  // An explicit pattern wins over the preset; otherwise the preset rhythm is
+  // exactly the pre-upgrade one, so stored documents render unchanged.
+  const dasharray = explicitDashArray(source.strokeDasharray) ?? dashArrayFor(style, width);
+  const rawOffset = Number(source.strokeDashoffset ?? 0);
 
   return {
     color: source.stroke ?? fallbackColor,
     width,
-    dasharray: dashArrayFor(style, width),
+    dasharray,
+    dashoffset: dasharray && Number.isFinite(rawOffset) && rawOffset !== 0 ? rawOffset : undefined,
     linecap: style === "dotted" ? "round" : source.strokeLinecap ?? "round",
     linejoin: source.strokeLinejoin ?? "round",
     opacity: clamp01(source.strokeOpacity ?? 1),

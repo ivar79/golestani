@@ -84,3 +84,71 @@ export function bendFromPointer(
   const ratio = s / (c / 2);
   return Math.max(-1.5, Math.min(1.5, Math.round(ratio * 100) / 100));
 }
+
+
+export type CurveProfile = "arc" | "sine" | "sine-asymmetric" | "s";
+
+/**
+ * Generate editable cubic anchors for the dedicated Curve tool.
+ *
+ * Unlike the legacy two-point arc, these profiles are real multi-anchor
+ * Bezier paths. That means the user can resize them, edit individual anchors,
+ * and create symmetric or intentionally asymmetric waves without changing the
+ * editor engine/document contract.
+ */
+export function curveProfilePoints(
+  width: number,
+  height: number,
+  profile: CurveProfile,
+  amplitude = 0.38,
+  cycles = 1,
+) {
+  const count = profile === "arc" ? 2 : 9;
+  const mid = height / 2;
+  const amp = Math.max(8, Math.min(height * 0.48, height * amplitude));
+  const points: { x: number; y: number; hIn: { x: number; y: number } | null; hOut: { x: number; y: number } | null }[] = [];
+
+  if (profile === "arc") {
+    return [
+      { x: 0, y: mid, hIn: null, hOut: null },
+      { x: width, y: mid, hIn: null, hOut: null },
+    ];
+  }
+
+  for (let i = 0; i < count; i += 1) {
+    const t = i / (count - 1);
+    let wave = 0;
+    if (profile === "sine") {
+      wave = Math.sin(t * Math.PI * 2 * Math.max(0.5, cycles));
+    } else if (profile === "sine-asymmetric") {
+      // A harmonic blend keeps the wave continuous but deliberately changes
+      // the rise/fall profile so it is not just a mirrored sine.
+      wave =
+        Math.sin(t * Math.PI * 2 * Math.max(0.5, cycles)) * 0.72 +
+        Math.sin(t * Math.PI * 4 * Math.max(0.5, cycles) + 0.65) * 0.28;
+    } else {
+      wave = Math.sin(t * Math.PI * 2) * (0.72 + 0.28 * t);
+    }
+    points.push({
+      x: width * t,
+      y: mid - wave * amp,
+      hIn: null,
+      hOut: null,
+    });
+  }
+
+  // Catmull-Rom-like tangent handles. Kept local to avoid a domain import cycle.
+  for (let i = 0; i < points.length; i += 1) {
+    const curr = points[i];
+    const prev = points[Math.max(0, i - 1)];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const inHandle = i > 0 ? { x: curr.x - dx * 0.16, y: curr.y - dy * 0.16 } : null;
+    const outHandle = i < points.length - 1 ? { x: curr.x + dx * 0.16, y: curr.y + dy * 0.16 } : null;
+    curr.hIn = inHandle;
+    curr.hOut = outHandle;
+  }
+
+  return points;
+}

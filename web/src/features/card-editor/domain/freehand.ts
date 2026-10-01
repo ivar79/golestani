@@ -6,6 +6,7 @@
  */
 
 import { getStroke } from "perfect-freehand";
+import { autoSmoothPoints, ramerDouglasPeucker, type PathPoint } from "./path";
 
 export type FreehandPoint = {
   x: number;
@@ -100,5 +101,57 @@ export function brushStrokeLayerGeometry(
     y: minY - pad,
     width: maxX - minX + pad * 2,
     height: maxY - minY + pad * 2,
+  };
+}
+
+
+/**
+ * Convert the perfect-freehand outline into editable cubic anchors.
+ *
+ * Older documents may still contain `rawD`; new strokes use this editable
+ * representation so resizing and point editing work exactly like Pen paths.
+ */
+export function outlineToEditablePath(
+  outline: number[][],
+  pad = 2,
+  maxPoints = 72,
+): { points: PathPoint[]; x: number; y: number; width: number; height: number } | null {
+  if (!outline || outline.length < 4) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of outline) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+
+  const local = outline.map(([x, y]) => ({ x: x - minX + pad, y: y - minY + pad }));
+  let simplified = ramerDouglasPeucker(local, 1.6);
+  let epsilon = 1.6;
+  for (let pass = 0; pass < 8 && simplified.length > maxPoints; pass += 1) {
+    epsilon = Math.min(14, epsilon * 1.55);
+    const next = ramerDouglasPeucker(local, epsilon);
+    if (next.length >= simplified.length) break;
+    simplified = next;
+  }
+  if (simplified.length < 4) simplified = local.slice(0, Math.min(local.length, 4));
+
+  const points = autoSmoothPoints(
+    simplified.map((p) => ({ x: p.x, y: p.y, hIn: null, hOut: null })),
+    true,
+    0.18,
+  );
+
+  return {
+    points,
+    x: minX - pad,
+    y: minY - pad,
+    width: Math.max(1, maxX - minX + pad * 2),
+    height: Math.max(1, maxY - minY + pad * 2),
   };
 }

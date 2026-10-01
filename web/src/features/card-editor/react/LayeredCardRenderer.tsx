@@ -36,6 +36,12 @@ import { resolveLayerPathD } from "../domain/path";
 import { resolveShapePaint, type SvgPrimitive } from "../domain/shapes";
 import { resolveStroke, type ResolvedStroke } from "../domain/stroke";
 import { gradientLine, gradientRadius, isGradientCss, parseGradientCss, svgColor, type SvgGradientSpec } from "../domain/svgGradient";
+import {
+  paintedRegions,
+  regionFacePathD,
+  regionFillRule,
+  regionStylePaint,
+} from "../domain/geometry/documentRegions";
 
 /**
  * The layer FRAME — the only place a layer's geometry becomes CSS.
@@ -106,6 +112,7 @@ function strokeAttrs(stroke: ResolvedStroke) {
     stroke: stroke.color,
     strokeWidth: stroke.width,
     strokeDasharray: stroke.dasharray,
+    strokeDashoffset: stroke.dashoffset,
     strokeLinecap: stroke.linecap,
     strokeLinejoin: stroke.linejoin,
     strokeOpacity: stroke.opacity,
@@ -391,7 +398,12 @@ function PathVisual({ layer }: { layer: PathLayer }) {
             <GradientDefs id={gradientId} spec={gradient} width={layer.width} height={layer.height} />
           </defs>
         ) : null}
-        <path d={resolveLayerPathD(layer)} fill={fill} {...strokeAttrs(stroke)} />
+        <path
+          d={resolveLayerPathD(layer)}
+          fill={fill}
+          fillRule={layer.fillRule ?? undefined}
+          {...strokeAttrs(stroke)}
+        />
       </svg>
     </div>
   );
@@ -415,6 +427,63 @@ export function LayerVisual({ layer }: { layer: CardLayer }) {
     default:
       return null;
   }
+}
+
+/**
+ * LIVE-PAINT REGION FILLS (§10).
+ *
+ * Region paint is attached to FACES, not to the paths that bound them, so it
+ * gets its own SVG pass: one `<path>` per painted face, drawn UNDER the layer
+ * stack (zIndex 0) so the boundary strokes the user drew stay visible on top.
+ *
+ * Nothing here is layer state — a face has no id in `doc.layers` and cannot be
+ * selected, moved or deleted by accident. Removing the paint removes the whole
+ * pass, and every pre-region document renders exactly as it did before.
+ */
+function RegionPaintVisual({ doc }: { doc: CardDocument }) {
+  const painted = paintedRegions(doc);
+  if (painted.length === 0) return null;
+  return (
+    <svg
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 0,
+      }}
+      viewBox={`0 0 ${doc.artboard.width} ${doc.artboard.height}`}
+    >
+      <defs>
+        {painted.map(({ face, style }) => {
+          const paint = regionStylePaint(style);
+          if (!paint.gradient) return null;
+          return (
+            <GradientDefs
+              key={`region-grad-${face.id}`}
+              id={`region-grad-${face.id}`}
+              spec={paint.gradient}
+              width={doc.artboard.width}
+              height={doc.artboard.height}
+            />
+          );
+        })}
+      </defs>
+      {painted.map(({ face, style }) => {
+        const paint = regionStylePaint(style);
+        return (
+          <path
+            key={face.id}
+            d={regionFacePathD(face)}
+            fill={paint.gradient ? `url(#region-grad-${face.id})` : svgColor(paint.fill)}
+            fillRule={regionFillRule(doc)}
+            opacity={style.opacity ?? 1}
+          />
+        );
+      })}
+    </svg>
+  );
 }
 
 /**
@@ -452,6 +521,7 @@ export function LayeredCard({
         background: doc.background,
       }}
     >
+      <RegionPaintVisual doc={doc} />
       {doc.layers.map((layer, index) => (
         <LayerBox key={layer.id} layer={layer} z={layerZ(index)} />
       ))}

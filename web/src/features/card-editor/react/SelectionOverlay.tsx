@@ -21,9 +21,9 @@ import type { CSSProperties } from "react";
 import type { CardLayer } from "../domain/document";
 import type { ResizeHandle } from "../engine/EditorEngine";
 
-const HANDLE_SIZE = 12;
+const HANDLE_SIZE = 10;
 const HANDLE_CLASS =
-  "absolute h-3 w-3 rounded-sm border border-cyan-400 bg-white shadow-sm pointer-events-auto touch-none";
+  "absolute h-2.5 w-2.5 rounded-full border border-cyan-200/90 bg-[#07111d] shadow-[0_0_0_2px_rgba(34,211,238,0.12),0_2px_8px_rgba(0,0,0,0.45)] pointer-events-auto touch-none";
 
 const HANDLE_POSITIONS: Record<ResizeHandle, CSSProperties> = {
   n: { top: -HANDLE_SIZE / 2, left: "50%", marginLeft: -HANDLE_SIZE / 2, cursor: "ns-resize" },
@@ -75,7 +75,7 @@ function SelectionOverlayImpl({ layer, bounds, group = false, onHandlePointerDow
       {/* Selection border — dashed for a group so it reads as derived, not a layer */}
       <div
         data-selection-frame={group ? "group" : "layer"}
-        className={`pointer-events-none absolute inset-0 border border-cyan-400 ${group ? "border-dashed" : ""}`}
+        className={`pointer-events-none absolute inset-0 border border-cyan-300/80 ${group ? "border-dashed" : ""}`}
       />
 
       {/* Resize handles */}
@@ -96,14 +96,14 @@ function SelectionOverlayImpl({ layer, bounds, group = false, onHandlePointerDow
       {frame.locked ? null : (
         <>
           <div
-            className="pointer-events-none absolute left-1/2 bg-cyan-400"
+            className="pointer-events-none absolute left-1/2 bg-cyan-300/70"
             style={{ top: -26, width: 1, height: 18, marginLeft: -0.5 }}
           />
           <div
             role="button"
             aria-label="چرخش"
-            className="pointer-events-auto absolute h-3.5 w-3.5 cursor-grab rounded-full border border-cyan-400 bg-white shadow-sm touch-none"
-            style={{ top: -33, left: "50%", marginLeft: -7 }}
+            className="pointer-events-auto absolute h-3 w-3 cursor-grab rounded-full border border-cyan-200 bg-[#07111d] shadow-[0_0_0_3px_rgba(34,211,238,0.08)] touch-none"
+            style={{ top: -33, left: "50%", marginLeft: -6 }}
             onPointerDown={onRotatePointerDown}
           />
         </>

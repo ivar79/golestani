@@ -17,7 +17,8 @@ import { createDocumentFromBusiness, parseDocument } from "../factory";
 import { TEMPLATES_CATALOG } from "../templatesCatalog";
 import { getBrushStrokeOutline } from "../freehand";
 import { createCurvedLineLayer } from "../luxuryMaterials";
-import { MAX_RAW_D_STRUCTURAL } from "../saveLimits";
+import { MAX_PATH_POINTS } from "../saveLimits";
+import { resolveLayerPathD } from "../path";
 import type { Business } from "@/lib/businesses";
 
 const MAX_DOC_BYTES = 100_000; // backend MAX_BYTES cap
@@ -155,10 +156,10 @@ describe("save chain — document invariants the backend whitelist enforces", ()
     expect(reloaded?.layers[0].effect).toBe("gold");
   });
 
-  it("a huge committed brush stroke stays inside the structural rawD budget", () => {
+  it("a huge committed brush stroke stays inside the structural anchor budget", () => {
     // A pathological ribbon (thousands of outline points) — the engine's
-    // tier-aware fit must land it under MAX_RAW_D without truncating the
-    // subpath (same command count, still closed).
+    // tier-aware fit must simplify it down to the anchor cap WITHOUT
+    // truncating the subpath (still a single closed contour).
     const outline: number[][] = [];
     for (let i = 0; i < 4000; i++) {
       const t = (i / 3999) * Math.PI * 6;
@@ -168,9 +169,12 @@ describe("save chain — document invariants the backend whitelist enforces", ()
     expect(engine.addBrushLayer(outline, "#22d3ee")).not.toBeNull();
     const layer = engine.getState().doc.layers[0];
     if (layer.kind !== "path") return;
-    expect(layer.rawD!.length).toBeLessThanOrEqual(MAX_RAW_D_STRUCTURAL);
-    expect(layer.rawD!.startsWith("M")).toBe(true);
-    expect(layer.rawD!.endsWith("Z")).toBe(true);
+    // The brush pipeline commits editable anchors (not a rawD shadow), so the
+    // budget that governs it is the per-path ANCHOR cap.
+    expect(layer.points.length).toBeLessThanOrEqual(MAX_PATH_POINTS);
+    const d = resolveLayerPathD(layer);
+    expect(d.startsWith("M")).toBe(true);
+    expect(d.endsWith("Z")).toBe(true);
   });
 
   it("repeated group rotations wrap stored angles into the validator's ±360 clamp", () => {

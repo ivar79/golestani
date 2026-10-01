@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, X, PenTool as PenToolIcon, Pencil as PencilIcon } from "lucide-react";
+import { Check, X, PenTool as PenToolIcon, Pencil as PencilIcon, Combine, SquareStack, GitMerge, Grip } from "lucide-react";
 import type { CardDocument, CardLayer, PathLayer, TextLayer } from "../domain/document";
 import { layerZ } from "../domain/document";
 import { EditorEngine, type ResizeHandle } from "../engine/EditorEngine";
@@ -49,6 +49,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const [editValue, setEditValue] = useState("");
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
+  /** Node marquee in progress (artboard coords) — multi-node rubber band. */
+  const [nodeMarquee, setNodeMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const nodeMarqueeRef = useRef<{ x0: number; y0: number } | null>(null);
+  const marqueeEndRef = useRef<{ x: number; y: number } | null>(null);
+  const marqueeShiftRef = useRef(false);
   const [spaceDown, setSpaceDown] = useState(false);
   const panRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -166,6 +171,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const isDrawingRef = useRef(false);
   const brushPtsRef = useRef<FreehandPoint[]>([]);
   const brushSmoothRef = useRef<FreehandPoint | null>(null);
+  const brushStartRef = useRef<{ x: number; y: number } | null>(null);
   const liveBrushRef = useRef<SVGPathElement>(null);
   const brushRafRef = useRef(0);
   const isPenInputRef = useRef(false);
@@ -189,6 +195,18 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     // brush must pass their pointer events straight through to the stage so a
     // click on an existing layer anchors/starts a stroke instead of dragging.
     if (state.tool !== "select") return;
+    // While POINT-EDITING, pressing anywhere on a layer's hit-area (that is not
+    // an anchor/handle — those stop propagation above) starts the NODE MARQUEE
+    // instead of dragging the layer, exactly like Figma's vector mode.
+    if (state.editingPathId) {
+      const pos = pointerPos(event);
+      nodeMarqueeRef.current = { x0: pos.x, y0: pos.y };
+      marqueeEndRef.current = null;
+      marqueeShiftRef.current = event.shiftKey;
+      setNodeMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y });
+      (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+      return;
+    }
     const layer = doc.layers.find((l) => l.id === layerId);
     if (!layer || layer.locked) return;
     event.stopPropagation();
@@ -242,6 +260,29 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         return;
       }
       const anchor = state.selectedAnchor;
+      // NODE MODE: Delete removes the whole node GROUP (multi-node), falling
+      // back to the single anchor; Ctrl+A selects every node of the path.
+      if ((e.key === "Delete" || e.key === "Backspace") && state.editingPathId) {
+        e.preventDefault();
+        if (!engine.deleteSelectedAnchors()) {
+          if (anchor && state.editingPathId === anchor.layerId) engine.removeAnchorAt(anchor.layerId, anchor.index);
+        }
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "a" && state.editingPathId) {
+        e.preventDefault();
+        engine.selectAllAnchors();
+        return;
+      }
+      // Arrow nudge moves the node GROUP while point-editing, else the layer.
+      if (state.editingPathId && anchor && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        engine.moveSelectedAnchors(dx, dy);
+        return;
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && anchor && state.editingPathId === anchor.layerId) {
         // While point-editing, Delete removes the selected ANCHOR, not the layer.
         e.preventDefault();
@@ -393,10 +434,20 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
       brushPtsRef.current = [pt];
       brushSmoothRef.current = pt;
-    } else {
-      if (state.editingPathId) engine.setPathEditing(null);
-      engine.select(null);
+      brushStartRef.current = { x: pos.x, y: pos.y };
+      return;
     }
+    // NODE MARQUEE: while point-editing, an empty-stage drag rubber-bands a
+    // selection rect (Figma's node marquee). Shift keeps what was selected.
+    if (state.editingPathId) {
+      const pos = pointerPos(event);
+      nodeMarqueeRef.current = { x0: pos.x, y0: pos.y };
+      setNodeMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y });
+      (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+      return;
+    }
+    if (state.editingPathId) engine.setPathEditing(null);
+    engine.select(null);
   };
 
   const STREAMLINE = 0.45;
@@ -433,11 +484,21 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       const evs = (event.nativeEvent as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [event.nativeEvent];
       for (const ev of evs) {
         const raw = pointerPos(ev);
-        const s = brushSmoothRef.current ?? { x: raw.x, y: raw.y, p: ev.pressure || 0.5 };
+        const start = brushStartRef.current;
+        let constrained = raw;
+        if (start && (state.freehandMode === "straight" || ev.shiftKey)) {
+          const dx = raw.x - start.x;
+          const dy = raw.y - start.y;
+          constrained =
+            Math.abs(dx) >= Math.abs(dy)
+              ? { x: raw.x, y: start.y }
+              : { x: start.x, y: raw.y };
+        }
+        const s = brushSmoothRef.current ?? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 };
         const t = 1 - STREAMLINE;
         const np: FreehandPoint = {
-          x: s.x + (raw.x - s.x) * t,
-          y: s.y + (raw.y - s.y) * t,
+          x: s.x + (constrained.x - s.x) * t,
+          y: s.y + (constrained.y - s.y) * t,
           p: ev.pressure || 0.5,
         };
         const last = brushPtsRef.current[brushPtsRef.current.length - 1];
@@ -448,6 +509,16 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       if (!brushRafRef.current) {
         brushRafRef.current = requestAnimationFrame(renderLiveBrush);
       }
+      return;
+    }
+    // NODE MARQUEE tracking: sample the pointer while the rubber band is live
+    // (no transform is active during a node marquee, so this runs BEFORE the
+    // transform guard).
+    if (nodeMarqueeRef.current) {
+      const pos = pointerPos(event);
+      marqueeEndRef.current = pos;
+      marqueeShiftRef.current = event.shiftKey;
+      setNodeMarquee((current) => (current ? { ...current, x1: pos.x, y1: pos.y } : current));
       return;
     }
     const transform = transformRef.current;
@@ -536,7 +607,27 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       }
       brushPtsRef.current = [];
       brushSmoothRef.current = null;
+      brushStartRef.current = null;
       liveBrushRef.current?.setAttribute("d", "");
+      return;
+    }
+    if (nodeMarqueeRef.current) {
+      // Commit the node marquee: whatever the rect caught joins the selection.
+      const start = nodeMarqueeRef.current;
+      nodeMarqueeRef.current = null;
+      const end = marqueeEndRef.current;
+      const endX = end?.x ?? start.x0;
+      const endY = end?.y ?? start.y0;
+      setNodeMarquee(null);
+      engine.selectAnchorsInRect(
+        {
+          x: Math.min(start.x0, endX),
+          y: Math.min(start.y0, endY),
+          width: Math.abs(endX - start.x0),
+          height: Math.abs(endY - start.y0),
+        },
+        marqueeShiftRef.current,
+      );
       return;
     }
     const transform = transformRef.current;
@@ -569,7 +660,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     <div
       ref={containerRef}
       dir="ltr"
-      className={`relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#070e1a] ${
+      className={`relative z-0 w-full overflow-hidden rounded-[24px] border border-white/[0.07] ${
         state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""
       } ${spaceDown ? "cursor-grab" : ""}`}
       onPointerDown={onStagePointerDown}
@@ -577,10 +668,101 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       onPointerUp={onStagePointerUp}
       onWheel={onStageWheel}
       style={{
-        minHeight: 480,
-        height: Math.max(480, Math.round(doc.artboard.height * zoom) + 40),
+        minHeight: 500,
+        height: Math.max(500, Math.round(doc.artboard.height * zoom) + 44),
+        background:
+          "radial-gradient(circle at 50% 16%, rgba(49, 70, 92, 0.22), transparent 34%), radial-gradient(circle at 12% 88%, rgba(16, 185, 129, 0.045), transparent 28%), #060b12",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025), 0 28px 80px rgba(0,0,0,0.32)",
       }}
     >
+      {/* Floating toolbar for POINT-EDIT mode: node ops + boolean + snapping.
+          It mirrors the pen/draw toolbar pattern and only appears while a path
+          is being point-edited. */}
+      {state.editingPathId && !preview && (
+        <div
+          dir="rtl"
+          className="absolute top-4 inset-x-0 mx-auto z-[3500] flex max-w-2xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-400/50 bg-[#0c1626]/95 px-3 py-2 shadow-2xl backdrop-blur"
+        >
+          <div className="flex items-center gap-2">
+            <Grip className="h-4 w-4 text-emerald-400" />
+            <span className="text-xs font-bold text-white">ویرایش گره‌ها</span>
+            <span className="text-[10px] text-slate-400">
+              {engine.selectedAnchorIndices(state.editingPathId).length} انتخاب‌شده
+            </span>
+          </div>
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+            <button
+              type="button"
+              title="انتخاب همهٔ گره‌ها (Ctrl+A در حالت گره)"
+              onClick={() => engine.selectAllAnchors()}
+              className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
+            >
+              همه
+            </button>
+            <button
+              type="button"
+              title="تبدیل گره‌های انتخابی به منحنی نرم"
+              onClick={() => engine.setSelectedAnchorType("smooth")}
+              className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
+            >
+              〰️ نرم
+            </button>
+            <button
+              type="button"
+              title="تبدیل گره‌های انتخابی به گوشهٔ تیز"
+              onClick={() => engine.setSelectedAnchorType("corner")}
+              className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
+            >
+              📐 گوشه
+            </button>
+            <button
+              type="button"
+              title="حذف گره‌های انتخابی"
+              onClick={() => engine.deleteSelectedAnchors()}
+              className="rounded-lg px-2 py-1 text-[11px] font-bold text-rose-300 hover:text-rose-200"
+            >
+              🗑 حذف
+            </button>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-500">ترکیب:</span>
+            {([
+              ["union", Combine],
+              ["subtract", SquareStack],
+              ["intersect", GitMerge],
+              ["exclude", SquareStack],
+            ] as const).map(([op, Icon]) => (
+              <button
+                key={op}
+                type="button"
+                title={op}
+                disabled={engine.booleanOperands().length < 2}
+                onClick={() => engine.booleanSelection(op)}
+                className={`rounded-lg border px-1.5 py-1 text-emerald-200 transition disabled:opacity-30 ${
+                  engine.booleanOperands().length >= 2
+                    ? "border-emerald-400/40 bg-emerald-500/10 hover:bg-emerald-500/25"
+                    : "border-white/10"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            title="اسنپ هوشمند (لنگرها، لبه‌ها و آرت‌بورد هنگام درگ گره)"
+            onClick={() => engine.setSnapping(!state.snapping)}
+            className={`rounded-xl border px-2 py-1 text-[11px] font-bold transition ${
+              state.snapping
+                ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                : "border-white/10 bg-white/5 text-slate-400"
+            }`}
+          >
+            🧲 اسنپ
+          </button>
+        </div>
+      )}
+
       {/* Floating Toolbar for Pen and Drawing tools */}
       {(state.tool === "pen" || state.tool === "draw") && !preview && (
         <div
@@ -623,6 +805,31 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
                 title="حالت گوشه‌دار: خطوط مستقیم و چندضلعی"
               >
                 📐 گوشه‌دار
+              </button>
+            </div>
+          )}
+
+          {state.tool === "draw" && (
+            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+              <button
+                type="button"
+                onClick={() => engine.setFreehandMode("free")}
+                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                  state.freehandMode === "free" ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
+                }`}
+                title="قلم آزاد با صاف‌سازی و لرزش‌گیری"
+              >
+                آزاد
+              </button>
+              <button
+                type="button"
+                onClick={() => engine.setFreehandMode("straight")}
+                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                  state.freehandMode === "straight" ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
+                }`}
+                title="خط مستقیم افقی/عمودی؛ Shift در حالت آزاد هم همین قفل را فعال می‌کند"
+              >
+                خط دقیق
               </button>
             </div>
           )}
@@ -800,26 +1007,52 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
           ))}
         </div>
 
-        {/* Snap guides — rendered while dragging (design px, artboard-local). */}
-        {activeGuides.length > 0 && !preview ? (
-          <div className="pointer-events-none absolute inset-0 z-[1500]">
-            {activeGuides.map((g, i) =>
-              g.axis === "x" ? (
-                <div
-                  key={`gx-${i}`}
-                  className="absolute top-0 bottom-0 w-px bg-fuchsia-400"
-                  style={{ left: g.at }}
-                />
-              ) : (
-                <div
-                  key={`gy-${i}`}
-                  className="absolute left-0 right-0 h-px bg-fuchsia-400"
-                  style={{ top: g.at }}
-                />
-              ),
-            )}
-          </div>
+        {/* Node marquee — the rubber band while catching nodes (view state). */}
+        {nodeMarquee && !preview ? (
+          <div
+            className="pointer-events-none absolute z-[1600] border border-cyan-300/80 bg-cyan-400/10"
+            style={{
+              left: Math.min(nodeMarquee.x0, nodeMarquee.x1),
+              top: Math.min(nodeMarquee.y0, nodeMarquee.y1),
+              width: Math.abs(nodeMarquee.x1 - nodeMarquee.x0),
+              height: Math.abs(nodeMarquee.y1 - nodeMarquee.y0),
+            }}
+          />
         ) : null}
+
+        {/* Smart guides — merged from BOTH sources: the move/resize gesture's
+            local state AND the engine's `snapGuides` (node drags, measure). */}
+        {(() => {
+          if (preview) return null;
+          const seen = new Set<string>();
+          const lines: { axis: "x" | "y"; at: number }[] = [];
+          for (const g of [...activeGuides, ...state.snapGuides]) {
+            const key = `${g.axis}:${g.at}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            lines.push({ axis: g.axis, at: g.at });
+          }
+          if (lines.length === 0) return null;
+          return (
+            <div className="pointer-events-none absolute inset-0 z-[1500]">
+              {lines.map((g, i) =>
+                g.axis === "x" ? (
+                  <div
+                    key={`gx-${i}`}
+                    className="absolute top-0 bottom-0 w-px bg-fuchsia-400"
+                    style={{ left: g.at }}
+                  />
+                ) : (
+                  <div
+                    key={`gy-${i}`}
+                    className="absolute left-0 right-0 h-px bg-fuchsia-400"
+                    style={{ top: g.at }}
+                  />
+                ),
+              )}
+            </div>
+          );
+        })()}
 
         {/* Working Stroke Preview (perfect-freehand live ref + rAF) */}
         <div className="pointer-events-none absolute inset-0 z-[2000]">
