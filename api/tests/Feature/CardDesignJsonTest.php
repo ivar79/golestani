@@ -743,4 +743,357 @@ class CardDesignJsonTest extends TestCase
             'design_json' => $design,
         ])->assertStatus(422);
     }
+
+    /**
+     * Live-Paint region paint must survive the write boundary.
+     *
+     * Paint is attached to FACES produced by intersecting paths, so the
+     * round-trip contract is: paths keep their own geometry, and the region
+     * styles come back attached to the same topology keys. Losing this would
+     * silently erase a user's colouring on reload.
+     */
+    public function test_region_paint_and_settings_round_trip(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D17', 'slug' => 'design-json-17', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['regions'] = [
+            ['key' => 'divider+rect@26,50', 'fill' => 'solid', 'color' => '#d4af37'],
+            ['key' => 'divider+rect@76,50', 'fill' => 'linear', 'color' => '#7c3aed', 'color2' => '#0ea5e9', 'angle' => 45, 'opacity' => 0.8],
+        ];
+        $design['regionSettings'] = ['gapTolerance' => 4, 'fillRule' => 'evenodd'];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $fetched = $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk();
+        $stored = $fetched->json('design_json');
+
+        $this->assertSame($design['regions'], $stored['regions']);
+        // json_encode drops the trailing .0, so the stored ints are the wire format.
+        $this->assertSame(['gapTolerance' => 4, 'fillRule' => 'evenodd'], $stored['regionSettings']);
+        // Paths keep their own identity — paint is NOT baked into the geometry.
+        $this->assertCount(count($design['layers']), $stored['layers']);
+    }
+
+    /** Documents saved before the region system must round-trip byte-identically. */
+    public function test_design_without_regions_stays_unchanged(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D18', 'slug' => 'design-json-18', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->json('design_json');
+        $this->assertArrayNotHasKey('regions', $stored);
+        $this->assertArrayNotHasKey('regionSettings', $stored);
+    }
+
+    /** Hostile region payloads are rejected instead of stored. */
+    public function test_invalid_region_payloads_are_rejected(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D19', 'slug' => 'design-json-19', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+        $url = "/api/businesses/{$business->id}/card";
+
+        // CSS injection through a region colour.
+        $bad = $this->validDesign();
+        $bad['regions'] = [['key' => 'a@0,0', 'fill' => 'solid', 'color' => 'url(javascript:alert(1))']];
+        $this->actingAs($owner)->putJson($url, ['design_json' => $bad])->assertStatus(422);
+
+        // Missing topology key.
+        $bad = $this->validDesign();
+        $bad['regions'] = [['fill' => 'solid', 'color' => '#ffffff']];
+        $this->actingAs($owner)->putJson($url, ['design_json' => $bad])->assertStatus(422);
+
+        // Unbounded region list.
+        $bad = $this->validDesign();
+        $bad['regions'] = array_map(
+            fn ($i) => ['key' => "p@{$i},{$i}", 'fill' => 'solid', 'color' => '#ffffff'],
+            range(1, 250),
+        );
+        $this->actingAs($owner)->putJson($url, ['design_json' => $bad])->assertStatus(422);
+    }
+
+    /** An unknown fill kind degrades to solid rather than aborting a save. */
+    public function test_unknown_region_fill_kind_is_normalized(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D20', 'slug' => 'design-json-20', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['regions'] = [['key' => 'a@0,0', 'fill' => 'hologram', 'color' => '#d4af37', 'opacity' => 9]];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->json('design_json');
+        $this->assertSame('solid', $stored['regions'][0]['fill']);
+        // Clamped into 0..1 and serialised without a trailing .0.
+        $this->assertSame(1, $stored['regions'][0]['opacity']);
+    }
+
+    /**
+     * §4 — the parametric curve record is the ONLY thing that makes a curve
+     * re-editable. If the validator drops it, the layer silently becomes a baked
+     * path after a reload and every parameter control goes dead.
+     */
+    public function test_parametric_curve_record_round_trips(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D21', 'slug' => 'design-json-21', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'wave', 'kind' => 'path', 'pathMode' => 'curve', 'name' => 'منحنی',
+            'x' => 200, 'y' => 260, 'width' => 620, 'height' => 180,
+            'angle' => 12.5, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 11, 'color' => null, 'background' => null,
+            'closed' => false,
+            'points' => [
+                ['x' => 0, 'y' => 90, 'hIn' => null, 'hOut' => ['x' => 20, 'y' => 60]],
+                ['x' => 600, 'y' => 90, 'hIn' => ['x' => 580, 'y' => 60], 'hOut' => null],
+            ],
+            'curve' => [
+                'kind' => 'sine',
+                'length' => 600,
+                'amplitude' => 80,
+                'frequency' => 2.5,
+                'phase' => 45.5,
+                'symmetry' => 0.25,
+                'startTangent' => null,
+                'endTangent' => -30,
+                'reversed' => true,
+            ],
+            'stroke' => '#0ea5e9', 'strokeWidth' => 4, 'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id')['wave'];
+
+        $this->assertSame('sine', $stored['curve']['kind']);
+        $this->assertSame(600, $stored['curve']['length']);
+        $this->assertSame(80, $stored['curve']['amplitude']);
+        $this->assertSame(2.5, $stored['curve']['frequency']);
+        $this->assertSame(45.5, $stored['curve']['phase']);
+        $this->assertSame(0.25, $stored['curve']['symmetry']);
+        // A null tangent means "natural" — it must NOT come back as 0, which
+        // would flatten the end of the wave on the next edit.
+        $this->assertNull($stored['curve']['startTangent']);
+        $this->assertSame(-30, $stored['curve']['endTangent']);
+        $this->assertTrue($stored['curve']['reversed']);
+        $this->assertSame(12.5, $stored['angle']);
+        $this->assertSame('curve', $stored['pathMode']);
+    }
+
+    /** Impossible curve values are clamped; unknown keys never ride along. */
+    public function test_curve_record_is_clamped_and_unknown_kind_falls_back(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D22', 'slug' => 'design-json-22', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'weird', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 10, 'height' => 10,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'closed' => false,
+            'points' => [
+                ['x' => 0, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 10, 'y' => 10, 'hIn' => null, 'hOut' => null],
+            ],
+            'curve' => [
+                'kind' => 'hologram',
+                'length' => 999999,
+                'amplitude' => -20,
+                'frequency' => 900,
+                'phase' => 5000,
+                'symmetry' => 3,
+                'startTangent' => 'nan',
+                'endTangent' => 9000,
+                'reversed' => 'yes',
+                'evil' => 'DROP TABLE',
+            ],
+            'stroke' => '#0ea5e9', 'strokeWidth' => 4, 'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $curve = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id')['weird']['curve'];
+
+        $this->assertSame('sine', $curve['kind']);       // unknown kind → the default family
+        $this->assertSame(20000, $curve['length']);      // clamped to the hard cap
+        $this->assertSame(0, $curve['amplitude']);       // negatives floor at 0
+        $this->assertSame(24, $curve['frequency']);
+        $this->assertSame(360, $curve['phase']);
+        $this->assertSame(0.95, $curve['symmetry']);
+        $this->assertNull($curve['startTangent']);       // non-numeric → natural
+        $this->assertSame(360, $curve['endTangent']);    // clamped, not rejected
+        $this->assertFalse($curve['reversed']);          // only a real true is true
+        $this->assertArrayNotHasKey('evil', $curve);
+    }
+
+    /** §14 — an explicit dash pattern must survive the save/reload cycle. */
+    public function test_explicit_dash_pattern_and_offset_round_trip(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D23', 'slug' => 'design-json-23', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'dashed', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 300, 'height' => 60,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'closed' => false,
+            'points' => [
+                ['x' => 0, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 300, 'y' => 0, 'hIn' => null, 'hOut' => null],
+            ],
+            'stroke' => '#0ea5e9', 'strokeWidth' => 3,
+            'strokeDasharray' => [12, 4.5, 0, 99999],
+            'strokeDashoffset' => -7,
+            'fill' => null,
+        ];
+        $design['layers'][] = [
+            'id' => 'dashed-shape', 'kind' => 'shape', 'shape' => 'rect', 'radius' => 8,
+            'x' => 0, 'y' => 0, 'width' => 100, 'height' => 40,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 2, 'color' => null, 'background' => '#ffffff',
+            'stroke' => '#000000', 'strokeWidth' => 2,
+            'strokeDasharray' => [6, 3],
+            'strokeDashoffset' => 2,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $layers = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id');
+
+        // Segments are clamped into 0.01..400 — including the 0 and the 99999.
+        $this->assertSame([12, 4.5, 0.01, 400], $layers['dashed']['strokeDasharray']);
+        $this->assertSame(-7, $layers['dashed']['strokeDashoffset']);
+        // Shapes carry the same stroke model as paths.
+        $this->assertSame([6, 3], $layers['dashed-shape']['strokeDasharray']);
+        $this->assertSame(2, $layers['dashed-shape']['strokeDashoffset']);
+    }
+
+    /** §13 — the per-path fill rule round-trips, and the default is not written. */
+    public function test_path_fill_rule_round_trips_and_default_is_omitted(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D24', 'slug' => 'design-json-24', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'donut', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 200, 'height' => 200,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'closed' => true,
+            'points' => [
+                ['x' => 0, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 200, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 200, 'y' => 200, 'hIn' => null, 'hOut' => null],
+            ],
+            'fillRule' => 'evenodd',
+            'stroke' => null, 'strokeWidth' => 0.5, 'fill' => '#111827',
+        ];
+        $design['layers'][] = [
+            'id' => 'plain', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 200, 'height' => 200,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 2, 'color' => null, 'background' => null,
+            'closed' => true,
+            'points' => [
+                ['x' => 0, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 200, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 200, 'y' => 200, 'hIn' => null, 'hOut' => null],
+            ],
+            'fillRule' => 'nonsense',
+            'stroke' => null, 'strokeWidth' => 0.5, 'fill' => '#111827',
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $layers = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id');
+
+        $this->assertSame('evenodd', $layers['donut']['fillRule']);
+        // An unrecognised rule is dropped rather than stored (SVG default applies).
+        $this->assertArrayNotHasKey('fillRule', $layers['plain']);
+    }
+
+    /** Documents written before this upgrade gain no new keys. */
+    public function test_documents_without_curve_dash_or_fill_rule_are_unchanged(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D25', 'slug' => 'design-json-25', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'legacy', 'kind' => 'path',
+            'x' => 0, 'y' => 0, 'width' => 300, 'height' => 60,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'closed' => false,
+            'points' => [
+                ['x' => 0, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 300, 'y' => 0, 'hIn' => null, 'hOut' => null],
+            ],
+            'stroke' => '#0ea5e9', 'strokeWidth' => 3, 'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id')['legacy'];
+
+        foreach (['curve', 'strokeDasharray', 'strokeDashoffset', 'fillRule', 'pathMode'] as $key) {
+            $this->assertArrayNotHasKey($key, $stored, "an untouched document must not gain " . $key);
+        }
+    }
 }

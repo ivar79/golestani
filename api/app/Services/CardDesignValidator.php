@@ -64,6 +64,20 @@ class CardDesignValidator
 
     private const IMAGE_PREFIXES = ['storage/', '/storage/'];
 
+    /** Live-Paint region paint (document level). */
+    private const MAX_REGIONS = 200;
+
+    private const REGION_FILLS = ['solid', 'linear', 'radial'];
+
+    private const FILL_RULES = ['nonzero', 'evenodd'];
+
+    /** Parametric Curve tool families (§4). `custom` = anchors are the geometry. */
+    private const CURVE_KINDS = ['arc', 'sine', 'sine-asymmetric', 's', 'wave', 'custom'];
+
+    /** Explicit dash pattern limits (§14): at most 8 segments of ≤ 400px. */
+    private const MAX_DASH_SEGMENTS = 8;
+    private const MAX_DASH_SEGMENT = 400;
+
     /**
      * READ-SIDE variant used by public rendering: never aborts.
      *
@@ -140,12 +154,88 @@ class CardDesignValidator
 
         $cleanLayers = array_map(fn ($layer) => $this->validateLayer($layer), $layers);
 
-        return [
+        // Region paint is OPTIONAL and only echoed back when the document
+        // actually carries it, so documents saved before the region system are
+        // rebuilt byte-identically (same reason `pathMode` is optional).
+        $regions = $design['regions'] ?? null;
+        $cleanRegions = null;
+        if ($regions !== null) {
+            if (! is_array($regions) || ! array_is_list($regions) || count($regions) > self::MAX_REGIONS) {
+                abort(422, 'ناحیه‌های رنگی سند کارت نامعتبر است.');
+            }
+            $cleanRegions = array_map(fn ($region) => $this->cleanRegion($region), $regions);
+        }
+
+        $regionSettings = $design['regionSettings'] ?? null;
+        $cleanRegionSettings = null;
+        if (is_array($regionSettings) && ! array_is_list($regionSettings)) {
+            $cleanRegionSettings = [
+                'gapTolerance' => $this->cleanNumber($regionSettings['gapTolerance'] ?? 0, 0, 64),
+                'fillRule' => $this->cleanEnum($regionSettings['fillRule'] ?? null, self::FILL_RULES, 'nonzero'),
+            ];
+        }
+
+        $clean = [
             'version' => 1,
             'artboard' => ['width' => $artboard['width'], 'height' => $artboard['height']],
             'background' => $cleanBackground,
             'layers' => $cleanLayers,
         ];
+
+        if ($cleanRegions !== null) {
+            $clean['regions'] = $cleanRegions;
+        }
+        if ($cleanRegionSettings !== null) {
+            $clean['regionSettings'] = $cleanRegionSettings;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * One painted region/face.
+     *
+     * The `key` is the topology key the engine computed (bounding path ids +
+     * a quantised interior point). A malformed colour ABORTS rather than being
+     * dropped: silently losing paint is the partial-save failure this
+     * validator exists to prevent.
+     */
+    private function cleanRegion(mixed $region): array
+    {
+        if (! is_array($region) || array_is_list($region)) {
+            abort(422, 'ناحیه رنگی نامعتبر است.');
+        }
+
+        $key = $region['key'] ?? null;
+        if (! is_string($key) || $key === '' || strlen($key) > 200) {
+            abort(422, 'شناسه ناحیه رنگی نامعتبر است.');
+        }
+
+        $color = $this->cleanColor($region['color'] ?? null);
+        if ($color === null) {
+            abort(422, 'رنگ ناحیه رنگی نامعتبر است.');
+        }
+
+        $clean = [
+            'key' => $key,
+            'fill' => $this->cleanEnum($region['fill'] ?? null, self::REGION_FILLS, 'solid'),
+            'color' => $color,
+        ];
+
+        if (array_key_exists('color2', $region)) {
+            $color2 = $this->cleanColor($region['color2']);
+            if ($color2 !== null) {
+                $clean['color2'] = $color2;
+            }
+        }
+        if (array_key_exists('angle', $region)) {
+            $clean['angle'] = $this->cleanNumber($region['angle'], -360, 360);
+        }
+        if (array_key_exists('opacity', $region)) {
+            $clean['opacity'] = $this->cleanNumber($region['opacity'], 0, 1);
+        }
+
+        return $clean;
     }
 
     private function validateLayer(mixed $layer): array
@@ -255,6 +345,7 @@ class CardDesignValidator
                 $clean['strokeLinecap'] = $this->cleanEnum($layer['strokeLinecap'] ?? null, self::LINE_CAPS, 'round');
                 $clean['strokeLinejoin'] = $this->cleanEnum($layer['strokeLinejoin'] ?? null, self::LINE_JOINS, 'round');
                 $clean['strokeOpacity'] = $this->cleanNumber($layer['strokeOpacity'] ?? 1, 0, 1);
+                $this->cleanDash($layer, $clean);
                 break;
             case 'path':
                 // Freehand Bezier strokes (EditorEngine freehand tool). Points
@@ -297,14 +388,85 @@ class CardDesignValidator
                 if (array_key_exists('curvature', $layer)) {
                     $clean['curvature'] = $this->cleanNumber($layer['curvature'] ?? 0, -100, 100);
                 }
+                // New editor metadata for the upgraded vector tools. These
+                // fields are optional so every existing design remains valid.
+                if (array_key_exists('pathMode', $layer)
+                    && is_string($layer['pathMode'])
+                    && in_array($layer['pathMode'], ['curve', 'pen', 'freehand'], true)) {
+                    $clean['pathMode'] = $layer['pathMode'];
+                }
+                if (array_key_exists('curveProfile', $layer)
+                    && is_string($layer['curveProfile'])
+                    && in_array($layer['curveProfile'], ['arc', 'sine', 'sine-asymmetric', 's'], true)) {
+                    $clean['curveProfile'] = $layer['curveProfile'];
+                }
+                // PARAMETRIC CURVE RECORD (§4). Optional (only curve-tool layers
+                // carry it) and rebuilt field by field, so an unknown key can
+                // never ride along into the stored JSON.
+                if (isset($layer['curve']) && is_array($layer['curve'])) {
+                    $clean['curve'] = $this->cleanCurve($layer['curve']);
+                }
+                // SVG fill rule for this path's own fill (§13). `nonzero` is the
+                // SVG default, so it is only written when explicitly requested.
+                if (array_key_exists('fillRule', $layer)
+                    && in_array($layer['fillRule'] ?? null, self::FILL_RULES, true)) {
+                    $clean['fillRule'] = $layer['fillRule'];
+                }
                 $clean['stroke'] = $this->cleanColor($layer['stroke'] ?? null) ?? '#0ea5e9';
                 $clean['strokeWidth'] = $this->cleanNumber($layer['strokeWidth'] ?? 4, 0.5, 100);
                 $clean['strokeStyle'] = $this->cleanEnum($layer['strokeStyle'] ?? null, self::STROKE_STYLES, 'solid');
                 $clean['strokeLinecap'] = $this->cleanEnum($layer['strokeLinecap'] ?? null, self::LINE_CAPS, 'round');
                 $clean['strokeLinejoin'] = $this->cleanEnum($layer['strokeLinejoin'] ?? null, self::LINE_JOINS, 'round');
                 $clean['strokeOpacity'] = $this->cleanNumber($layer['strokeOpacity'] ?? 1, 0, 1);
+                $this->cleanDash($layer, $clean);
                 $clean['fill'] = $this->cleanColor($layer['fill'] ?? null);
                 break;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Explicit dash pattern + offset (§14) — whitelisted for every stroke-bearing
+     * layer. Absent stays absent (so stored designs are byte-identical), and a
+     * pattern is capped in both segment count and segment length.
+     */
+    private function cleanDash(array $layer, array &$clean): void
+    {
+        $pattern = $layer['strokeDasharray'] ?? null;
+        if (is_array($pattern) && array_is_list($pattern) && count($pattern) > 0) {
+            $segments = array_slice($pattern, 0, self::MAX_DASH_SEGMENTS);
+            $clean['strokeDasharray'] = array_map(
+                fn ($segment): float => $this->cleanNumber($segment, 0.01, self::MAX_DASH_SEGMENT),
+                $segments
+            );
+        }
+        if (array_key_exists('strokeDashoffset', $layer)) {
+            $clean['strokeDashoffset'] = $this->cleanNumber($layer['strokeDashoffset'] ?? 0, -2000, 2000);
+        }
+    }
+
+    /**
+     * The parametric curve record. Every parameter is bounded and every optional
+     * value is preserved as null (not coerced to 0) so "natural tangent" survives
+     * a round trip.
+     */
+    private function cleanCurve(array $curve): array
+    {
+        $clean = [
+            'kind' => $this->cleanEnum($curve['kind'] ?? null, self::CURVE_KINDS, 'sine'),
+            'length' => $this->cleanNumber($curve['length'] ?? 600, 10, 20000),
+            'amplitude' => $this->cleanNumber($curve['amplitude'] ?? 80, 0, 5000),
+            'frequency' => $this->cleanNumber($curve['frequency'] ?? 1, 0.25, 24),
+            'phase' => $this->cleanNumber($curve['phase'] ?? 0, -360, 360),
+            'symmetry' => $this->cleanNumber($curve['symmetry'] ?? 0.5, 0.05, 0.95),
+            // Strictly `true`: a truthy string ("yes") is not a boolean flag, and
+            // silently treating it as one would flip a curve's direction.
+            'reversed' => ($curve['reversed'] ?? false) === true,
+        ];
+        foreach (['startTangent', 'endTangent'] as $key) {
+            $value = $curve[$key] ?? null;
+            $clean[$key] = is_numeric($value) ? $this->cleanNumber($value, -360, 360) : null;
         }
 
         return $clean;

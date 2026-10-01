@@ -17,7 +17,7 @@
     "background": "linear-gradient(135deg, #070e1c 0%, #0d1b33 50%, #050b17 100%)",
     "layers": [
      {
-      "id": "shape-ag08qew",
+      "id": "shape-z0ksvmy",
       "kind": "shape",
       "shape": "rect",
       "x": 20,
@@ -36,7 +36,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "shape-ntpoti6",
+      "id": "shape-lfbplxr",
       "kind": "shape",
       "shape": "rect",
       "x": 32,
@@ -55,7 +55,7 @@
       "strokeStyle": "dashed"
      },
      {
-      "id": "path-rvbm0i4",
+      "id": "path-06vpqe4",
       "kind": "path",
       "name": "لچک بالا-راست",
       "x": 0,
@@ -76,7 +76,7 @@
       "strokeWidth": 1.5
      },
      {
-      "id": "path-kkw3kvt",
+      "id": "path-apav68d",
       "kind": "path",
       "name": "لچک پایین-راست",
       "x": 0,
@@ -97,7 +97,7 @@
       "strokeWidth": 1.5
      },
      {
-      "id": "path-csr4pij",
+      "id": "path-ehdvyia",
       "kind": "path",
       "name": "ترنج مرکزی فرش",
       "x": 0,
@@ -118,7 +118,7 @@
       "strokeWidth": 2
      },
      {
-      "id": "text-nzgjmdb",
+      "id": "text-7k9w0kr",
       "kind": "text",
       "x": 70,
       "y": 90,
@@ -137,7 +137,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-5rf6ril",
+      "id": "text-5l32tn7",
       "kind": "text",
       "x": 70,
       "y": 175,
@@ -156,7 +156,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-0l40riu",
+      "id": "text-eja46pd",
       "kind": "text",
       "x": 70,
       "y": 440,
@@ -175,7 +175,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-syd817u",
+      "id": "qr-y76ge1s",
       "kind": "qr",
       "x": 800,
       "y": 380,
@@ -210,7 +210,7 @@
     "background": "linear-gradient(135deg, #180d05 0%, #2b1708 50%, #100803 100%)",
     "layers": [
      {
-      "id": "path-q1hp1nv",
+      "id": "path-y4r1zbt",
       "kind": "path",
       "name": "شمسه ۱۲ پر طلاکوب",
       "x": 0,
@@ -231,7 +231,7 @@
       "strokeWidth": 2
      },
      {
-      "id": "text-oaonx5g",
+      "id": "text-5ieo1q9",
       "kind": "text",
       "x": 70,
       "y": 80,
@@ -250,7 +250,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-rt00ycb",
+      "id": "text-dg7f332",
       "kind": "text",
       "x": 70,
       "y": 165,
@@ -269,7 +269,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-q118nhw",
+      "id": "text-u9qz1z1",
       "kind": "text",
       "x": 70,
       "y": 450,
@@ -288,7 +288,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-0cv0aqn",
+      "id": "qr-x4u9abc",
       "kind": "qr",
       "x": 800,
       "y": 380,
@@ -323,7 +323,7 @@
     "background": "linear-gradient(135deg, #2b1810 0%, #3d2317 40%, #1f110b 100%)",
     "layers": [
      {
-      "id": "path-lpaq2kx",
+      "id": "path-8aohle2",
       "kind": "path",
       "name": "شبکه‌بندی مشبک چوبی",
       "x": 0,
@@ -344,7 +344,7 @@
       "strokeWidth": 1.5
      },
      {
-      "id": "text-jsaveot",
+      "id": "text-rmp0l8z",
       "kind": "text",
       "x": 60,
       "y": 80,
@@ -363,7 +363,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-2jagugn",
+      "id": "text-2plk8yl",
       "kind": "text",
       "x": 60,
       "y": 165,
@@ -382,7 +382,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-zxx58ik",
+      "id": "text-2jmdvos",
       "kind": "text",
       "x": 60,
       "y": 450,
@@ -401,7 +401,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-h08xuvd",
+      "id": "qr-hs9fl6q",
       "kind": "qr",
       "x": 870,
       "y": 380,
@@ -436,7 +436,7 @@
     "background": "linear-gradient(135deg, #091224 0%, #112244 50%, #060c18 100%)",
     "layers": [
      {
-      "id": "shape-m7m0fof",
+      "id": "shape-34oxmdc",
       "kind": "shape",
       "shape": "rect",
       "x": 18,
@@ -455,7 +455,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "path-gren4pr",
+      "id": "path-x0k5gc8",
       "kind": "path",
       "name": "شمسه ۱۰ پر",
       "x": 0,
@@ -476,7 +476,7 @@
       "strokeWidth": 2
      },
      {
-      "id": "text-7hr8vw4",
+      "id": "text-ucllpv3",
       "kind": "text",
       "x": 60,
       "y": 75,
@@ -495,7 +495,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-xg8i7bu",
+      "id": "text-ucbeur3",
       "kind": "text",
       "x": 60,
       "y": 155,
@@ -514,7 +514,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-8q0vsr4",
+      "id": "text-ah11z0h",
       "kind": "text",
       "x": 60,
       "y": 440,
@@ -533,7 +533,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-hbwc3nt",
+      "id": "qr-81mxhyu",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -568,7 +568,7 @@
     "background": "linear-gradient(135deg, #121212 0%, #1e1e1e 50%, #0a0a0a 100%)",
     "layers": [
      {
-      "id": "shape-jrb73n2",
+      "id": "shape-e3sdnzw",
       "kind": "shape",
       "shape": "rect",
       "x": 24,
@@ -587,7 +587,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-chwrs7p",
+      "id": "text-5ye5h6x",
       "kind": "text",
       "x": 64,
       "y": 80,
@@ -606,7 +606,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-kql5ric",
+      "id": "text-je5dnsq",
       "kind": "text",
       "x": 64,
       "y": 160,
@@ -625,7 +625,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-7v73cr5",
+      "id": "text-y95cl9v",
       "kind": "text",
       "x": 64,
       "y": 450,
@@ -644,7 +644,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-sr3tq58",
+      "id": "qr-te4ff7f",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -679,7 +679,7 @@
     "background": "linear-gradient(135deg, #1c1917 0%, #292524 50%, #0c0a09 100%)",
     "layers": [
      {
-      "id": "shape-tvngcis",
+      "id": "shape-12tylab",
       "kind": "shape",
       "shape": "rect",
       "x": 30,
@@ -698,7 +698,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-fzmhw1a",
+      "id": "text-o4ewa6l",
       "kind": "text",
       "x": 70,
       "y": 90,
@@ -717,7 +717,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-f5bo9ze",
+      "id": "text-ejhj5ke",
       "kind": "text",
       "x": 70,
       "y": 170,
@@ -736,7 +736,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-3o80h1s",
+      "id": "text-vi7tjw7",
       "kind": "text",
       "x": 70,
       "y": 440,
@@ -755,7 +755,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-db64uqh",
+      "id": "qr-gyhak16",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -790,7 +790,7 @@
     "background": "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
     "layers": [
      {
-      "id": "shape-2s26j2k",
+      "id": "shape-jwz91mw",
       "kind": "shape",
       "shape": "rect",
       "x": 40,
@@ -806,7 +806,7 @@
       "radius": 3
      },
      {
-      "id": "text-s21lpw7",
+      "id": "text-vtfapv5",
       "kind": "text",
       "x": 40,
       "y": 65,
@@ -825,7 +825,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-z2xxppz",
+      "id": "text-mb5edit",
       "kind": "text",
       "x": 40,
       "y": 140,
@@ -844,7 +844,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-5v704kx",
+      "id": "text-i45mvf3",
       "kind": "text",
       "x": 40,
       "y": 450,
@@ -863,7 +863,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-qtvf4o0",
+      "id": "qr-eiby7a3",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -898,7 +898,7 @@
     "background": "linear-gradient(135deg, #064e3b 0%, #022c22 100%)",
     "layers": [
      {
-      "id": "shape-mi21iy2",
+      "id": "shape-e0gsanq",
       "kind": "shape",
       "shape": "rect",
       "x": 24,
@@ -917,7 +917,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-73nfq6k",
+      "id": "text-vccyxd9",
       "kind": "text",
       "x": 60,
       "y": 70,
@@ -936,7 +936,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-76jffvf",
+      "id": "text-nm1cqtg",
       "kind": "text",
       "x": 60,
       "y": 145,
@@ -955,7 +955,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-uztl01b",
+      "id": "text-n0fd3t3",
       "kind": "text",
       "x": 60,
       "y": 440,
@@ -974,7 +974,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-6egy1d5",
+      "id": "qr-y4rlwzo",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1009,7 +1009,7 @@
     "background": "#18181b",
     "layers": [
      {
-      "id": "text-4pk60i0",
+      "id": "text-yzvt51s",
       "kind": "text",
       "x": 50,
       "y": 70,
@@ -1028,7 +1028,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-5fhekrl",
+      "id": "text-ugxvlej",
       "kind": "text",
       "x": 50,
       "y": 145,
@@ -1047,7 +1047,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-1c14f4a",
+      "id": "text-ofrk378",
       "kind": "text",
       "x": 50,
       "y": 450,
@@ -1066,7 +1066,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-y8s6kdc",
+      "id": "qr-vupjp2y",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1101,7 +1101,7 @@
     "background": "#020617",
     "layers": [
      {
-      "id": "shape-i82ri36",
+      "id": "shape-15hlau2",
       "kind": "shape",
       "shape": "rect",
       "x": 30,
@@ -1120,7 +1120,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-zrltn1n",
+      "id": "text-8nmyapr",
       "kind": "text",
       "x": 60,
       "y": 70,
@@ -1139,7 +1139,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "text-n7gkzjr",
+      "id": "text-94rd1s9",
       "kind": "text",
       "x": 60,
       "y": 145,
@@ -1158,7 +1158,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-xlvf1p8",
+      "id": "text-me4pbjs",
       "kind": "text",
       "x": 60,
       "y": 440,
@@ -1177,7 +1177,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-n0jkoqv",
+      "id": "qr-m26lqdw",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1212,7 +1212,7 @@
     "background": "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)",
     "layers": [
      {
-      "id": "text-cuy0beg",
+      "id": "text-3d317hp",
       "kind": "text",
       "x": 50,
       "y": 70,
@@ -1231,7 +1231,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-xn14m8e",
+      "id": "text-1j0j490",
       "kind": "text",
       "x": 50,
       "y": 145,
@@ -1250,7 +1250,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-8icxiqy",
+      "id": "text-fdhqjkr",
       "kind": "text",
       "x": 50,
       "y": 440,
@@ -1269,7 +1269,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-imt50c2",
+      "id": "qr-8gwkcxp",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1304,7 +1304,7 @@
     "background": "linear-gradient(135deg, #0c1421 0%, #17253d 100%)",
     "layers": [
      {
-      "id": "text-xlfqc3t",
+      "id": "text-4dt7c6e",
       "kind": "text",
       "x": 50,
       "y": 70,
@@ -1323,7 +1323,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-4xmvpn7",
+      "id": "text-itdd9h7",
       "kind": "text",
       "x": 50,
       "y": 145,
@@ -1342,7 +1342,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-jrnl3ij",
+      "id": "text-hx7dw6p",
       "kind": "text",
       "x": 50,
       "y": 440,
@@ -1361,7 +1361,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-2ugp4cq",
+      "id": "qr-mvybny7",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1396,7 +1396,7 @@
     "background": "#f8fafc",
     "layers": [
      {
-      "id": "shape-tlvq34h",
+      "id": "shape-u1qz12s",
       "kind": "shape",
       "shape": "rect",
       "x": 0,
@@ -1412,7 +1412,7 @@
       "radius": 0
      },
      {
-      "id": "text-russtkz",
+      "id": "text-9bb7kqb",
       "kind": "text",
       "x": 48,
       "y": 64,
@@ -1431,7 +1431,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-q8ic657",
+      "id": "text-2aabpuk",
       "kind": "text",
       "x": 48,
       "y": 140,
@@ -1450,7 +1450,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-qyizjwu",
+      "id": "text-rr7sk9o",
       "kind": "text",
       "x": 48,
       "y": 460,
@@ -1469,7 +1469,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-3qfgbnn",
+      "id": "qr-oml38qx",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -1504,7 +1504,7 @@
     "background": "#ffffff",
     "layers": [
      {
-      "id": "text-v2g4rg9",
+      "id": "text-z5l9nyd",
       "kind": "text",
       "x": 48,
       "y": 70,
@@ -1523,7 +1523,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-ug2ars9",
+      "id": "text-ed1d7gq",
       "kind": "text",
       "x": 48,
       "y": 145,
@@ -1542,7 +1542,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-m7ffo19",
+      "id": "text-9k7z4oz",
       "kind": "text",
       "x": 48,
       "y": 450,
@@ -1561,7 +1561,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-rtn2ml9",
+      "id": "qr-dp0zxci",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -1596,7 +1596,7 @@
     "background": "#fffbebe0",
     "layers": [
      {
-      "id": "text-o9w4zgj",
+      "id": "text-q5j2zdi",
       "kind": "text",
       "x": 48,
       "y": 70,
@@ -1615,7 +1615,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-fr8irkf",
+      "id": "text-r4idt8z",
       "kind": "text",
       "x": 48,
       "y": 145,
@@ -1634,7 +1634,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-wd1nmk7",
+      "id": "text-a4qy01y",
       "kind": "text",
       "x": 48,
       "y": 450,
@@ -1653,7 +1653,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-hb967q2",
+      "id": "qr-3gmsw5e",
       "kind": "qr",
       "x": 820,
       "y": 380,

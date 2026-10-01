@@ -46,7 +46,8 @@ class EditorPlanSeeder extends Seeder
                 'features' => [
                     'card_editor' => true,
                     'custom_templates' => false,
-                    'card_templates' => ['classic', 'local', 'midnight'],
+                    // Starter: legacy keys + the starter/modern layered ids.
+                    'card_templates' => ['classic', 'local', 'midnight', 'starter-modern-dark-gradient', 'starter-emerald-executive', 'starter-creative-diagonal', 'starter-tech-developer', 'starter-medical-health', 'starter-real-estate-gold', 'free-classic-navy', 'free-minimal-white', 'free-local-shop'],
                     'card_themes' => ['navy', 'emerald', 'warm'],
                     'card_fonts' => ['sans', 'vazir'],
                     'card_exports' => ['png', 'jpg'],
@@ -77,7 +78,10 @@ class EditorPlanSeeder extends Seeder
                 'features' => [
                     'card_editor' => true,
                     'custom_templates' => true,
-                    'card_templates' => ['classic', 'local', 'midnight', 'emerald', 'creative'],
+                    // Professional: everything — legacy keys + ALL layered
+                    // catalog ids (the full gallery), kept explicit so the
+                    // snapshot contract stays auditable.
+                    'card_templates' => ['classic', 'local', 'midnight', 'emerald', 'creative', 'pro-persian-carpet-toranj', 'pro-persian-architecture-gereh', 'pro-laser-cut-walnut-wood', 'pro-gol-o-morgh-miniature', 'pro-gold-foil-embossed', 'pro-marble-stone-gold', 'starter-modern-dark-gradient', 'starter-emerald-executive', 'starter-creative-diagonal', 'starter-tech-developer', 'starter-medical-health', 'starter-real-estate-gold', 'free-classic-navy', 'free-minimal-white', 'free-local-shop'],
                     'card_themes' => ['navy', 'emerald', 'warm'],
                     'card_fonts' => ['sans', 'vazir', 'serif'],
                     // Full export freedom — the vector upgrade's SVG/PDF formats
