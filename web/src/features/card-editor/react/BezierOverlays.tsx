@@ -208,11 +208,35 @@ export function PathEditOverlay({
       height={layer.height}
       viewBox={`0 0 ${layer.width} ${layer.height}`}
       style={{
-        pointerEvents: "none",
+        pointerEvents: "auto",
+        left: layer.x,
+        top: layer.y,
+        width: layer.width,
+        height: layer.height,
         transform: layer.angle ? `rotate(${layer.angle}deg)` : undefined,
+        transformOrigin: "center center",
+        overflow: "visible",
       }}
       onDoubleClick={onDoubleClick}
     >
+      {/*
+       * Segment hit targets are intentionally transparent but wide.
+       * This is the missing interaction layer that makes a path feel like a
+       * real vector editor: double-click any part of a segment to insert a
+       * node, then drag that node/its handles. The visible stroke itself never
+       * becomes the hit target, so the hit area stays predictable at any zoom.
+       */}
+      <path
+        d={pathD(layer.points, layer.closed)}
+        fill="none"
+        stroke="rgba(0,0,0,0.001)"
+        strokeWidth={Math.max(10, 12 * scale)}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        pointerEvents="stroke"
+        onDoubleClick={onDoubleClick}
+      />
+
       {/* Handle stems — a thin line from each anchor to each of its handles. */}
       {layer.points.flatMap((point, index) =>
         (["hIn", "hOut"] as const).flatMap((which) => {

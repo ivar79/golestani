@@ -1246,6 +1246,7 @@ export class EditorEngine {
       workingStroke: tool === "draw" ? this.state.workingStroke : null,
       penDraft: tool === "pen" ? this.state.penDraft : null,
       selectedAnchor: tool === "select" ? this.state.selectedAnchor : null,
+      editingPathId: tool === "select" ? this.state.editingPathId : null,
     });
   }
 
@@ -1304,6 +1305,78 @@ export class EditorEngine {
   extendFreehandStroke(point: { x: number; y: number }): void {
     if (!this.state.workingStroke) return;
     this.emit({ workingStroke: [...this.state.workingStroke, point] });
+  }
+
+  /**
+   * Commit an explicit freehand sample stream.
+   *
+   * The React stage keeps raw samples in refs so pointermove never causes a
+   * document render. This method is the bridge from that high-frequency input
+   * to the canonical freehand pipeline (smoothing → fidelity → simplification
+   * → Bezier fitting). It deliberately does NOT use the perfect-freehand outline
+   * as the final geometry; that outline is preview-only.
+   */
+  commitFreehandSamples(
+    samples: { x: number; y: number }[],
+    options: {
+      color: string;
+      width: number;
+      style?: StrokeStyleKind;
+      linecap?: StrokeLineCap;
+      linejoin?: StrokeLineJoin;
+      opacity?: number;
+    },
+  ): string | null {
+    if (samples.length < 2) return null;
+    const strokeWidth = clampStrokeWidth(options.width);
+    const fit = freehandPipeline(samples, {
+      ...this.state.freehandTuning,
+      mode: this.state.freehandMode,
+      maxPoints: MAX_PATH_POINTS,
+    });
+    if (fit.points.length < 2) return null;
+
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer = normalizePathLayer<PathLayer>(
+      {
+        id,
+        kind: "path",
+        pathMode: "freehand",
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        angle: 0,
+        opacity: 1,
+        locked: false,
+        hidden: false,
+        z: this.state.doc.layers.length + 1,
+        color: null,
+        background: null,
+        closed: fit.closed,
+        points: fit.points,
+        stroke: options.color,
+        strokeWidth,
+        strokeStyle: options.style ?? this.state.brushStyle,
+        strokeLinecap: options.linecap ?? this.state.brushLinecap,
+        strokeLinejoin: options.linejoin ?? this.state.brushLinejoin,
+        strokeOpacity: options.opacity ?? this.state.brushOpacity,
+        fill: null,
+      },
+      pathPadding(strokeWidth),
+    );
+
+    this.pushHistory();
+    const layers = [...this.state.doc.layers, layer];
+    this.emit({
+      doc: { ...this.state.doc, layers },
+      workingStroke: null,
+      tool: "select",
+      selection: this.withSelection(id),
+      editingPathId: id,
+      selectedAnchor: { layerId: id, index: 0 },
+    });
+    return id;
   }
 
   commitFreehandStroke(options: {
@@ -1459,6 +1532,7 @@ export class EditorEngine {
           penDraft: null,
           tool: "select",
           selection: this.withSelection(target.id),
+          editingPathId: target.id,
           selectedAnchor: { layerId: target.id, index: draft.length - 1 },
         });
         return target.id;
@@ -1504,6 +1578,7 @@ export class EditorEngine {
       penDraft: null,
       tool: "select",
       selection: this.withSelection(id),
+      editingPathId: id,
       selectedAnchor: { layerId: id, index: 0 },
     });
     return id;
@@ -2141,7 +2216,10 @@ export class EditorEngine {
   transientMoveAnchor(layerId: string, index: number, position: { x: number; y: number }): void {
     const layer = this.editablePath(layerId);
     if (!layer) return;
-    this.transientPatch(layerId, { points: moveAnchor(layer.points, index, position) } as Partial<CardLayer>);
+    this.transientPatch(layerId, {
+      points: moveAnchor(layer.points, index, position),
+      ...(layer.curve ? { curve: undefined } : {}),
+    } as Partial<CardLayer>);
   }
 
   /** Live handle drag (transient). `symmetric` mirrors the opposite handle. */
@@ -2156,6 +2234,7 @@ export class EditorEngine {
     if (!layer) return;
     this.transientPatch(layerId, {
       points: moveHandle(layer.points, index, which, position, symmetric),
+      ...(layer.curve ? { curve: undefined } : {}),
     } as Partial<CardLayer>);
   }
 
@@ -2248,13 +2327,23 @@ export class EditorEngine {
 
   /** Replace a path's points in ONE history record, with the box re-derived. */
   private applyPathPoints(layer: PathLayer, points: PathPoint[]): void {
-    const normalized = normalizePathLayer({ ...layer, points }, pathPadding(layer.strokeWidth));
+    // Once a user edits a generated parametric curve at node/handle level, the
+    // anchors become the source of truth. Keeping the old curve spec alive
+    // would make the next parameter edit silently regenerate the user's manual
+    // geometry, which is not acceptable in a vector editor.
+    const source = layer.curve
+      ? ({ ...layer, curve: undefined, curveProfile: undefined, pathMode: "pen", points } as PathLayer)
+      : ({ ...layer, points } as PathLayer);
+    const normalized = normalizePathLayer(source, pathPadding(layer.strokeWidth));
     this.updateLayer(layer.id, {
       points: normalized.points,
       x: normalized.x,
       y: normalized.y,
       width: normalized.width,
       height: normalized.height,
+      curve: undefined,
+      curveProfile: undefined,
+      ...(layer.curve ? { pathMode: "pen" } : {}),
     } as Partial<CardLayer>);
   }
 
@@ -2376,6 +2465,7 @@ export class EditorEngine {
     this.emit({ snapGuides: guides });
     this.transientPatch(gesture.layerId, {
       points: moveAnchorsBy(gesture.points, gesture.indices, dx, dy),
+      ...(layer.curve ? { curve: undefined, curveProfile: undefined, pathMode: "pen" } : {}),
     } as Partial<CardLayer>);
   }
 

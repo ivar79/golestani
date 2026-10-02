@@ -20,6 +20,7 @@ import { LayerBox, LayeredCard } from "./LayeredCardRenderer";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { shouldBeginHandleDrag } from "../domain/penGesture";
 import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
+import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import {
   clampZoom,
@@ -259,6 +260,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         engine.setTool("select");
         return;
       }
+      if (e.key === "Enter" && !state.penDraft && layer?.kind === "path" && state.tool === "select") {
+        e.preventDefault();
+        engine.setPathEditing(layer.id);
+        return;
+      }
       const anchor = state.selectedAnchor;
       // NODE MODE: Delete removes the whole node GROUP (multi-node), falling
       // back to the single anchor; Ctrl+A selects every node of the path.
@@ -486,13 +492,15 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         const raw = pointerPos(ev);
         const start = brushStartRef.current;
         let constrained = raw;
-        if (start && (state.freehandMode === "straight" || ev.shiftKey)) {
-          const dx = raw.x - start.x;
-          const dy = raw.y - start.y;
-          constrained =
-            Math.abs(dx) >= Math.abs(dy)
-              ? { x: raw.x, y: start.y }
-              : { x: start.x, y: raw.y };
+        if (start && (state.freehandMode === "straight" || state.freehandMode === "constrained" || ev.shiftKey)) {
+          const anchor = state.freehandMode === "constrained"
+            ? (brushSmoothRef.current ?? start)
+            : start;
+          constrained = constrainToAngle(anchor, raw, {
+            increments: state.freehandTuning.angleIncrements,
+            tolerance: state.freehandTuning.angleTolerance,
+            axisLock: state.freehandTuning.axisLock || ev.shiftKey,
+          });
         }
         const s = brushSmoothRef.current ?? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 };
         const t = 1 - STREAMLINE;
@@ -592,18 +600,17 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       }
       const pts = brushPtsRef.current;
       if (pts.length > 1) {
-        const outline = getBrushStrokeOutline(pts, {
-          size: state.brushWidth || 14,
-          thinning: 0.55,
-          smoothing: 0.6,
-          streamline: 0.35,
-          simulatePressure: !isPenInputRef.current,
-          last: true,
+        // The outline is preview-only. The committed geometry comes from the
+        // canonical freehand pipeline so smoothing/fidelity/angle constraints
+        // actually affect the saved editable Bézier path.
+        engine.commitFreehandSamples(pts, {
+          color: state.brushColor || "#0ea5e9",
+          width: state.brushWidth || 14,
+          style: state.brushStyle,
+          linecap: state.brushLinecap,
+          linejoin: state.brushLinejoin,
+          opacity: state.brushOpacity,
         });
-        // The ENGINE owns the commit: it re-origins the outline into a tight
-        // layer box and stores the ribbon as rawD, which the shared resolver
-        // renders — so the stroke survives release, reload and export.
-        engine.addBrushLayer(outline, state.brushColor || "#0ea5e9");
       }
       brushPtsRef.current = [];
       brushSmoothRef.current = null;
@@ -811,25 +818,47 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
 
           {state.tool === "draw" && (
             <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+              {([
+                ["free", "آزاد"],
+                ["straight", "خط دقیق"],
+                ["constrained", "زاویه‌دار"],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => engine.setFreehandMode(mode)}
+                  className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                    state.freehandMode === mode ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
+                  }`}
+                  title={mode === "free" ? "قلم آزاد با Bezier قابل ویرایش" : mode === "straight" ? "خط دقیق با زاویه قابل تنظیم" : "قلم آزاد با قفل زاویه و Snap"}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {state.tool === "draw" && (
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1">
+              <label className="flex items-center gap-1 text-[10px] text-slate-400">
+                گام
+                <input
+                  type="number"
+                  min={0.1}
+                  max={180}
+                  step={0.1}
+                  value={state.freehandTuning.angleIncrements[0] ?? 45}
+                  onChange={(e) => engine.setFreehandAngleSnapping([Number(e.target.value) || 45])}
+                  className="w-12 rounded-md border border-white/10 bg-black/20 px-1 py-0.5 text-center text-[10px] text-white outline-none"
+                />°
+              </label>
               <button
                 type="button"
-                onClick={() => engine.setFreehandMode("free")}
-                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
-                  state.freehandMode === "free" ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
-                }`}
-                title="قلم آزاد با صاف‌سازی و لرزش‌گیری"
+                onClick={() => engine.setFreehandTuning({ axisLock: !state.freehandTuning.axisLock })}
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${state.freehandTuning.axisLock ? "bg-cyan-500/20 text-cyan-200" : "text-slate-500"}`}
+                title="قفل افقی/عمودی"
               >
-                آزاد
-              </button>
-              <button
-                type="button"
-                onClick={() => engine.setFreehandMode("straight")}
-                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
-                  state.freehandMode === "straight" ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
-                }`}
-                title="خط مستقیم افقی/عمودی؛ Shift در حالت آزاد هم همین قفل را فعال می‌کند"
-              >
-                خط دقیق
+                محور
               </button>
             </div>
           )}

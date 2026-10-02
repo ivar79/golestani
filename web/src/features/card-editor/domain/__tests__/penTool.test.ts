@@ -72,6 +72,7 @@ describe("pen tool", () => {
     expect(engine.getState().penDraft).toBeNull();
     expect(engine.getState().tool).toBe("select");
     expect(engine.getState().selection.layerId).toBe(id);
+    expect(engine.getState().editingPathId).toBe(id);
 
     // The world position of every anchor survives the box normalisation.
     expect(worldOf(engine, id!, 0)).toEqual({ x: 100, y: 100 });

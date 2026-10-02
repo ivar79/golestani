@@ -47,7 +47,7 @@ import {
 import type { CardDocument, CardLayer, BadgeLayer, LayerKind, QrLayer, ShapeKind } from "../domain/document";
 import { LAYER_KIND_LABELS, SHAPE_KIND_LABELS } from "../domain/document";
 import { EDITOR_PALETTE } from "../domain/palette";
-import type { CurveProfile } from "../domain/curveLine";
+import type { CurveKind } from "../domain/curveGeometry";
 import {
   STROKE_LINE_CAP_LABELS,
   STROKE_LINE_JOIN_LABELS,
@@ -507,7 +507,7 @@ export function Toolbox({
                 onClick={() => {
                   if (addBlocked || !layerKindAllowed(entitlements.capabilities, "path")) return;
                   engine.setTool("select");
-                  engine.addCurvedLine(42, profile as CurveProfile);
+                  engine.addCurve(profile as CurveKind);
                   setShowCurvePicker(false);
                 }}
                 className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 text-right hover:border-cyan-300/40 hover:bg-cyan-400/10"
@@ -715,10 +715,37 @@ export function DrawingPanel({ engine }: { engine: EditorEngine }) {
         />
       </label>
 
+      {!pen && (
+        <div className="mt-3 space-y-2 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+          <div className="text-[10px] font-bold text-cyan-200">دقت قلم آزاد</div>
+          <label className="block">
+            <span className="mb-1 flex justify-between text-[10px] text-slate-400"><span>صاف‌سازی</span><span>{Math.round(state.freehandTuning.smoothing * 100)}%</span></span>
+            <input type="range" min={0} max={100} value={Math.round(state.freehandTuning.smoothing * 100)} onChange={(e) => engine.setFreehandTuning({ smoothing: Number(e.target.value) / 100 })} className="w-full accent-cyan-400" />
+          </label>
+          <label className="block">
+            <span className="mb-1 flex justify-between text-[10px] text-slate-400"><span>حفظ جزئیات / Fidelity</span><span>{Math.round(state.freehandTuning.fidelity * 100)}%</span></span>
+            <input type="range" min={0} max={100} value={Math.round(state.freehandTuning.fidelity * 100)} onChange={(e) => engine.setFreehandTuning({ fidelity: Number(e.target.value) / 100 })} className="w-full accent-cyan-400" />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-slate-500">گام زاویه</span>
+              <input type="number" min={0.1} max={180} step={0.1} value={state.freehandTuning.angleIncrements[0] ?? 45} onChange={(e) => engine.setFreehandAngleSnapping([Number(e.target.value) || 45])} dir="ltr" className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white outline-none focus:border-cyan-400" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-slate-500">تلورانس زاویه</span>
+              <input type="number" min={0.5} max={45} step={0.1} value={state.freehandTuning.angleTolerance} onChange={(e) => engine.setFreehandTuning({ angleTolerance: Number(e.target.value) || 5 })} dir="ltr" className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white outline-none focus:border-cyan-400" />
+            </label>
+          </div>
+          <button type="button" onClick={() => engine.setFreehandTuning({ axisLock: !state.freehandTuning.axisLock })} className={`w-full rounded-lg border py-1.5 text-[10px] font-bold ${state.freehandTuning.axisLock ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200" : "border-white/10 bg-white/5 text-slate-400"}`}>
+            {state.freehandTuning.axisLock ? "قفل محور افقی/عمودی: فعال" : "قفل محور افقی/عمودی: خاموش"}
+          </button>
+        </div>
+      )}
+
       <p className="mt-3 text-[10px] leading-4 text-slate-500">
         {pen
           ? "کلیک = نقطه، کلیک و کشیدن = نقطهٔ نرم با دو دسته، کلیک روی نقطهٔ اول = بستن مسیر، Esc = پایان مسیر باز."
-          : "روی بوم بکشید تا مسیر ساخته شود. مسیرها مثل سایر لایه‌ها قابل ویرایش و جابه‌جایی هستند."}
+          : "روی بوم بکشید؛ خروجی با Pipeline واقعی به Bezier قابل ویرایش تبدیل می‌شود. Enter یا دابل‌کلیک برای ویرایش Nodeها."}
       </p>
     </div>
   );

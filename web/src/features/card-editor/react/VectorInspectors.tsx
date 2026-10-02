@@ -14,6 +14,7 @@
  * state — so the inspector can never disagree with the canvas.
  */
 
+import { useState } from "react";
 import type { ShapeKind, ShapeLayer, PathLayer, CardLayer } from "../domain/document";
 import { SHAPE_KIND_LABELS } from "../domain/document";
 import { EDITOR_PALETTE } from "../domain/palette";
@@ -32,6 +33,7 @@ import { StrokeEditor } from "./StrokeEditor";
 import { useCardEditor } from "./useCardEditor";
 import { LUXURY_MATERIALS } from "../domain/luxuryMaterials";
 import { curveProfilePoints, type CurveProfile } from "../domain/curveLine";
+import { CURVE_LIMITS, type CurveSpec } from "../domain/curveGeometry";
 import { useEntitlements, PremiumBadge } from "@/components/cards/FeatureGate";
 import { Lock } from "lucide-react";
 import Link from "next/link";
@@ -166,6 +168,94 @@ function SliderRow({
         className="w-full accent-cyan-400"
       />
     </label>
+  );
+}
+
+function CurveNumberField({
+  label,
+  value,
+  min,
+  max,
+  step = 0.1,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const commit = () => {
+    if (text === null) return;
+    const n = Number(text);
+    if (Number.isFinite(n)) onCommit(Math.min(max, Math.max(min, n)));
+    setText(null);
+  };
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] text-slate-500">{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step={step}
+        min={min}
+        max={max}
+        dir="ltr"
+        value={text ?? String(Math.round(value * 100) / 100)}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+        className="w-full rounded-lg border border-white/15 bg-white/5 p-1.5 text-xs text-white tabular-nums outline-none focus:border-cyan-400"
+      />
+    </label>
+  );
+}
+
+function CurveParameterEditor({ engine, layer }: { engine: EditorEngine; layer: PathLayer }) {
+  if (!layer.curve || layer.curve.kind === "custom") return null;
+  const spec = layer.curve as CurveSpec;
+  const patch = (next: Partial<CurveSpec>) => engine.setCurveParam(layer.id, next);
+  const slider = (label: string, value: number, min: number, max: number, step: number, suffix: string, key: keyof CurveSpec) => (
+    <SliderRow
+      label={label}
+      value={value}
+      min={min}
+      max={max}
+      step={step}
+      suffix={suffix}
+      onLive={(next) => engine.setCurveParam(layer.id, { [key]: next } as Partial<CurveSpec>, { transient: true })}
+      onCommit={() => engine.commitTransient()}
+    />
+  );
+  return (
+    <div className="space-y-3 rounded-xl border border-cyan-400/30 bg-cyan-500/[0.05] p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-cyan-200">پارامترهای زندهٔ منحنی</span>
+        <span className="text-[9px] text-slate-500">هر تغییر فوراً روی بوم اعمال می‌شود</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <CurveNumberField label="طول" value={spec.length} min={CURVE_LIMITS.length.min} max={CURVE_LIMITS.length.max} step={1} onCommit={(v) => patch({ length: v })} />
+        <CurveNumberField label="دامنه" value={spec.amplitude} min={CURVE_LIMITS.amplitude.min} max={CURVE_LIMITS.amplitude.max} step={1} onCommit={(v) => patch({ amplitude: v })} />
+      </div>
+      {spec.kind !== "arc" && spec.kind !== "s" ? slider("فرکانس / سیکل", spec.frequency, CURVE_LIMITS.frequency.min, CURVE_LIMITS.frequency.max, 0.05, "×", "frequency") : null}
+      {spec.kind !== "arc" ? slider("فاز", spec.phase, CURVE_LIMITS.phase.min, CURVE_LIMITS.phase.max, 0.1, "°", "phase") : null}
+      {spec.kind !== "arc" ? slider("تقارن", spec.symmetry, CURVE_LIMITS.symmetry.min, CURVE_LIMITS.symmetry.max, 0.01, "", "symmetry") : null}
+      <div className="grid grid-cols-2 gap-2">
+        <CurveNumberField label="مماس ابتدا" value={spec.startTangent ?? 0} min={CURVE_LIMITS.tangent.min} max={CURVE_LIMITS.tangent.max} step={0.1} onCommit={(v) => patch({ startTangent: v })} />
+        <CurveNumberField label="مماس انتها" value={spec.endTangent ?? 0} min={CURVE_LIMITS.tangent.min} max={CURVE_LIMITS.tangent.max} step={0.1} onCommit={(v) => patch({ endTangent: v })} />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <button type="button" onClick={() => patch({ startTangent: null })} className="rounded-lg border border-white/10 bg-white/5 py-1.5 text-[10px] text-slate-300 hover:text-white">مماس طبیعی ابتدا</button>
+        <button type="button" onClick={() => patch({ endTangent: null })} className="rounded-lg border border-white/10 bg-white/5 py-1.5 text-[10px] text-slate-300 hover:text-white">مماس طبیعی انتها</button>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => patch({ reversed: !spec.reversed })} className={`flex-1 rounded-lg border py-1.5 text-[10px] font-bold ${spec.reversed ? "border-cyan-400 bg-cyan-500/15 text-cyan-200" : "border-white/10 bg-white/5 text-slate-300"}`}>↔ معکوس</button>
+        <button type="button" onClick={() => engine.convertCurveToPath(layer.id)} className="flex-1 rounded-lg border border-amber-300/20 bg-amber-400/[0.06] py-1.5 text-[10px] font-bold text-amber-200 hover:bg-amber-400/10">تبدیل به مسیر</button>
+      </div>
+      <p className="text-[9px] leading-4 text-slate-500">برای کنترل دستی هر نقطه، «تبدیل به مسیر» را بزن؛ سپس هر Node و Handle مستقل از پارامترهای موج قابل جابه‌جایی است.</p>
+    </div>
   );
 }
 
@@ -436,13 +526,18 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
           </div>
           <button
             type="button"
-            onClick={() => engine.setPathEditing(layer.id)}
+            onClick={() => {
+              if (layer.curve) engine.convertCurveToPath(layer.id);
+              engine.setPathEditing(layer.id);
+            }}
             className="w-full rounded-lg border border-cyan-300/20 bg-cyan-400/[0.04] py-1.5 text-[9px] font-bold text-cyan-200 hover:bg-cyan-400/10"
           >
             ویرایش نقاط و دستگیره‌ها
           </button>
         </div>
       )}
+
+      <CurveParameterEditor engine={engine} layer={layer} />
 
       {/* Arc Curvature Slider (Canva-like intuitive curve control).
           `bend` is the canonical model; the slider presents it as a ±100%
@@ -498,7 +593,14 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
         <button
           type="button"
           aria-pressed={editing}
-          onClick={() => engine.setPathEditing(editing ? null : layer.id)}
+          onClick={() => {
+            if (editing) {
+              engine.setPathEditing(null);
+            } else {
+              if (layer.curve) engine.convertCurveToPath(layer.id);
+              engine.setPathEditing(layer.id);
+            }
+          }}
           className={`flex-1 rounded-lg border py-1.5 text-[11px] font-bold transition ${
             editing
               ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
