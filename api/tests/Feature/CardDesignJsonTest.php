@@ -880,6 +880,8 @@ class CardDesignJsonTest extends TestCase
                 'startTangent' => null,
                 'endTangent' => -30,
                 'reversed' => true,
+                'nodes' => 12,
+                'chordAngle' => 17.3,
             ],
             'stroke' => '#0ea5e9', 'strokeWidth' => 4, 'fill' => null,
         ];
@@ -903,8 +905,48 @@ class CardDesignJsonTest extends TestCase
         $this->assertNull($stored['curve']['startTangent']);
         $this->assertSame(-30, $stored['curve']['endTangent']);
         $this->assertTrue($stored['curve']['reversed']);
+        // Editable node count and chord direction survive exactly. A fractional
+        // rotation (17.3°) must not be rounded away, and the node count must not
+        // drift off the ladder.
+        $this->assertSame(12, $stored['curve']['nodes']);
+        $this->assertSame(17.3, $stored['curve']['chordAngle']);
         $this->assertSame(12.5, $stored['angle']);
         $this->assertSame('curve', $stored['pathMode']);
+    }
+
+    /** A tampered node count snaps onto the ladder instead of exploding anchors. */
+    public function test_curve_node_count_snaps_onto_the_ladder(): void
+    {
+        Storage::fake('card_files');
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'D23', 'slug' => 'design-json-23', 'status' => 'approved']);
+        $this->attachPlan($business, ['card_editor' => true]);
+
+        $design = $this->validDesign();
+        $design['layers'][] = [
+            'id' => 'nodes', 'kind' => 'path', 'pathMode' => 'curve',
+            'x' => 0, 'y' => 0, 'width' => 10, 'height' => 10,
+            'angle' => 0, 'opacity' => 1, 'locked' => false, 'hidden' => false,
+            'z' => 1, 'color' => null, 'background' => null,
+            'closed' => false,
+            'points' => [
+                ['x' => 0, 'y' => 0, 'hIn' => null, 'hOut' => null],
+                ['x' => 10, 'y' => 10, 'hIn' => null, 'hOut' => null],
+            ],
+            'curve' => ['kind' => 'sine', 'nodes' => 9999, 'chordAngle' => 900],
+            'stroke' => '#0ea5e9', 'strokeWidth' => 4, 'fill' => null,
+        ];
+
+        $this->actingAs($owner)->putJson("/api/businesses/{$business->id}/card", [
+            'design_json' => $design,
+        ])->assertOk();
+
+        $stored = collect(
+            $this->actingAs($owner)->getJson("/api/businesses/{$business->id}/card")->assertOk()->json('design_json.layers')
+        )->keyBy('id')['nodes'];
+
+        $this->assertSame(16, $stored['curve']['nodes']);
+        $this->assertSame(360.0, (float) $stored['curve']['chordAngle']);
     }
 
     /** Impossible curve values are clamped; unknown keys never ride along. */

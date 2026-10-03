@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   FileText,
   Trash2,
@@ -28,6 +29,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import Link from "next/link";
+import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { listBusinesses, type Business } from "@/lib/businesses";
 import api, { extractApiError } from "@/lib/api";
@@ -53,15 +55,14 @@ import {
   type EntitlementPayload,
   type CardLockState,
 } from "@/lib/entitlements";
-import CardStudio from "@/features/card-editor/react/CardStudio";
 import CardExportMenu from "@/components/cards/CardExportMenu";
 import { parseDocument } from "@/features/card-editor/domain/factory";
 import type { CardDocument } from "@/features/card-editor/domain/document";
-import {
-  exportCardFile,
-  type ExportFormat,
-  type RasterScale,
-} from "@/features/card-editor/export/exportCard";
+import type { ExportFormat, RasterScale } from "@/features/card-editor/export/exportCard";
+
+const CardStudio = dynamic(() => import("@/features/card-editor/react/CardStudio"), {
+  loading: () => <div className="min-h-[420px] animate-pulse rounded-3xl bg-white/5" />,
+});
 
 /**
  * Structured API diagnostic — the loader/saver catch blocks used to swallow
@@ -76,18 +77,24 @@ import {
  */
 function logCardApiError(scope: string, error: unknown): void {
   if (process.env.NODE_ENV !== "development") return;
-  const e = error as {
-    response?: { status?: number; data?: unknown };
-    message?: string;
-    config?: { method?: string; url?: string };
-  };
-  // eslint-disable-next-line no-console -- dev-only diagnostic for the card API contract
+  if (axios.isAxiosError(error)) {
+    console.error(`[CardMaker][${scope}]`, {
+      isAxiosError: true,
+      status: error.response?.status ?? null,
+      code: error.code ?? null,
+      method: error.config?.method ?? null,
+      url: error.config?.url ?? null,
+      baseURL: error.config?.baseURL ?? null,
+      responseData: error.response?.data ?? null,
+      message: error.message,
+    });
+    return;
+  }
+  const message = error instanceof Error ? error.message : String(error);
   console.error(`[CardMaker][${scope}]`, {
-    status: e?.response?.status,
-    method: e?.config?.method,
-    url: e?.config?.url,
-    data: e?.response?.data,
-    message: e?.message,
+    isAxiosError: false,
+    name: error instanceof Error ? error.name : typeof error,
+    message,
   });
 }
 
@@ -134,7 +141,7 @@ type DeviceKey = "mobile" | "tablet" | "desktop";
 const DEVICE_WIDTHS: Record<DeviceKey, number> = { mobile: 375, tablet: 768, desktop: 1040 };
 
 export default function CardMakerPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, token } = useAuth();
   const canvas = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -190,20 +197,27 @@ export default function CardMakerPage() {
     [template, theme, fontSize, fontFamily, savedSnapshot]
   );
 
-  // Load owned businesses
+  // Load businesses alongside AuthContext's /auth/me validation. The API
+  // interceptor already reads the persisted token, and the page remains gated
+  // on authLoading/user before exposing any business data.
   useEffect(() => {
-    if (!authLoading && user) {
-      listBusinesses()
-        .then((items) => {
-          setBusinesses(items);
-          if (items.length > 0) setSelectedBusiness(items[0]);
-        })
-        .catch((err) => {
-          setBusinesses([]);
-          setMessage({ text: extractApiError(err), error: true });
-        });
-    }
-  }, [authLoading, user]);
+    if (!token) return;
+    let active = true;
+    listBusinesses()
+      .then((items) => {
+        if (!active) return;
+        setBusinesses(items);
+        if (items.length > 0) setSelectedBusiness(items[0]);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setBusinesses([]);
+        setMessage({ text: extractApiError(err), error: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   // Load card settings for selected business
   useEffect(() => {
@@ -236,6 +250,7 @@ export default function CardMakerPage() {
         // request shape changed) — the diagnostic names the rule; the UI keeps
         // the last known-good state and stays usable.
         logCardApiError("load-card", err);
+        setMessage({ text: `بارگذاری تنظیمات کارت انجام نشد: ${extractApiError(err)}`, error: true });
         setSavedSnapshot("classic|navy|medium|sans");
       })
       .finally(() => {
@@ -456,6 +471,7 @@ export default function CardMakerPage() {
     setMessage(null);
 
     try {
+      const { exportCardFile } = await import("@/features/card-editor/export/exportCard");
       await exportCardFile({
         format,
         // Vector formats are serialized from the document; raster from the DOM.

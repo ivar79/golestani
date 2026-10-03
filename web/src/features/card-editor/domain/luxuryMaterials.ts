@@ -7,7 +7,6 @@
  */
 
 import type { PathLayer } from "./document";
-import { curveProfilePoints, type CurveProfile } from "./curveLine";
 
 export type LuxuryMaterialKey =
   | "none"
@@ -125,12 +124,13 @@ export function calculateArcHandles(
 }
 
 /**
- * Generate a curved line / arc path layer.
+ * Generate the legacy 2-POINT ARC layer (signed sagitta `bend`).
  *
- * `bend` (a signed sagitta ratio, ±1 = semicircle) is the CANONICAL model —
- * the resolver, the on-canvas bend handle and the export all consume it.
- * `curvature` (a -100..100 percentage) is kept only so documents saved by
- * older builds still type-check; it is normalized onto `bend` at parse time.
+ * This is deliberately NOT the curve tool: it is the `bend` model — two
+ * endpoints plus one curvature ratio — that the arc handle and the resolver's
+ * `A` command consume. The multi-node profiles (arc / sine / sine-asymmetric /
+ * S-wave) are parametric curves and come from `domain/curveGeometry.ts`
+ * (`createCurveLayer`), so there is no second profile generator here.
  */
 export function createCurvedLineLayer(
   x = 100,
@@ -139,25 +139,15 @@ export function createCurvedLineLayer(
   height = 100,
   curvature = 40,
   color = "#0ea5e9",
-  profile: CurveProfile = "arc",
 ): PathLayer {
   const id = `path-${Math.random().toString(36).slice(2, 9)}`;
-  const points = curveProfilePoints(width, height, profile, Math.min(0.44, Math.abs(curvature) / 100));
-  const isArc = profile === "arc";
+  const mid = Math.max(height, 40) / 2;
 
   return {
     id,
-    name:
-      profile === "sine"
-        ? "موج سینوسی"
-        : profile === "sine-asymmetric"
-          ? "موج سینوسی نامتقارن"
-          : profile === "s"
-            ? "موج S"
-            : "خط منحنی کمانی",
+    name: "خط منحنی کمانی",
     kind: "path",
     pathMode: "curve",
-    curveProfile: profile,
     x,
     y,
     width,
@@ -177,8 +167,11 @@ export function createCurvedLineLayer(
     strokeOpacity: 1,
     fill: null,
     curvature,
-    ...(isArc ? { bend: clampBend(curvature / 100) } : {}),
-    points,
+    bend: clampBend(curvature / 100),
+    points: [
+      { x: 0, y: mid, hIn: null, hOut: null },
+      { x: width, y: mid, hIn: null, hOut: null },
+    ],
   };
 }
 

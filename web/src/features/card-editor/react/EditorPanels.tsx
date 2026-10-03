@@ -40,7 +40,6 @@ import {
   Type,
   Waves,
   Spline,
-  MoreHorizontal,
   Combine,
   SquareStack,
 } from "lucide-react";
@@ -186,15 +185,15 @@ function BooleanToolbar({ engine, selectedCount }: { engine: EditorEngine; selec
 type ToolboxEntry = LayerKind | "pointer" | "pen" | "curved_line";
 
 const TOOLBOX: { kind: ToolboxEntry; icon: typeof Type; label: string }[] = [
-  { kind: "pointer", icon: MousePointer2, label: "انتخاب" },
-  { kind: "text", icon: Type, label: "متن" },
-  { kind: "shape", icon: Square, label: "شکل" },
-  { kind: "curved_line", icon: Waves, label: "خط منحنی" },
-  { kind: "pen", icon: PenTool, label: "قلم انحنا" },
+  { kind: "pointer", icon: MousePointer2, label: "انتخاب و جابه‌جایی" },
+  { kind: "text", icon: Type, label: "افزودن متن" },
+  { kind: "shape", icon: Square, label: "افزودن شکل" },
+  { kind: "curved_line", icon: Waves, label: "خط منحنی آماده" },
+  { kind: "pen", icon: PenTool, label: "رسم مسیر گره‌دار" },
   { kind: "path", icon: Pencil, label: "قلم آزاد" },
-  { kind: "image", icon: ImagePlus, label: "تصویر / لوگو" },
-  { kind: "qr", icon: QrCode, label: "کد QR" },
-  { kind: "badge", icon: BadgeCheck, label: "نشان" },
+  { kind: "image", icon: ImagePlus, label: "افزودن تصویر" },
+  { kind: "qr", icon: QrCode, label: "افزودن کد QR" },
+  { kind: "badge", icon: BadgeCheck, label: "افزودن نشان" },
 ];
 
 const SHAPE_PRESETS: {
@@ -299,7 +298,6 @@ export function Toolbox({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [showShapePicker, setShowShapePicker] = useState(false);
   const [showCurvePicker, setShowCurvePicker] = useState(false);
-  const [showMoreTools, setShowMoreTools] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -316,7 +314,6 @@ export function Toolbox({
     if (kind === "shape") {
       if (addBlocked || !layerKindAllowed(entitlements.capabilities, "shape")) return;
       setShowCurvePicker(false);
-      setShowMoreTools(false);
       setShowShapePicker((v) => !v);
       return;
     }
@@ -324,7 +321,6 @@ export function Toolbox({
     if (kind === "curved_line") {
       if (addBlocked || !layerKindAllowed(entitlements.capabilities, "path")) return;
       setShowShapePicker(false);
-      setShowMoreTools(false);
       setShowCurvePicker((v) => !v);
       return;
     }
@@ -367,9 +363,9 @@ export function Toolbox({
   }
 
   const primaryTools: ToolboxEntry[] = ["pointer", "text", "shape", "curved_line", "pen", "path"];
-  const secondaryTools: ToolboxEntry[] = ["image", "qr", "badge"];
+  const addTools: ToolboxEntry[] = ["image", "qr", "badge"];
 
-  const renderToolButton = (kind: ToolboxEntry, compact = false) => {
+  const renderToolButton = (kind: ToolboxEntry) => {
     const item = TOOLBOX.find((entry) => entry.kind === kind)!;
     const Icon = item.icon;
     const isPointer = kind === "pointer";
@@ -387,7 +383,9 @@ export function Toolbox({
     const isSelected =
       (kind === "pointer" && state.tool === "select") ||
       (kind === "path" && state.tool === "draw") ||
-      (kind === "pen" && state.tool === "pen");
+      (kind === "pen" && state.tool === "pen") ||
+      (kind === "shape" && showShapePicker) ||
+      (kind === "curved_line" && showCurvePicker);
     return (
       <button
         key={kind}
@@ -396,18 +394,18 @@ export function Toolbox({
         disabled={disabled}
         title={item.label}
         aria-pressed={isSelected}
-        className={`group relative flex ${compact ? "h-9 w-9" : "h-10 w-10"} items-center justify-center rounded-xl border transition ${
+        className={`group flex w-full items-center gap-2 rounded-xl border px-2 py-2 text-right transition ${
           isSelected
-            ? "border-cyan-300/80 bg-cyan-400/15 text-white shadow-[0_0_22px_rgba(34,211,238,0.12)]"
-            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+            ? "border-cyan-300/50 bg-cyan-400/10 text-white"
+            : "border-transparent bg-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
         } disabled:opacity-35`}
       >
         {kind === "image" && uploading ? (
           <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
         ) : (
-          <Icon className={`h-[17px] w-[17px] ${isSelected ? "text-cyan-200" : "text-slate-300 group-hover:text-white"}`} />
+          <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-cyan-200" : "text-slate-300 group-hover:text-white"}`} />
         )}
-        <span className="pointer-events-none absolute right-full mr-2 hidden whitespace-nowrap rounded-lg border border-white/10 bg-[#101722]/95 px-2 py-1 text-[10px] font-semibold text-white shadow-xl backdrop-blur-md group-hover:block">
+        <span className="min-w-0 text-[10px] font-semibold leading-4">
           {item.label}
         </span>
         {!kindAllowed && <span className="absolute -left-1 -top-1"><PremiumBadge label="" /></span>}
@@ -417,42 +415,17 @@ export function Toolbox({
 
   return (
     <div
-      className="relative z-[5000] flex shrink-0 flex-col items-center gap-1.5 rounded-[20px] border border-white/[0.09] bg-[#0a111c]/90 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.38)] backdrop-blur-2xl"
+      className="relative z-[5000] flex max-h-[calc(100vh-8rem)] w-[142px] shrink-0 flex-col items-stretch gap-1 overflow-y-auto rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)]"
       role="toolbar"
       aria-label="ابزارهای استودیو"
     >
-      <h3 className="sr-only">ابزارهای استودیو</h3>
+      <h3 className="px-1 pb-1 text-right text-[10px] font-bold text-slate-400">ابزار کار</h3>
 
       {primaryTools.map((kind) => renderToolButton(kind))}
 
-      <div className="my-0.5 h-px w-7 bg-white/10" />
-
-      <button
-        type="button"
-        onClick={() => {
-          setShowMoreTools((v) => !v);
-          setShowShapePicker(false);
-          setShowCurvePicker(false);
-        }}
-        title="ابزارهای بیشتر"
-        aria-expanded={showMoreTools}
-        className={`group relative flex h-9 w-9 items-center justify-center rounded-xl border transition ${
-          showMoreTools
-            ? "border-amber-300/60 bg-amber-400/10 text-amber-200"
-            : "border-white/10 bg-white/[0.035] text-slate-400 hover:bg-white/[0.08] hover:text-white"
-        }`}
-      >
-        <MoreHorizontal className="h-[18px] w-[18px]" />
-        <span className="pointer-events-none absolute right-full mr-2 hidden whitespace-nowrap rounded-lg border border-white/10 bg-[#101722]/95 px-2 py-1 text-[10px] font-semibold text-white shadow-xl backdrop-blur-md group-hover:block">
-          ابزارهای بیشتر
-        </span>
-      </button>
-
-      {showMoreTools && (
-        <div className="absolute right-full top-0 z-[10000] mr-2 flex gap-1.5 rounded-2xl border border-white/10 bg-[#0b121e]/95 p-1.5 shadow-[0_24px_70px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
-          {secondaryTools.map((kind) => renderToolButton(kind, true))}
-        </div>
-      )}
+      <div className="my-1 h-px bg-white/10" />
+      <h3 className="px-1 pb-1 text-right text-[10px] font-bold text-slate-400">افزودن محتوا</h3>
+      {addTools.map((kind) => renderToolButton(kind))}
 
       {showShapePicker && (
         <div className="absolute right-full top-0 z-[10000] mr-2 w-[290px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
@@ -1094,16 +1067,22 @@ export function InspectorPanel({
           <NumericFieldInput engine={engine} layerId={selected.id} field="height" label="ارتفاع" value={selected.height} />
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
+          {/* FRACTIONAL ROTATION: the exact field accepts decimals and
+              expressions (`17.3`, `+2.5`, `*2`), while the slider below stays
+              at 1° steps and is therefore NOT rounded onto the field — the two
+              are independent inputs, so a 0.1° rotation survives a slider touch
+              only when the slider is actually dragged. */}
           <NumericFieldInput engine={engine} layerId={selected.id} field="angle" label="چرخش (درجه)" value={selected.angle ?? 0} />
           <div className="flex items-end pb-1">
             <input
               type="range"
               min={-180}
               max={180}
-              value={Math.round(selected.angle)}
+              step={1}
+              value={Math.round(selected.angle ?? 0)}
               onChange={(e) => engine.setLayerBox(selected.id, { angle: Number(e.target.value) } as never)}
               className="w-full accent-cyan-400"
-              title="چرخش سریع"
+              title="چرخش سریع (۱ درجه‌ای) — برای زاویه اعشاری از کادر چرخش استفاده کنید"
             />
           </div>
         </div>

@@ -8,7 +8,15 @@
  * layers, so existing designs are preserved, never reset.
  */
 import type { Business } from "@/lib/businesses";
-import { ARTBOARD, type BadgeLayer, type CardLayer, type CardDocument, type ImageLayer, type QrLayer, type ShapeLayer, type TextLayer } from "./document";
+import { ARTBOARD, type BadgeLayer, type CardLayer, type CardDocument, type ImageLayer, type PathLayer, type QrLayer, type ShapeLayer, type TextLayer } from "./document";
+import {
+  DEFAULT_CURVE_SPEC,
+  LEGACY_CURVE_PROFILE_KINDS,
+  normalizeCurveSpec,
+  normalizeNodeCount,
+  type CurveKind,
+  type CurveSpec,
+} from "./curveGeometry";
 
 export type TemplateKey = "classic" | "midnight" | "emerald" | "local" | "creative";
 
@@ -178,14 +186,75 @@ export function parseDocument(json: string | null | undefined): CardDocument | n
 }
 
 /**
- * Bring a stored layer up to the CURRENT document model. Today that means the
- * curved-line contract: older builds persisted `curvature` (-100..100) and
- * left `bend` unset, which made the arc model and the bend handle disagree.
- * `bend` wins whenever it is present, otherwise the legacy value is converted
- * once, at load — never on save (stored data is never mutated here).
+ * Bring a stored layer up to the CURRENT document model.
+ *
+ * TWO migrations happen here, once, at load — never on save (stored data is
+ * never mutated by this function):
+ *
+ * 1. The curved-line contract. Older builds persisted `curvature` (-100..100)
+ *    and left `bend` unset, which made the arc model and the bend handle
+ *    disagree. `bend` wins whenever it is present, otherwise the legacy value is
+ *    converted once.
+ *
+ * 2. The CURVE PROFILE vocabulary. The legacy `curveProfile` field duplicated
+ *    the profile list that now lives in `curveGeometry.ts` as `CurveKind`. It is
+ *    folded into a canonical `curve` spec and DROPPED, so the live document has
+ *    exactly one profile vocabulary. A layer that already carries a spec (or is
+ *    a plain 2-point arc) is left alone, and a profile the parametric model
+ *    cannot reproduce (`sine-asymmetric`) becomes `custom` — the honest answer,
+ *    because declaring it "sine" would silently redraw the saved curve.
  */
 function normalizeLegacyLayer(layer: CardLayer): CardLayer {
+  const migrated = migrateCurvature(layer);
+  return migrateCurveProfile(migrated);
+}
+
+function migrateCurvature(layer: CardLayer): CardLayer {
   if (layer.kind !== "path" || layer.bend !== undefined || layer.curvature === undefined) return layer;
   if (layer.points.length !== 2) return layer;
   return { ...layer, bend: Math.max(-1.5, Math.min(1.5, layer.curvature / 100)) };
+}
+
+function migrateCurveProfile(layer: CardLayer): CardLayer {
+  if (layer.kind !== "path") return layer;
+  const profile = layer.curveProfile;
+  if (profile === undefined) return layer;
+  // A real spec already describes this layer — the legacy label is redundant.
+  if (layer.curve) {
+    const { curveProfile: _dropped, ...rest } = layer;
+    void _dropped;
+    return rest as CardLayer;
+  }
+  const kind: CurveKind | undefined = LEGACY_CURVE_PROFILE_KINDS[profile];
+  const { curveProfile: _dropped, ...rest } = layer;
+  void _dropped;
+  const base = rest as PathLayer;
+  if (!kind || kind === "custom" || base.points.length < 2) return base;
+  // A 2-point arc is the bend model, not a parametric curve: converting it would
+  // move geometry the user drew with the arc tool.
+  if (kind === "arc" && base.points.length === 2) return base;
+  return { ...base, pathMode: "curve", curve: defaultSpecForKind(kind, base) };
+}
+
+/**
+ * The spec a legacy profile converts into, sized from the geometry that was
+ * actually stored (so the converted curve lands on the SAME chord instead of
+ * jumping to the default 600px one).
+ */
+function defaultSpecForKind(kind: CurveKind, layer: PathLayer): CurveSpec {
+  const chord = Math.hypot(
+    layer.points[layer.points.length - 1].x - layer.points[0].x,
+    layer.points[layer.points.length - 1].y - layer.points[0].y,
+  );
+  const amplitude = layer.points.reduce<number>(
+    (peak, point) => Math.max(peak, Math.abs(point.y - layer.points[0].y)),
+    0,
+  );
+  return normalizeCurveSpec({
+    ...DEFAULT_CURVE_SPEC,
+    kind,
+    length: chord > 1 ? chord : DEFAULT_CURVE_SPEC.length,
+    amplitude: amplitude > 1 ? amplitude : DEFAULT_CURVE_SPEC.amplitude,
+    nodes: normalizeNodeCount(layer.points.length),
+  });
 }

@@ -40,6 +40,17 @@ type Props = {
   preview?: boolean;
 };
 
+function worldAnchorPosition(layer: PathLayer, index: number): { x: number; y: number } {
+  const point = layer.points[index];
+  const angle = ((layer.angle ?? 0) * Math.PI) / 180;
+  const dx = point.x - layer.width / 2;
+  const dy = point.y - layer.height / 2;
+  return {
+    x: layer.x + layer.width / 2 + dx * Math.cos(angle) - dy * Math.sin(angle),
+    y: layer.y + layer.height / 2 + dx * Math.sin(angle) + dy * Math.cos(angle),
+  };
+}
+
 export function EditorStage({ engine, doc, exportRef, preview = false }: Props) {
   const state = useCardEditor(engine);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,11 +66,20 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const nodeMarqueeRef = useRef<{ x0: number; y0: number } | null>(null);
   const marqueeEndRef = useRef<{ x: number; y: number } | null>(null);
   const marqueeShiftRef = useRef(false);
+  const [mirrorAxisPickMode, setMirrorAxisPickMode] = useState(false);
+  const [mirrorAxis, setMirrorAxis] = useState<{
+    start: { x: number; y: number };
+    end: { x: number; y: number } | null;
+  } | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const panRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isEditingZoom, setIsEditingZoom] = useState(false);
   const [zoomInputValue, setZoomInputValue] = useState("");
+  const anchorXInputRef = useRef<HTMLInputElement>(null);
+  const anchorYInputRef = useRef<HTMLInputElement>(null);
+  const tangentAngleInputRef = useRef<HTMLInputElement>(null);
+  const tangentLengthInputRef = useRef<HTMLInputElement>(null);
 
   const fitToContainer = useCallback(() => {
     const el = containerRef.current;
@@ -156,6 +176,30 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     state.editingPathId && selectedLayer && selectedLayer.id === state.editingPathId && selectedLayer.kind === "path"
       ? (selectedLayer as PathLayer)
       : null;
+  const selectedNodeIndices = state.editingPathId
+    ? engine.selectedAnchorIndices(state.editingPathId)
+    : [];
+  const canDeleteSelectedNodes =
+    editedPathLayer !== null &&
+    selectedNodeIndices.length > 0 &&
+    editedPathLayer.points.length - selectedNodeIndices.length >= (editedPathLayer.closed ? 3 : 2);
+  const selectedNodeIndex = selectedNodeIndices.length === 1 ? selectedNodeIndices[0] : null;
+  const selectedNodePosition =
+    editedPathLayer && selectedNodeIndex !== null
+      ? worldAnchorPosition(editedPathLayer, selectedNodeIndex)
+      : null;
+  const selectedNode = editedPathLayer && selectedNodeIndex !== null
+    ? editedPathLayer.points[selectedNodeIndex]
+    : null;
+  const selectedHandleLength = selectedNode?.hOut
+    ? Math.hypot(selectedNode.hOut.x - selectedNode.x, selectedNode.hOut.y - selectedNode.y)
+    : 40;
+  const selectedTangentAngle = selectedNode?.hOut
+    ? Math.round(
+        (Math.atan2(selectedNode.hOut.y - selectedNode.y, selectedNode.hOut.x - selectedNode.x) * 180) / Math.PI +
+          (editedPathLayer?.angle ?? 0),
+      )
+    : 0;
 
   // Accepts anything with client coordinates so the Bezier overlays can reuse
   // the exact same artboard projection the stage uses.
@@ -168,6 +212,23 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       y: (event.clientY - rect.top) / zoom,
     };
   }, [zoom]);
+
+  const onMirrorAxisPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!mirrorAxisPickMode || preview) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-node-edit-toolbar]")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = pointerPos(event);
+    if (point.x < 0 || point.y < 0 || point.x > doc.artboard.width || point.y > doc.artboard.height) return;
+    if (!mirrorAxis) {
+      setMirrorAxis({ start: point, end: null });
+      return;
+    }
+    if (Math.hypot(point.x - mirrorAxis.start.x, point.y - mirrorAxis.start.y) < 1) return;
+    setMirrorAxis({ ...mirrorAxis, end: point });
+    setMirrorAxisPickMode(false);
+  };
 
   const isDrawingRef = useRef(false);
   const brushPtsRef = useRef<FreehandPoint[]>([]);
@@ -231,6 +292,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       const mod = e.ctrlKey || e.metaKey;
       const id = state.selection.layerId;
       const layer = id ? doc.layers.find((l) => l.id === id) : null;
+      if (state.editingPathId && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        engine.toggleShowNodes();
+        return;
+      }
       if (e.key === "Escape") {
         // Esc commits draft if 2+ anchors exist (Figma/Illustrator contract),
         // drops draft if 1 anchor, leaves point-editing, or deselects.
@@ -334,7 +400,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [engine, doc, state.selection.layerId, state.penDraft, state.editingPathId, state.selectedAnchor, preview]);
+  }, [engine, doc, state.selection.layerId, state.penDraft, state.editingPathId, state.selectedAnchor, state.tool, preview]);
 
   const clipboard = useRef<CardLayer | null>(null);
 
@@ -448,6 +514,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     if (state.editingPathId) {
       const pos = pointerPos(event);
       nodeMarqueeRef.current = { x0: pos.x, y0: pos.y };
+      marqueeEndRef.current = null;
+      marqueeShiftRef.current = event.shiftKey;
       setNodeMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y });
       (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
       return;
@@ -525,7 +593,6 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     if (nodeMarqueeRef.current) {
       const pos = pointerPos(event);
       marqueeEndRef.current = pos;
-      marqueeShiftRef.current = event.shiftKey;
       setNodeMarquee((current) => (current ? { ...current, x1: pos.x, y1: pos.y } : current));
       return;
     }
@@ -670,67 +737,244 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       className={`relative z-0 w-full overflow-hidden rounded-[24px] border border-white/[0.07] ${
         state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""
       } ${spaceDown ? "cursor-grab" : ""}`}
+      onPointerDownCapture={onMirrorAxisPointerDown}
       onPointerDown={onStagePointerDown}
       onPointerMove={onStagePointerMove}
       onPointerUp={onStagePointerUp}
       onWheel={onStageWheel}
       style={{
         minHeight: 500,
-        height: Math.max(500, Math.round(doc.artboard.height * zoom) + 44),
+        height: state.editingPathId && !preview
+          ? "auto"
+          : Math.max(500, Math.round(doc.artboard.height * zoom) + 44),
         background:
           "radial-gradient(circle at 50% 16%, rgba(49, 70, 92, 0.22), transparent 34%), radial-gradient(circle at 12% 88%, rgba(16, 185, 129, 0.045), transparent 28%), #060b12",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025), 0 28px 80px rgba(0,0,0,0.32)",
       }}
     >
-      {/* Floating toolbar for POINT-EDIT mode: node ops + boolean + snapping.
-          It mirrors the pen/draw toolbar pattern and only appears while a path
-          is being point-edited. */}
+      {/* Primary path-edit actions stay visible; precision tools are grouped below. */}
       {state.editingPathId && !preview && (
         <div
           dir="rtl"
-          className="absolute top-4 inset-x-0 mx-auto z-[3500] flex max-w-2xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-400/50 bg-[#0c1626]/95 px-3 py-2 shadow-2xl backdrop-blur"
+          data-node-edit-toolbar=""
+          className="relative z-[3500] mx-auto mb-2 flex w-full max-w-none flex-col items-stretch gap-2 rounded-2xl border border-white/10 bg-[#111923]/95 px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+          onPointerDown={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
             <Grip className="h-4 w-4 text-emerald-400" />
             <span className="text-xs font-bold text-white">ویرایش گره‌ها</span>
-            <span className="text-[10px] text-slate-400">
-              {engine.selectedAnchorIndices(state.editingPathId).length} انتخاب‌شده
-            </span>
+            <span className="text-[10px] text-slate-400">{selectedNodeIndices.length} گره انتخاب‌شده</span>
+            </div>
+            <span className="text-[10px] text-slate-400">برای انتخاب، روی گره بزنید؛ برای چندانتخابی Shift را نگه دارید.</span>
           </div>
-          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               title="انتخاب همهٔ گره‌ها (Ctrl+A در حالت گره)"
               onClick={() => engine.selectAllAnchors()}
-              className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/10 hover:text-white"
             >
-              همه
+              انتخاب همه
             </button>
             <button
               type="button"
+              disabled={selectedNodeIndices.length === 0}
               title="تبدیل گره‌های انتخابی به منحنی نرم"
               onClick={() => engine.setSelectedAnchorType("smooth")}
-              className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/10 hover:text-white disabled:opacity-40"
             >
-              〰️ نرم
+              منحنی نرم
             </button>
             <button
               type="button"
+              disabled={selectedNodeIndices.length === 0}
               title="تبدیل گره‌های انتخابی به گوشهٔ تیز"
               onClick={() => engine.setSelectedAnchorType("corner")}
-              className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/10 hover:text-white disabled:opacity-40"
             >
-              📐 گوشه
+              گوشهٔ تیز
             </button>
             <button
               type="button"
+              disabled={!canDeleteSelectedNodes}
               title="حذف گره‌های انتخابی"
               onClick={() => engine.deleteSelectedAnchors()}
-              className="rounded-lg px-2 py-1 text-[11px] font-bold text-rose-300 hover:text-rose-200"
+              className="rounded-lg border border-rose-400/20 bg-rose-500/5 px-2.5 py-1.5 text-[11px] font-bold text-rose-300 hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-40"
             >
-              🗑 حذف
+              حذف گره
+            </button>
+            <button
+              type="button"
+              aria-pressed={state.showNodes}
+              title="نمایش یا مخفی‌کردن گره‌ها (H)"
+              onClick={() => engine.toggleShowNodes()}
+              className={`rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] font-bold transition ${
+                state.showNodes ? "text-cyan-200 hover:text-white" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              {state.showNodes ? "پنهان‌کردن گره‌ها" : "نمایش گره‌ها"}
             </button>
           </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-2">
+            <span className="text-[11px] font-bold text-violet-200">قرینه‌سازی</span>
+            <span className="text-[10px] text-slate-400">یک محور با دو کلیک روی بوم مشخص کنید</span>
+            <div className="mr-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                aria-pressed={mirrorAxisPickMode}
+                title="دو نقطه روی بوم انتخاب کنید تا محور قرینه‌سازی مشخص شود"
+                onClick={() => {
+                  setMirrorAxis(null);
+                  setMirrorAxisPickMode(true);
+                }}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold ${
+                  mirrorAxisPickMode
+                    ? "border-violet-300/50 bg-violet-500/25 text-violet-100"
+                    : "border-violet-300/20 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20"
+                }`}
+              >
+                {mirrorAxisPickMode ? "حالا دو نقطه روی بوم بزنید" : "انتخاب محور"}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  !editedPathLayer ||
+                  Boolean(editedPathLayer.rawD) ||
+                  editedPathLayer.bend !== undefined ||
+                  !mirrorAxis?.end
+                }
+                title="ساخت یک نسخهٔ قرینه از شکل در سمت دیگر محور"
+                onClick={() => {
+                  if (!editedPathLayer || !mirrorAxis?.end) return;
+                  const id = engine.duplicateMirroredPathAcrossAxis(
+                    editedPathLayer.id,
+                    mirrorAxis.start,
+                    mirrorAxis.end,
+                  );
+                  if (id) setMirrorAxis(null);
+                }}
+                className="rounded-lg border border-violet-300/20 bg-violet-500/10 px-2.5 py-1.5 text-[11px] font-bold text-violet-100 hover:bg-violet-500/20 disabled:opacity-40"
+              >
+                ساخت نسخهٔ قرینه
+              </button>
+            </div>
+          </div>
+          <details className="rounded-xl border border-white/10 bg-white/[0.025]">
+            <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-slate-300 hover:text-white">
+              تنظیمات دقیق گره و عملیات شکل
+            </summary>
+            <div className="flex flex-wrap items-center gap-2 border-t border-white/10 p-2">
+          <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 p-1">
+            <span className="px-1 text-[10px] text-slate-400">جای گره:</span>
+            <div className="grid grid-cols-3 gap-0.5">
+              {([
+                ["↖", 0, 0, "گوشهٔ بالا-چپ"],
+                ["↑", 0.5, 0, "وسط بالا"],
+                ["↗", 1, 0, "گوشهٔ بالا-راست"],
+                ["←", 0, 0.5, "وسط چپ"],
+                ["•", 0.5, 0.5, "مرکز آرت‌بورد"],
+                ["→", 1, 0.5, "وسط راست"],
+                ["↙", 0, 1, "گوشهٔ پایین-چپ"],
+                ["↓", 0.5, 1, "وسط پایین"],
+                ["↘", 1, 1, "گوشهٔ پایین-راست"],
+              ] as const).map(([icon, x, y, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  title={`انتقال گره به ${label}`}
+                  disabled={!editedPathLayer || selectedNodeIndex === null}
+                  onClick={() => {
+                    if (!editedPathLayer || selectedNodeIndex === null) return;
+                    engine.setAnchorWorldPosition(editedPathLayer.id, selectedNodeIndex, {
+                      x: doc.artboard.width * x,
+                      y: doc.artboard.height * y,
+                    });
+                  }}
+                  className="h-5 w-5 rounded text-[11px] text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-100 disabled:opacity-30"
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+            <div key={`${state.editingPathId}-${selectedNodeIndex}`} className="flex items-center gap-1 border-r border-white/10 pr-1.5">
+              <input
+                ref={anchorXInputRef}
+                type="number"
+                aria-label="مختصات افقی گره"
+                title="مختصات X روی آرت‌بورد"
+                defaultValue={selectedNodePosition ? Math.round(selectedNodePosition.x) : ""}
+                disabled={selectedNodeIndex === null}
+                className="w-12 rounded border border-white/10 bg-black/20 px-1 py-1 text-center text-[10px] text-white disabled:opacity-30"
+              />
+              <input
+                ref={anchorYInputRef}
+                type="number"
+                aria-label="مختصات عمودی گره"
+                title="مختصات Y روی آرت‌بورد"
+                defaultValue={selectedNodePosition ? Math.round(selectedNodePosition.y) : ""}
+                disabled={selectedNodeIndex === null}
+                className="w-12 rounded border border-white/10 bg-black/20 px-1 py-1 text-center text-[10px] text-white disabled:opacity-30"
+              />
+              <button
+                type="button"
+                title="قرار دادن گره در مختصات واردشده"
+                disabled={!editedPathLayer || selectedNodeIndex === null}
+                onClick={() => {
+                  const x = Number(anchorXInputRef.current?.value);
+                  const y = Number(anchorYInputRef.current?.value);
+                  if (!editedPathLayer || selectedNodeIndex === null || !Number.isFinite(x) || !Number.isFinite(y)) return;
+                  engine.setAnchorWorldPosition(editedPathLayer.id, selectedNodeIndex, { x, y });
+                }}
+                className="rounded-md bg-cyan-500/15 px-1.5 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-30"
+              >
+                برو
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+            <span className="px-1 text-[10px] text-slate-400">زاویهٔ دسته:</span>
+            <div key={`${state.editingPathId}-${selectedNodeIndex}`} className="flex items-center gap-1">
+              <input
+                ref={tangentAngleInputRef}
+                type="number"
+                aria-label="زاویه دسته"
+                title="زاویه نسبت به آرت‌بورد، بر حسب درجه"
+                defaultValue={selectedNodeIndex === null ? 0 : selectedTangentAngle}
+                disabled={selectedNodeIndex === null}
+                className="w-12 rounded border border-white/10 bg-black/20 px-1 py-1 text-center text-[10px] text-white disabled:opacity-30"
+              />
+              <span className="text-[9px] text-slate-500">°</span>
+              <input
+                ref={tangentLengthInputRef}
+                type="number"
+                aria-label="طول دسته"
+                title="طول دستهٔ بزیه"
+                min={0}
+                max={2000}
+                defaultValue={selectedNodeIndex === null ? 40 : Math.round(selectedHandleLength)}
+                disabled={selectedNodeIndex === null}
+                className="w-12 rounded border border-white/10 bg-black/20 px-1 py-1 text-center text-[10px] text-white disabled:opacity-30"
+              />
+              <button
+                type="button"
+                title="اعمال زاویه و طول دسته به گره انتخابی"
+                disabled={!editedPathLayer || selectedNodeIndex === null}
+                onClick={() => {
+                  const angle = Number(tangentAngleInputRef.current?.value);
+                  const length = Number(tangentLengthInputRef.current?.value);
+                  if (!editedPathLayer || selectedNodeIndex === null || !Number.isFinite(angle) || !Number.isFinite(length)) return;
+                  engine.setAnchorTangent(editedPathLayer.id, selectedNodeIndex, angle, length);
+                }}
+                className="rounded-md bg-emerald-500/15 px-1.5 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-30"
+              >
+                اعمال
+              </button>
+            </div>
+          </div>
+          <span className="text-[10px] text-slate-400">
+            روی خط بکشید تا قوس تغییر کند؛ دابل‌کلیک روی خط برای افزودن گره.
+          </span>
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-slate-500">ترکیب:</span>
             {([
@@ -767,6 +1011,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
           >
             🧲 اسنپ
           </button>
+            </div>
+          </details>
         </div>
       )}
 
@@ -912,8 +1158,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         style={{
           width: Math.round(doc.artboard.width * zoom),
           height: Math.round(doc.artboard.height * zoom),
-          marginTop: 16,
-          marginBottom: 16,
+          marginTop: 12,
+          marginBottom: 12,
         }}
       >
       <div
@@ -927,6 +1173,38 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       >
         {/* Background hit area */}
         <div className="absolute inset-0" style={{ background: doc.background }} />
+
+        {mirrorAxis ? (
+          <svg
+            className="pointer-events-none absolute inset-0 z-[1800] overflow-visible"
+            width={doc.artboard.width}
+            height={doc.artboard.height}
+            viewBox={`0 0 ${doc.artboard.width} ${doc.artboard.height}`}
+          >
+            {mirrorAxis.end ? (
+              <line
+                x1={mirrorAxis.start.x}
+                y1={mirrorAxis.start.y}
+                x2={mirrorAxis.end.x}
+                y2={mirrorAxis.end.y}
+                stroke="#c084fc"
+                strokeWidth={2 / zoom}
+                strokeDasharray={`${8 / zoom} ${5 / zoom}`}
+              />
+            ) : null}
+            {[mirrorAxis.start, mirrorAxis.end].filter((point): point is { x: number; y: number } => point !== null).map((point, index) => (
+              <circle
+                key={index}
+                cx={point.x}
+                cy={point.y}
+                r={5 / zoom}
+                fill="#7e22ce"
+                stroke="#f3e8ff"
+                strokeWidth={2 / zoom}
+              />
+            ))}
+          </svg>
+        ) : null}
 
         {/* Interactive layer hit-areas (above visuals, below nothing) */}
         {doc.layers.map((layer, index) =>
@@ -1001,6 +1279,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         ) : state.tool === "select" && !preview && !editedPathLayer && selectedLayer ? (
           <SelectionOverlay
             layer={selectedLayer}
+            minimal={selectedLayer.kind === "path" && Boolean(selectedLayer.curve)}
             onHandlePointerDown={onResizeHandlePointerDown}
             onRotatePointerDown={onRotateHandlePointerDown}
           />
@@ -1009,13 +1288,17 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         {/* BEZIER POINT EDITOR — anchors + handles for the path being edited.
             It replaces the transform box (as in Figma) because dragging an
             anchor and dragging the layer frame would otherwise fight. */}
-        {editedPathLayer ? (
+        {editedPathLayer && state.showNodes ? (
           <PathEditOverlay
             engine={engine}
             layer={editedPathLayer}
             zoom={zoom}
             selectedIndex={
               state.selectedAnchor?.layerId === editedPathLayer.id ? state.selectedAnchor.index : null
+            }
+            selectedIndices={selectedNodeIndices}
+            rangeStartIndex={
+              state.curveRangeStart?.layerId === editedPathLayer.id ? state.curveRangeStart.index : null
             }
             toBoardPoint={pointerPos}
           />

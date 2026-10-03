@@ -76,7 +76,7 @@ class BusinessCardController extends Controller
         return response()->json(
             $card->toArray() + $card->printFileMeta() + [
                 'entitlements' => $entitlements,
-                'locked' => $this->lockedFields($business, $card),
+                'locked' => $this->lockedFields($card, $entitlements['capabilities']),
             ]
         );
     }
@@ -192,10 +192,11 @@ class BusinessCardController extends Controller
         $card->save();
 
         $fresh = $card->fresh();
+        $entitlements = $gate->payload($business);
 
         return response()->json($fresh->toArray() + $fresh->printFileMeta() + [
-            'entitlements' => $gate->payload($business),
-            'locked' => $this->lockedFields($business, $fresh),
+            'entitlements' => $entitlements,
+            'locked' => $this->lockedFields($fresh, $entitlements['capabilities']),
         ]);
     }
 
@@ -478,29 +479,26 @@ class BusinessCardController extends Controller
      * Which editor fields are currently LOCKED for this business (frontend
      * UX only). Computed from the entitlements — never from plan names.
      */
-    private function lockedFields(Business $business, BusinessCard $card): array
+    private function lockedFields(BusinessCard $card, array $capabilities): array
     {
-        $gate = app(FeatureGate::class);
-        $caps = $gate->payload($business)['capabilities'];
-
         $locked = [];
         foreach (['card_templates' => 'template', 'card_themes' => 'theme', 'card_fonts' => 'font_family', 'card_exports' => 'export_format'] as $capability => $field) {
-            $allowed = (array) ($caps[$capability] ?? []);
+            $allowed = (array) ($capabilities[$capability] ?? []);
             $locked[$field] = array_values(array_diff(
                 $this->knownValues($capability),
                 $allowed
             ));
         }
-        $locked['print_file'] = ! $gate->allows($business, 'print_file');
-        $locked['max_cards'] = $gate->limit($business, 'max_cards');
+        $locked['print_file'] = ! FeatureGate::allowsFromCapabilities($capabilities, 'print_file');
+        $locked['max_cards'] = FeatureGate::limitFromCapabilities($capabilities, 'max_cards');
         // Phase 4 layered-document capability mirrors (UX only).
         $locked['layer_kinds'] = array_values(array_intersect(
             $this->knownLayerKinds(),
-            (array) ($caps['card_layer_kinds'] ?? [])
+            (array) ($capabilities['card_layer_kinds'] ?? [])
         ));
-        $locked['max_layers'] = $gate->limit($business, 'max_layers');
-        $locked['max_premium_elements'] = array_key_exists('max_premium_elements', $caps)
-            ? (is_numeric($caps['max_premium_elements']) ? (int) $caps['max_premium_elements'] : null)
+        $locked['max_layers'] = FeatureGate::limitFromCapabilities($capabilities, 'max_layers');
+        $locked['max_premium_elements'] = array_key_exists('max_premium_elements', $capabilities)
+            ? (is_numeric($capabilities['max_premium_elements']) ? (int) $capabilities['max_premium_elements'] : null)
             : null;
         $locked['grandfathered'] = [
             'template' => $card->exists ? $card->template : null,

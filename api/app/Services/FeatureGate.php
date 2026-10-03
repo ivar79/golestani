@@ -198,7 +198,12 @@ class FeatureGate
 
     public function allows(Business $business, string $feature): bool
     {
-        $map = $this->capabilities($business)['map'];
+        return self::allowsFromCapabilities($this->capabilities($business)['map'], $feature);
+    }
+
+    /** Resolve a capability using a map already fetched for this request. */
+    public static function allowsFromCapabilities(array $map, string $feature): bool
+    {
         $entry = self::catalog()[$feature] ?? null;
         if ($entry === null) {
             return false; // unknown capability is never granted
@@ -232,7 +237,12 @@ class FeatureGate
     /** Numeric limit; null = unlimited. Never negative. */
     public function limit(Business $business, string $key): ?int
     {
-        $map = $this->capabilities($business)['map'];
+        return self::limitFromCapabilities($this->capabilities($business)['map'], $key);
+    }
+
+    /** Resolve a limit using a map already fetched for this request. */
+    public static function limitFromCapabilities(array $map, string $key): ?int
+    {
         // array_key_exists (not ??): an explicit null means UNLIMITED and must
         // not fall through to the free-tier default.
         $value = array_key_exists($key, $map) ? $map[$key] : (self::catalog()[$key][3] ?? 0);

@@ -20,13 +20,14 @@ import type { PathPoint } from "../domain/document";
 import type { PathLayer } from "../domain/document";
 import { pathD, nearestSegmentParam } from "../domain/path";
 import { curveBendHandlePos, bendFromPointer } from "../domain/curveLine";
+
 import type { EditorEngine } from "../engine/EditorEngine";
 
 /** Screen-pixel metrics (converted to design px by dividing by the zoom). */
-const ANCHOR_TARGET = 12;
-const ANCHOR_VISUAL = 9;
-const HANDLE_TARGET = 12;
-const HANDLE_VISUAL = 7;
+const ANCHOR_TARGET = 10;
+const ANCHOR_VISUAL = 5;
+const HANDLE_TARGET = 10;
+const HANDLE_VISUAL = 4;
 /** How close the pointer must be to a curve to select/insert on it. */
 const CURVE_SLOP = 9;
 /** How close to the first anchor counts as "click to close the path". */
@@ -103,6 +104,19 @@ function DragNode({
   /** Where the dragged node started, in BOARD coordinates (group-drag base). */
   const groupDragStart = useRef<{ x: number; y: number } | null>(null);
 
+  /**
+   * Layer-LOCAL → WORLD coordinates: the engine stores and edits points in
+   * artboard space (`layer.x + local`), which is what makes a node drag
+   * independent of where the layer box happens to start.
+   *
+   * The mapping is 1:1 on purpose. The renderer draws the path with
+   * `viewBox="0 0 layer.width layer.height"` inside a box of exactly that CSS
+   * size, so one local unit IS one design pixel — and the overlay below uses the
+   * same box, so the node the user grabs is the point the engine moves. No
+   * offset, no scale factor to keep in sync.
+   */
+  const localToWorld = (local: BoardPoint): BoardPoint => ({ x: layer.x + local.x, y: layer.y + local.y });
+
   const handlePointerDown = (event: React.PointerEvent<SVGGElement>) => {
     event.stopPropagation();
     event.preventDefault();
@@ -113,10 +127,8 @@ function DragNode({
       // MULTI-NODE (Figma): a plain click focuses one node; shift-click toggles
       // it in the group. The gesture below moves the WHOLE group.
       engine.selectAnchor({ layerId: layer.id, index }, event.shiftKey);
-      groupDragStart.current = {
-        x: layer.x + layer.points[index].x,
-        y: layer.y + layer.points[index].y,
-      };
+      const start = layer.points[index];
+      groupDragStart.current = localToWorld({ x: start.x, y: start.y });
     }
   };
 
@@ -126,8 +138,8 @@ function DragNode({
     const board = toBoardPoint(event);
     if (kind === "anchor") {
       // Group drag when several nodes are selected (marquee / shift-click); a
-      // single selected node takes the original single-node drag. The delta is
-      // measured from the DOWN point, so the gesture never accumulates drift.
+      // single selected node takes the single-node drag. The delta is measured
+      // from the DOWN point, so the gesture never accumulates drift.
       const indices = engine.selectedAnchorIndices(layer.id);
       if (indices.length > 1 && groupDragStart.current) {
         engine.beginAnchorGesture(layer.id, indices);
@@ -137,7 +149,15 @@ function DragNode({
         });
         return;
       }
-      engine.transientMoveAnchor(layer.id, index, toLayerLocal(board, layer));
+      // CURVE-AWARE single node drag. On a still-parametric curve an endpoint
+      // drag is a CHORD edit (length + chord angle), so the parameters survive;
+      // on a plain or already-frozen path this stays the original transient
+      // anchor move (one history record at commit).
+      if (engine.isParametricCurve(layer.id)) {
+        engine.updateCurveNode(layer.id, index, localToWorld(toLayerLocal(board, layer)), { transient: true });
+      } else {
+        engine.transientMoveAnchor(layer.id, index, toLayerLocal(board, layer));
+      }
     } else {
       // Alt/Option breaks the handle mirror — the modifier contract every
       // vector editor uses to make a "corner" point.
@@ -179,25 +199,71 @@ export function PathEditOverlay({
   layer,
   zoom,
   selectedIndex,
+  selectedIndices,
+  rangeStartIndex,
   toBoardPoint,
 }: {
   engine: EditorEngine;
   layer: PathLayer;
   zoom: number;
   selectedIndex: number | null;
+  selectedIndices: number[];
+  rangeStartIndex: number | null;
   toBoardPoint: (event: { clientX: number; clientY: number }) => BoardPoint;
 }) {
   const scale = scaleFor(zoom);
   const anchorSize = ANCHOR_VISUAL * scale;
   const handleSize = HANDLE_VISUAL * scale;
+  const segDragRef = useRef<{ segIndex: number; startX: number; startY: number } | null>(null);
+  const selectedIndexSet = new Set(selectedIndices);
+  const hasRange =
+    rangeStartIndex !== null &&
+    selectedIndex !== null &&
+    rangeStartIndex !== selectedIndex &&
+    rangeStartIndex >= 0 &&
+    selectedIndex < layer.points.length;
+  const rangePoints = hasRange
+    ? layer.points.slice(Math.min(rangeStartIndex, selectedIndex), Math.max(rangeStartIndex, selectedIndex) + 1)
+    : [];
 
-  const onDoubleClick = (event: React.MouseEvent<SVGSVGElement>) => {
+  const onDoubleClick = (event: React.MouseEvent) => {
     event.stopPropagation();
     const local = toLayerLocal(toBoardPoint(event), layer);
     const hit = nearestSegmentParam(layer.points, layer.closed, local);
-    // Only insert when the double-click actually landed on the curve.
     if (!hit || hit.distance > CURVE_SLOP * scale) return;
     engine.insertAnchorAt(layer.id, hit.segIndex, hit.t);
+  };
+
+  const onSegPointerDown = (event: React.PointerEvent<SVGPathElement>) => {
+    if (event.button !== 0 || event.detail >= 2) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const local = toLayerLocal(toBoardPoint(event), layer);
+    const hit = nearestSegmentParam(layer.points, layer.closed, local);
+    if (!hit || hit.distance > CURVE_SLOP * scale) return;
+    segDragRef.current = { segIndex: hit.segIndex, startX: local.x, startY: local.y };
+    engine.beginTransient();
+    const target = event.currentTarget;
+    target.setPointerCapture?.(event.pointerId);
+
+    const onMove = (e: PointerEvent) => {
+      if (!segDragRef.current) return;
+      const board = toBoardPoint(e as unknown as { clientX: number; clientY: number });
+      const cur = toLayerLocal(board, layer);
+      const dx = cur.x - segDragRef.current.startX;
+      const dy = cur.y - segDragRef.current.startY;
+      segDragRef.current.startX = cur.x;
+      segDragRef.current.startY = cur.y;
+      engine.transientDragSegment(layer.id, segDragRef.current.segIndex, dx, dy);
+    };
+    const onUp = () => {
+      segDragRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      engine.commitPathEdit(layer.id);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   return (
@@ -234,8 +300,22 @@ export function PathEditOverlay({
         strokeLinecap="round"
         strokeLinejoin="round"
         pointerEvents="stroke"
+        style={{ cursor: "grab" }}
+        onPointerDown={onSegPointerDown}
         onDoubleClick={onDoubleClick}
       />
+
+      {hasRange ? (
+        <path
+          d={pathD(rangePoints, false)}
+          fill="none"
+          stroke={CLOSE_ACCENT}
+          strokeWidth={3 * scale}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pointerEvents="none"
+        />
+      ) : null}
 
       {/* Handle stems — a thin line from each anchor to each of its handles. */}
       {layer.points.flatMap((point, index) =>
@@ -273,7 +353,7 @@ export function PathEditOverlay({
               toBoardPoint={toBoardPoint}
             >
               <circle cx={handle.x} cy={handle.y} r={(HANDLE_TARGET / 2) * scale} fill="transparent" />
-              <circle cx={handle.x} cy={handle.y} r={handleSize / 2} fill={ACCENT} stroke="#ffffff" strokeWidth={scale} />
+<circle cx={handle.x} cy={handle.y} r={handleSize / 2} fill="transparent" stroke={ACCENT} strokeWidth={scale * 1.5} />
             </DragNode>,
           ];
         }),
@@ -282,7 +362,10 @@ export function PathEditOverlay({
       {/* Anchors (draggable). Square = corner point, circle = smooth point. */}
       {layer.points.map((point, index) => {
         const isSmooth = Boolean(point.hIn || point.hOut);
-        const fill = index === selectedIndex ? ACCENT : "#ffffff";
+        const isSelected = selectedIndexSet.has(index) || index === selectedIndex;
+        const isRangeStart = hasRange && index === rangeStartIndex;
+        const fill = isSelected ? ACCENT : "#ffffff";
+        const stroke = isRangeStart ? CLOSE_ACCENT : fill;
         return (
           <DragNode
             key={`anchor-${index}`}
@@ -294,17 +377,17 @@ export function PathEditOverlay({
             toBoardPoint={toBoardPoint}
           >
             <circle cx={point.x} cy={point.y} r={(ANCHOR_TARGET / 2) * scale} fill="transparent" />
-            {isSmooth ? (
-              <circle cx={point.x} cy={point.y} r={anchorSize / 2} fill={fill} stroke={ACCENT_DARK} strokeWidth={scale} />
+{isSmooth ? (
+  <circle cx={point.x} cy={point.y} r={anchorSize / 2} fill="transparent" stroke={stroke} strokeWidth={scale * 1.5} />
             ) : (
               <rect
                 x={point.x - anchorSize / 2}
                 y={point.y - anchorSize / 2}
                 width={anchorSize}
                 height={anchorSize}
-                fill={fill}
-                stroke={ACCENT_DARK}
-                strokeWidth={scale}
+                fill="transparent"
+                stroke={stroke}
+                strokeWidth={scale * 1.5}
               />
             )}
           </DragNode>

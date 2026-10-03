@@ -18,6 +18,13 @@
  * locally to keep this module import-free and cycle-free).
  */
 
+/**
+ * Anything that can be normalized into a spec. `nodes` is widened to `number`
+ * here so callers can pass a raw slider/button value without casting it onto
+ * the ladder first — `normalizeCurveSpec` snaps it onto a valid rung.
+ */
+export type CurveSpecInput = Partial<CurveSpec> & { nodes?: number };
+
 /** A cubic anchor. Structurally identical to `domain/path.ts` PathPoint. */
 export type CurveAnchor = {
   x: number;
@@ -57,8 +64,33 @@ export type CurveSpec = {
   startTangent: number | null;
   /** Same, at the far end. */
   endTangent: number | null;
+  /**
+   * DIRECTION OF THE CHORD in layer-local space, in degrees. 0 = the classic
+   * horizontal curve.
+   *
+   * This is what makes "drag an endpoint anywhere" a PARAMETRIC edit instead of
+   * a destructive one: moving an endpoint changes the chord (length + direction),
+   * so both are recorded here and the waveform is regenerated along the new
+   * chord — amplitude, frequency, phase, symmetry and tangents all survive, and
+   * the spec still describes the anchors that are on screen.
+   *
+   * It is deliberately separate from `layer.angle`: the layer angle is a rigid
+   * transform applied by the renderer, while the chord angle is a property of
+   * the curve's own geometry (and therefore of the node coordinates the user
+   * drags).
+   */
+  chordAngle: number;
   /** Mirror the waveform along the chord (the Reverse action). */
   reversed: boolean;
+  /**
+   * EDITABLE NODE COUNT. How many anchors the waveform is generated into — i.e.
+   * how many nodes the user can select, drag, delete, smooth/corner.
+   *
+   * This is the ONLY knob that changes anchor density. There is no separate
+   * "render samples" field in the document on purpose: geometry and editing are
+   * the same list of anchors, so they can never disagree.
+   */
+  nodes: CurveNodeCount;
 };
 
 export const CURVE_LIMITS = {
@@ -68,7 +100,24 @@ export const CURVE_LIMITS = {
   phase: { min: -360, max: 360 },
   symmetry: { min: 0.05, max: 0.95 },
   tangent: { min: -360, max: 360 },
+  chordAngle: { min: -360, max: 360 },
 } as const;
+
+/**
+ * EDITABLE NODE COUNT — how many nodes the user sees and drags.
+ *
+ * Deliberately a small, discrete ladder: these are the granularities a designer
+ * actually asks for, and a discrete list keeps the inspector a row of buttons
+ * instead of a slider with a meaningless in-between (4.5 nodes?).
+ *
+ * The cap is 16, far below MAX_PATH_POINTS (500), so a node-count change can
+ * never push a layer over the server's per-path anchor limit.
+ */
+export const CURVE_NODE_COUNTS = [3, 5, 7, 9, 12, 16] as const;
+export type CurveNodeCount = (typeof CURVE_NODE_COUNTS)[number];
+export const CURVE_NODE_COUNT_DEFAULT: CurveNodeCount = 9;
+export const CURVE_NODE_COUNT_MIN = 3;
+export const CURVE_NODE_COUNT_MAX = 16;
 
 export const DEFAULT_CURVE_SPEC: CurveSpec = {
   kind: "sine",
@@ -79,13 +128,91 @@ export const DEFAULT_CURVE_SPEC: CurveSpec = {
   symmetry: 0.5,
   startTangent: null,
   endTangent: null,
+  chordAngle: 0,
   reversed: false,
+  nodes: CURVE_NODE_COUNT_DEFAULT,
 };
 
-/** Anchors generated per curve. Bounded well under MAX_PATH_POINTS (500). */
+/**
+ * Default node count for a freshly created profile. Arc starts coarse (it is a
+ * single arch — three nodes is the honest description of it) and the waves
+ * start at the ladder's middle rung.
+ */
+export function defaultNodeCountFor(kind: CurveKind): CurveNodeCount {
+  return kind === "arc" ? 3 : CURVE_NODE_COUNT_DEFAULT;
+}
+
+/**
+ * Anchors generated per curve. Bounded well under MAX_PATH_POINTS (500).
+ *
+ * NOTE: this is the RENDER/SAMPLE resolution — the density at which a waveform
+ * is evaluated. It is NOT the number of nodes the user edits; that is
+ * `spec.nodes` (see CURVE_NODE_COUNTS below). Conflating the two is exactly the
+ * bug this module now guards against: changing render quality must never change
+ * the editing model, and changing the node count must never be invisible.
+ */
 export const CURVE_SAMPLE_COUNT = 17;
 
+/**
+ * Clamp any requested node count onto the supported ladder. Snapping to the
+ * nearest rung (rather than rejecting) means a stored 6 becomes 5 or 7 instead
+ * of breaking the layer.
+ */
+export function normalizeNodeCount(value: unknown): CurveNodeCount {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : CURVE_NODE_COUNT_DEFAULT;
+  let best: CurveNodeCount = CURVE_NODE_COUNTS[0];
+  let bestDelta = Infinity;
+  for (const candidate of CURVE_NODE_COUNTS) {
+    const delta = Math.abs(candidate - n);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/**
+ * Node count that fits a node-count CHANGE: if the user asked for the same
+ * value twice in a row (or a value that snaps back onto the current one) the
+ * request is a no-op, which callers can detect with a strict equality check.
+ */
+export function resolveNodeCount(current: unknown, requested: unknown): CurveNodeCount {
+  const next = normalizeNodeCount(requested);
+  const now = normalizeNodeCount(current);
+  return next === now ? now : next;
+}
+
 export const CURVE_KINDS: CurveKind[] = ["arc", "sine", "sine-asymmetric", "s", "wave", "custom"];
+
+/**
+ * The four curve families the UI exposes, in canonical order, with their
+ * Persian labels. ONE table — the toolbox picker and the profile grid both read
+ * it, so a new family can never be added to one and forgotten in the other.
+ */
+export const CURVE_PROFILES: { kind: CurveKind; label: string; glyph: string }[] = [
+  { kind: "arc", label: "قوس", glyph: "⌒" },
+  { kind: "sine", label: "سینوسی متقارن", glyph: "〰" },
+  { kind: "sine-asymmetric", label: "سینوسی نامتقارن", glyph: "∿" },
+  { kind: "s", label: "موج S", glyph: "S" },
+];
+
+/**
+ * The LEGACY `curveProfile` values of documents saved by older builds, mapped
+ * onto the canonical `CurveKind`. Migration happens once, at load
+ * (`factory.parseDocument`), and the legacy field is then dropped — so there is
+ * exactly one profile vocabulary in the live document.
+ *
+ * `custom` is the honest target for `sine-asymmetric`: that legacy profile was
+ * generated by a harmonic blend the parametric model does not reproduce, so
+ * declaring it "sine" would silently REDRAW the user's saved curve.
+ */
+export const LEGACY_CURVE_PROFILE_KINDS: Record<string, CurveKind> = {
+  arc: "arc",
+  sine: "sine",
+  "sine-asymmetric": "custom",
+  s: "s",
+};
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
   const n = Number.isFinite(value) ? value : fallback;
@@ -97,7 +224,7 @@ function finiteOr(value: unknown, fallback: number): number {
 }
 
 /** Coerce any (possibly stored/legacy/partial) object into a valid spec. */
-export function normalizeCurveSpec(input: Partial<CurveSpec> | null | undefined): CurveSpec {
+export function normalizeCurveSpec(input: CurveSpecInput | null | undefined): CurveSpec {
   const raw = input ?? {};
   const kind: CurveKind = CURVE_KINDS.includes(raw.kind as CurveKind)
     ? (raw.kind as CurveKind)
@@ -120,7 +247,14 @@ export function normalizeCurveSpec(input: Partial<CurveSpec> | null | undefined)
     symmetry: clamp(finiteOr(raw.symmetry, DEFAULT_CURVE_SPEC.symmetry), CURVE_LIMITS.symmetry.min, CURVE_LIMITS.symmetry.max, DEFAULT_CURVE_SPEC.symmetry),
     startTangent: tangent(raw.startTangent),
     endTangent: tangent(raw.endTangent),
+    chordAngle: clamp(
+      finiteOr(raw.chordAngle, DEFAULT_CURVE_SPEC.chordAngle),
+      CURVE_LIMITS.chordAngle.min,
+      CURVE_LIMITS.chordAngle.max,
+      DEFAULT_CURVE_SPEC.chordAngle,
+    ),
     reversed: raw.reversed === true,
+    nodes: normalizeNodeCount(raw.nodes),
   };
 }
 
@@ -189,11 +323,14 @@ function dirFromAngle(deg: number): { x: number; y: number } {
  * `custom` has no waveform — it returns an empty list, and the layer's own
  * anchors are the geometry.
  */
-export function curveAnchors(specInput: Partial<CurveSpec>, sampleCount = CURVE_SAMPLE_COUNT): CurveAnchor[] {
+export function curveAnchors(specInput: CurveSpecInput, sampleCount?: number): CurveAnchor[] {
   const spec = normalizeCurveSpec(specInput);
   if (spec.kind === "custom") return [];
 
-  const count = Math.max(3, Math.min(64, Math.round(sampleCount)));
+  // Explicit sampleCount = the render-resolution path (callers that need a
+  // specific density, e.g. export). Otherwise the geometry IS the editable node
+  // list, so `spec.nodes` is the density — one list, no shadow copy.
+  const count = Math.max(3, Math.min(64, Math.round(sampleCount ?? spec.nodes)));
   const raw: { x: number; y: number }[] = [];
   for (let i = 0; i < count; i += 1) {
     raw.push(curvePointAt(spec, i / (count - 1)));
@@ -235,7 +372,29 @@ export function curveAnchors(specInput: Partial<CurveSpec>, sampleCount = CURVE_
     applyEnd(points.length - 1, "hIn", spec.endTangent);
   }
 
-  return points;
+  return rotateAnchors(points, spec.chordAngle);
+}
+
+/**
+ * Rotate a generated curve onto its chord direction. Rotation is about the
+ * chord START, which is the origin of the generator's local space — so the
+ * first anchor is a fixed point and the far end swings to `chordAngle`.
+ */
+function rotateAnchors(points: CurveAnchor[], degrees: number): CurveAnchor[] {
+  if (!Number.isFinite(degrees) || degrees === 0) return points;
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const turn = (p: { x: number; y: number }) => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos });
+  return points.map((point) => {
+    const anchor = turn(point);
+    return {
+      x: anchor.x,
+      y: anchor.y,
+      hIn: point.hIn ? turn(point.hIn) : null,
+      hOut: point.hOut ? turn(point.hOut) : null,
+    };
+  });
 }
 
 /** Total length of the polyline through the anchors (measures the drawn curve). */
@@ -291,7 +450,7 @@ export function curveBounds(points: CurveAnchor[]): { minX: number; minY: number
  * The free-end tangents swap ends and rotate by 180°, because the direction of
  * travel at that end is now the opposite one.
  */
-export function reverseCurveSpec(specInput: Partial<CurveSpec>): CurveSpec {
+export function reverseCurveSpec(specInput: CurveSpecInput): CurveSpec {
   const spec = normalizeCurveSpec(specInput);
   return {
     ...spec,
@@ -318,7 +477,7 @@ function normalizeAngle(deg: number): number {
  * Convert to Path (§4): freeze the parameters and hand back plain anchors.
  * The result is ordinary Bezier geometry — no spec, no special rendering path.
  */
-export function bakeCurve(specInput: Partial<CurveSpec>, sampleCount = CURVE_SAMPLE_COUNT): CurveAnchor[] {
+export function bakeCurve(specInput: CurveSpecInput, sampleCount?: number): CurveAnchor[] {
   return curveAnchors(specInput, sampleCount).map((point) => ({
     x: point.x,
     y: point.y,

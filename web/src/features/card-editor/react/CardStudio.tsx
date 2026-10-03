@@ -73,6 +73,7 @@ export function CardStudio({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [preview, setPreview] = useState(false);
   const [activeTab, setActiveTab] = useState<"templates" | "inspector" | "layers" | "bg">("templates");
+  const panelTab = state.editingPathId ? "inspector" : activeTab;
   const saveTimer = useRef<number | null>(null);
   // Saves are SERIALIZED: at most one request on the wire, the newest document
   // always queued next — so an out-of-order response can never write an older
@@ -225,10 +226,10 @@ export function CardStudio({
   }, [engine]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {/* Studio header: compact (56px), information-dense, no decoration.
           Save status comes from the REAL persistence state (SaveQueue + dirty flag). */}
-      <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-white/[0.08] bg-[#0a1019]/90 p-2.5 shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+      <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.09] bg-[#101720]/95 p-2 shadow-[0_12px_36px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -307,27 +308,22 @@ export function CardStudio({
         </div>
       </div>
 
-      {/* Studio workspace: vertical tool rail (right, RTL-first) + canvas + inspector.
-          The rail replaces the old horizontal "ابزارها" tab — tools stay one click
-          away while the inspector keeps its full height. min-w-0 lets the stage
-          shrink instead of overflowing at narrow widths. */}
-      <div className="relative flex items-stretch justify-between gap-3 rounded-[26px] border border-white/[0.06] bg-[radial-gradient(circle_at_50%_18%,rgba(28,45,65,0.22),transparent_48%),#070c14] p-2 shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
-        <div className="min-w-0 flex-1">
+      {/* Studio workspace: canvas, labeled tools, and inspector remain distinct. */}
+      <div className="relative grid grid-cols-1 items-start gap-2 rounded-2xl border border-white/[0.09] bg-[#0a0f16] p-1.5 shadow-[0_18px_54px_rgba(0,0,0,0.32)] md:grid-cols-[minmax(0,1fr)_142px_280px]">
+        <div className="min-w-0 flex-1 overflow-hidden rounded-[18px]">
           <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} />
         </div>
         {preview ? null : (
-          <div className="flex shrink-0 gap-3">
-            {/* Vertical tool rail — the drag/gate logic lives in Toolbox itself. */}
+          <>
             <Toolbox engine={engine} onUploadImage={onUploadImage} />
 
-            {/* Tabbed panels (templates/inspector/layers/background) */}
-            <div className="flex w-[300px] flex-col space-y-2.5">
-              <div className="grid grid-cols-4 gap-1 rounded-[18px] border border-white/[0.08] bg-[#0b121d]/80 p-1 shadow-[0_16px_40px_rgba(0,0,0,0.25)] backdrop-blur-2xl">
+            <div className="flex max-h-[calc(100vh-8rem)] min-w-0 flex-col space-y-2 rounded-[18px] border border-white/[0.08] bg-[#0d131c] p-1.5">
+              <div className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-xl border border-white/[0.08] bg-[#121a25] p-1 backdrop-blur-2xl">
                 <button
                   type="button"
                   onClick={() => setActiveTab("templates")}
                   className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    activeTab === "templates"
+                    panelTab === "templates"
                       ? "bg-amber-500/25 text-amber-300 shadow-sm ring-1 ring-amber-400/40"
                       : "text-slate-400 hover:text-white"
                   }`}
@@ -340,7 +336,7 @@ export function CardStudio({
                   type="button"
                   onClick={() => setActiveTab("inspector")}
                   className={`relative flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    activeTab === "inspector"
+                    panelTab === "inspector"
                       ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
                       : "text-slate-400 hover:text-white"
                   }`}
@@ -356,7 +352,7 @@ export function CardStudio({
                   type="button"
                   onClick={() => setActiveTab("layers")}
                   className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    activeTab === "layers"
+                    panelTab === "layers"
                       ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
                       : "text-slate-400 hover:text-white"
                   }`}
@@ -369,7 +365,7 @@ export function CardStudio({
                   type="button"
                   onClick={() => setActiveTab("bg")}
                   className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    activeTab === "bg"
+                    panelTab === "bg"
                       ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
                       : "text-slate-400 hover:text-white"
                   }`}
@@ -380,12 +376,12 @@ export function CardStudio({
               </div>
 
               {/* Active Tab Content */}
-              <div className="space-y-4">
-                {activeTab === "templates" && (
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
+                {panelTab === "templates" && (
                   <TemplatesPanel engine={engine} business={business} />
                 )}
 
-                {activeTab === "inspector" && (
+                {panelTab === "inspector" && (
                   <>
                     {state.selection.layerId ? (
                       <InspectorPanel engine={engine} onUploadImage={onUploadImage} />
@@ -401,16 +397,16 @@ export function CardStudio({
                   </>
                 )}
 
-                {activeTab === "layers" && (
+                {panelTab === "layers" && (
                   <LayersPanel engine={engine} doc={state.doc} />
                 )}
 
-                {activeTab === "bg" && (
+                {panelTab === "bg" && (
                   <BackgroundPanel engine={engine} />
                 )}
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

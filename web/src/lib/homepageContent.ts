@@ -14,8 +14,8 @@ let clientInflight: Promise<HomepageContent> | null = null;
 export async function fetchHomepageContentClient(): Promise<HomepageContent> {
   if (clientCache) return clientCache;
   if (!clientInflight) {
-    const { getHomepageContent } = await import("@/lib/businesses");
-    clientInflight = getHomepageContent()
+    clientInflight = import("@/lib/businesses")
+      .then(({ getHomepageContent }) => getHomepageContent())
       .then((data) => {
         clientCache = data;
         return data;

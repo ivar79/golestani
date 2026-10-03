@@ -130,6 +130,20 @@ describe("multi-node editing (engine)", () => {
     expect(engine.anchorSelectionList()).toHaveLength(0);
   });
 
+  it("marquee hit-testing follows rotated path nodes", () => {
+    const rotated = pathLayer("rotated", 200, 100, squarePoints(), {
+      width: 100,
+      height: 100,
+      angle: 90,
+    });
+    const engine = new EditorEngine(docWith(rotated));
+    engine.setPathEditing("rotated");
+
+    // The first local node (0, 0) rotates around the path box center to (300, 100).
+    expect(engine.selectAnchorsInRect({ x: 296, y: 96, width: 8, height: 8 })).toBe(1);
+    expect(engine.selectedAnchorIndices("rotated")).toEqual([0]);
+  });
+
   it("a whole-gesture group drag is exactly ONE undo record", () => {
     const engine = new EditorEngine(docWith(pathLayer("p", 0, 0, squarePoints())));
     engine.setSelectionDomain("node");
@@ -227,6 +241,97 @@ describe("multi-node editing (engine)", () => {
     engine.selectAllAnchors();
     expect(engine.deleteSelectedAnchors()).toBe(false);
     expect((engine.getState().doc.layers[0] as PathLayer).points).toHaveLength(4);
+  });
+
+  it("sets an anchor at an exact artboard position on a rotated path", () => {
+    const engine = new EditorEngine(
+      docWith(pathLayer("p", 100, 80, squarePoints(), { width: 100, height: 100, angle: 90 })),
+    );
+    engine.setPathEditing("p");
+
+    expect(engine.setAnchorWorldPosition("p", 0, { x: 310, y: 220 })).toBe(true);
+    const layer = engine.getState().doc.layers[0] as PathLayer;
+    const point = layer.points[0];
+    const angle = ((layer.angle ?? 0) * Math.PI) / 180;
+    const dx = point.x - layer.width / 2;
+    const dy = point.y - layer.height / 2;
+    expect(layer.x + layer.width / 2 + dx * Math.cos(angle) - dy * Math.sin(angle)).toBeCloseTo(310);
+    expect(layer.y + layer.height / 2 + dx * Math.sin(angle) + dy * Math.cos(angle)).toBeCloseTo(220);
+  });
+
+  it("sets a node tangent to the requested world angle and length", () => {
+    const engine = new EditorEngine(
+      docWith(pathLayer("p", 100, 80, squarePoints(), { width: 100, height: 100, angle: 30 })),
+    );
+    engine.setPathEditing("p");
+    const before = engine.getState().doc.layers[0] as PathLayer;
+    const beforePoint = before.points[1];
+    const beforeAngle = ((before.angle ?? 0) * Math.PI) / 180;
+    const beforeDx = beforePoint.x - before.width / 2;
+    const beforeDy = beforePoint.y - before.height / 2;
+    const worldX = before.x + before.width / 2 + beforeDx * Math.cos(beforeAngle) - beforeDy * Math.sin(beforeAngle);
+    const worldY = before.y + before.height / 2 + beforeDx * Math.sin(beforeAngle) + beforeDy * Math.cos(beforeAngle);
+
+    expect(engine.setAnchorTangent("p", 1, 90, 25)).toBe(true);
+    const layer = engine.getState().doc.layers[0] as PathLayer;
+    const point = layer.points[1];
+    const nodeAngle = ((layer.angle ?? 0) * Math.PI) / 180;
+    const nodeDx = point.x - layer.width / 2;
+    const nodeDy = point.y - layer.height / 2;
+    expect(layer.x + layer.width / 2 + nodeDx * Math.cos(nodeAngle) - nodeDy * Math.sin(nodeAngle)).toBeCloseTo(worldX);
+    expect(layer.y + layer.height / 2 + nodeDx * Math.sin(nodeAngle) + nodeDy * Math.cos(nodeAngle)).toBeCloseTo(worldY);
+    const handle = point.hOut!;
+    const localAngle = ((layer.angle ?? 0) * Math.PI) / 180;
+    const dx = handle.x - point.x;
+    const dy = handle.y - point.y;
+    const worldDx = dx * Math.cos(localAngle) - dy * Math.sin(localAngle);
+    const worldDy = dx * Math.sin(localAngle) + dy * Math.cos(localAngle);
+    expect(Math.hypot(worldDx, worldDy)).toBeCloseTo(25);
+    expect(Math.atan2(worldDy, worldDx) * 180 / Math.PI).toBeCloseTo(90);
+  });
+
+  it("creates an exact path reflection across an arbitrary axis", () => {
+    const source = pathLayer(
+      "p",
+      100,
+      80,
+      [
+        { x: 10, y: 20, hIn: { x: 7, y: 15 }, hOut: { x: 14, y: 25 } },
+        { x: 70, y: 60, hIn: { x: 65, y: 55 }, hOut: { x: 75, y: 65 } },
+      ],
+      { width: 100, height: 100 },
+    );
+    const engine = new EditorEngine(docWith(source));
+    engine.setPathEditing("p");
+
+    const id = engine.duplicateMirroredPathAcrossAxis("p", { x: 180, y: 0 }, { x: 180, y: 300 });
+    expect(id).not.toBeNull();
+    const copy = engine.getState().doc.layers.find((layer) => layer.id === id) as PathLayer;
+    expect(copy.points).toHaveLength(2);
+    expect(copy.points[0].x + copy.x).toBeCloseTo(2 * 180 - (source.x + source.points[0].x));
+    expect(copy.points[0].y + copy.y).toBeCloseTo(source.y + source.points[0].y);
+    expect(copy.points[0].hOut!.x + copy.x).toBeCloseTo(2 * 180 - (source.x + source.points[0].hOut!.x));
+    expect(engine.getState().selection.layerId).toBe(id);
+  });
+
+  it("rejects a degenerate mirror axis", () => {
+    const engine = new EditorEngine(docWith(pathLayer("p", 0, 0, squarePoints())));
+    expect(engine.duplicateMirroredPathAcrossAxis("p", { x: 10, y: 10 }, { x: 10, y: 10 })).toBeNull();
+    expect(engine.getState().doc.layers).toHaveLength(1);
+  });
+
+  it("dragging a straight segment creates Bezier handles and bends the path", () => {
+    const engine = new EditorEngine(docWith(pathLayer("p", 0, 0, [anchor(0, 0), anchor(100, 0)])));
+    engine.setPathEditing("p");
+    engine.beginTransient();
+    engine.transientDragSegment("p", 0, 0, -25);
+    engine.commitPathEdit("p");
+
+    const layer = engine.getState().doc.layers[0] as PathLayer;
+    expect(layer.points[0].hOut).not.toBeNull();
+    expect(layer.points[1].hIn).not.toBeNull();
+    expect(layer.points[0].hOut!.y).toBeLessThan(layer.points[0].y);
+    expect(layer.points[1].hIn!.y).toBeLessThan(layer.points[1].y);
   });
 
   it("setSelectedAnchorType converts the whole group (smooth / corner)", () => {

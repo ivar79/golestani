@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import BrandLogo, { type BrandLogoTone, type BrandLogoVariant } from "./BrandLogo";
+import { fetchHomepageContentClient } from "@/lib/homepageContent";
 
 /**
  * CmsBrandLogo — پل CMS ↔ هویت برند.
@@ -22,8 +23,7 @@ let sessionCache: string | null = null;
 export async function fetchCmsLogoUrl(): Promise<string | null> {
   if (sessionCache !== null) return sessionCache || null;
   try {
-    const { getHomepageContent } = await import("@/lib/businesses");
-    const content = await getHomepageContent();
+    const content = await fetchHomepageContentClient();
     const raw = content["homepage.logo"] ?? "";
     const { mediaUrl } = await import("@/lib/phase2");
     const resolved = raw ? mediaUrl(raw) : "";

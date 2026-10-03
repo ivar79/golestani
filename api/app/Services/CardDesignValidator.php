@@ -55,6 +55,9 @@ class CardDesignValidator
 
     private const MAX_PATH_POINTS = 500;
 
+    /** Default editable node count (domain/curveGeometry.ts CURVE_NODE_COUNT_DEFAULT). */
+    private const CURVE_NODE_DEFAULT = 9;
+
     /** Cap for a serialized raw SVG path (`rawD`). The whole document is
      * already capped at MAX_BYTES; this bounds a single path so a hostile or
      * runaway stroke cannot consume the entire budget. Sized to hold the
@@ -460,6 +463,13 @@ class CardDesignValidator
             'frequency' => $this->cleanNumber($curve['frequency'] ?? 1, 0.25, 24),
             'phase' => $this->cleanNumber($curve['phase'] ?? 0, -360, 360),
             'symmetry' => $this->cleanNumber($curve['symmetry'] ?? 0.5, 0.05, 0.95),
+            // Editable NODE COUNT — snapped onto the supported ladder so a
+            // tampered payload can never ask for an anchor explosion (the
+            // ladder caps at 16, far below MAX_PATH_POINTS).
+            'nodes' => $this->cleanNodeCount($curve['nodes'] ?? null),
+            // Chord direction in degrees. Fractional values are preserved
+            // exactly (0.1° is a real rotation, not a rounding error).
+            'chordAngle' => $this->cleanNumber($curve['chordAngle'] ?? 0, -360, 360),
             // Strictly `true`: a truthy string ("yes") is not a boolean flag, and
             // silently treating it as one would flip a curve's direction.
             'reversed' => ($curve['reversed'] ?? false) === true,
@@ -470,6 +480,28 @@ class CardDesignValidator
         }
 
         return $clean;
+    }
+
+    /**
+     * The editable node ladder (domain/curveGeometry.ts CURVE_NODE_COUNTS).
+     * A value between rungs snaps to the NEAREST one instead of being rejected,
+     * so a document saved by a future build with an extra rung still loads.
+     */
+    private function cleanNodeCount(mixed $value): int
+    {
+        $ladder = [3, 5, 7, 9, 12, 16];
+        if (! is_numeric($value)) {
+            return self::CURVE_NODE_DEFAULT;
+        }
+        $requested = (int) round((float) $value);
+        $best = $ladder[0];
+        foreach ($ladder as $rung) {
+            if (abs($rung - $requested) < abs($best - $requested)) {
+                $best = $rung;
+            }
+        }
+
+        return $best;
     }
 
     private function cleanString(mixed $value, int $max): string

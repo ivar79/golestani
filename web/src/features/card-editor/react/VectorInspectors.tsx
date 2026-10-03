@@ -32,8 +32,13 @@ import { ShapeSvg } from "./LayeredCardRenderer";
 import { StrokeEditor } from "./StrokeEditor";
 import { useCardEditor } from "./useCardEditor";
 import { LUXURY_MATERIALS } from "../domain/luxuryMaterials";
-import { curveProfilePoints, type CurveProfile } from "../domain/curveLine";
-import { CURVE_LIMITS, type CurveSpec } from "../domain/curveGeometry";
+import {
+  CURVE_LIMITS,
+  CURVE_NODE_COUNTS,
+  CURVE_PROFILES,
+  type CurveKind,
+  type CurveSpec,
+} from "../domain/curveGeometry";
 import { useEntitlements, PremiumBadge } from "@/components/cards/FeatureGate";
 import { Lock } from "lucide-react";
 import Link from "next/link";
@@ -242,6 +247,7 @@ function CurveParameterEditor({ engine, layer }: { engine: EditorEngine; layer: 
       {spec.kind !== "arc" && spec.kind !== "s" ? slider("فرکانس / سیکل", spec.frequency, CURVE_LIMITS.frequency.min, CURVE_LIMITS.frequency.max, 0.05, "×", "frequency") : null}
       {spec.kind !== "arc" ? slider("فاز", spec.phase, CURVE_LIMITS.phase.min, CURVE_LIMITS.phase.max, 0.1, "°", "phase") : null}
       {spec.kind !== "arc" ? slider("تقارن", spec.symmetry, CURVE_LIMITS.symmetry.min, CURVE_LIMITS.symmetry.max, 0.01, "", "symmetry") : null}
+      {slider("زاویه وتر", spec.chordAngle, CURVE_LIMITS.chordAngle.min, CURVE_LIMITS.chordAngle.max, 0.5, "°", "chordAngle")}
       <div className="grid grid-cols-2 gap-2">
         <CurveNumberField label="مماس ابتدا" value={spec.startTangent ?? 0} min={CURVE_LIMITS.tangent.min} max={CURVE_LIMITS.tangent.max} step={0.1} onCommit={(v) => patch({ startTangent: v })} />
         <CurveNumberField label="مماس انتها" value={spec.endTangent ?? 0} min={CURVE_LIMITS.tangent.min} max={CURVE_LIMITS.tangent.max} step={0.1} onCommit={(v) => patch({ endTangent: v })} />
@@ -252,9 +258,12 @@ function CurveParameterEditor({ engine, layer }: { engine: EditorEngine; layer: 
       </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => patch({ reversed: !spec.reversed })} className={`flex-1 rounded-lg border py-1.5 text-[10px] font-bold ${spec.reversed ? "border-cyan-400 bg-cyan-500/15 text-cyan-200" : "border-white/10 bg-white/5 text-slate-300"}`}>↔ معکوس</button>
-        <button type="button" onClick={() => engine.convertCurveToPath(layer.id)} className="flex-1 rounded-lg border border-amber-300/20 bg-amber-400/[0.06] py-1.5 text-[10px] font-bold text-amber-200 hover:bg-amber-400/10">تبدیل به مسیر</button>
+        <button type="button" onClick={() => engine.setPathEditing(layer.id)} className="flex-1 rounded-lg border border-cyan-300/30 bg-cyan-400/[0.08] py-1.5 text-[10px] font-bold text-cyan-200 hover:bg-cyan-400/15">✎ ویرایش گره‌ها روی بوم</button>
       </div>
-      <p className="text-[9px] leading-4 text-slate-500">برای کنترل دستی هر نقطه، «تبدیل به مسیر» را بزن؛ سپس هر Node و Handle مستقل از پارامترهای موج قابل جابه‌جایی است.</p>
+      <p className="text-[9px] leading-4 text-slate-500">
+        گره‌ها را مستقیم روی بوم بکشید؛ با دابل‌کلیک روی هر بخش منحنی گره جدید اضافه می‌شود. اولین ویرایش دستی، پارامترها را آزاد
+        می‌کند و گره‌ها منبع شکل می‌شوند.
+      </p>
     </div>
   );
 }
@@ -442,14 +451,66 @@ export function ShapeInspectorSection({ engine, layer }: { engine: EditorEngine;
   );
 }
 
+/**
+ * EDITABLE NODE COUNT — how many nodes the user can grab on the canvas.
+ *
+ * Deliberately an INDEPENDENT concept and an independent control: it is not part
+ * of the parametric editor, so a hand-edited curve, a freehand stroke and a pen
+ * path all get it too. Changing it redistributes the nodes along the SAME drawn
+ * curve (arc-length resampling), so shape, endpoints and rotation survive.
+ */
+function CurveNodeCountRow({ engine, layer }: { engine: EditorEngine; layer: PathLayer }) {
+  // Subscribed so a node-count change (which is a document edit) re-renders the
+  // row and the pressed button follows the actual layer state.
+  useCardEditor(engine);
+  const nodeCount = engine.curveNodeCount(layer.id);
+  return (
+    <div className="space-y-1.5 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-white">تعداد گره‌های قابل ویرایش</span>
+        <span className="text-[10px] font-mono text-cyan-300 tabular-nums">{nodeCount}</span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {CURVE_NODE_COUNTS.map((count) => (
+          <button
+            key={count}
+            type="button"
+            aria-pressed={nodeCount === count}
+            onClick={() => engine.setCurveNodeCount(layer.id, count)}
+            className={`min-w-[34px] rounded-md border px-2 py-1 text-[10px] font-bold tabular-nums transition ${
+              nodeCount === count
+                ? "border-cyan-300/60 bg-cyan-400/15 text-cyan-200"
+                : "border-white/10 bg-white/[0.03] text-slate-400 hover:text-white"
+            }`}
+          >
+            {count}
+          </button>
+        ))}
+      </div>
+      <p className="text-[9px] leading-4 text-slate-500">
+        گره‌ها روی همان منحنی فعلی بازتوزیع می‌شوند؛ شکل، دو سر و چرخش حفظ می‌شوند (مستقل از کیفیت رندر).
+      </p>
+    </div>
+  );
+}
+
 export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; layer: PathLayer }) {
   const state = useCardEditor(engine);
+  const [partialCurveKind, setPartialCurveKind] = useState<CurveKind>("arc");
+  const [partialCurveAmplitude, setPartialCurveAmplitude] = useState(40);
   const editing = state.editingPathId === layer.id;
   const selection = state.selectedAnchor?.layerId === layer.id ? state.selectedAnchor.index : null;
+  const rangeStart =
+    state.curveRangeStart?.layerId === layer.id ? state.curveRangeStart.index : null;
+  const rangeEnd =
+    rangeStart !== null && selection !== null && rangeStart !== selection ? selection : null;
   // A closed path needs 3 anchors, an open one 2 — below that it is not a shape.
   const minimum = layer.closed ? 3 : 2;
   const canDelete = selection !== null && layer.points.length > minimum;
   const isTwoPointCurve = !layer.closed && layer.points.length === 2;
+  // Only the SAGITTA arc (2-point `bend` model) gets the curvature slider; a
+  // parametric arc has real nodes and is edited through them.
+  const isBendArc = isTwoPointCurve && layer.bend !== undefined;
 
   return (
     <div className="space-y-3">
@@ -459,6 +520,16 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
           <span className="text-[11px] font-bold text-cyan-300">کنترل هوشمند انحنا (Curvature)</span>
           <span className="text-[10px] font-mono text-slate-400">{layer.points.length} نقطه</span>
         </div>
+        <SliderRow
+          label="شدت نرمی"
+          value={28}
+          min={5}
+          max={80}
+          step={1}
+          suffix="%"
+          onLive={(value) => engine.autoSmoothLayer(layer.id, value / 100)}
+          onCommit={() => {}}
+        />
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -479,70 +550,52 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
         </div>
       </div>
 
-      {layer.pathMode === "curve" && (
-        <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-white">پروفایل منحنی</span>
-            <span className="text-[9px] text-slate-500">مسیر واقعی / قابل ویرایش</span>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {([
-              ["arc", "قوس"],
-              ["sine", "سینوسی متقارن"],
-              ["sine-asymmetric", "سینوسی نامتقارن"],
-              ["s", "موج S"],
-            ] as const).map(([profile, label]) => {
-              const active = (layer.curveProfile ?? (isTwoPointCurve ? "arc" : "sine")) === profile;
-              return (
-                <button
-                  key={profile}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => {
-                    const nextProfile = profile as CurveProfile;
-                    const nextPoints = curveProfilePoints(
-                      Math.max(40, layer.width),
-                      Math.max(40, layer.height),
-                      nextProfile,
-                      0.38,
-                    );
-                    engine.updateLayer(layer.id, {
-                      curveProfile: nextProfile,
-                      bend: nextProfile === "arc" ? layer.bend ?? 0.42 : undefined,
-                      points: nextPoints,
-                      rawD: undefined,
-                    } as never);
-                  }}
-                  className={`rounded-lg border px-2 py-1.5 text-[9px] font-semibold transition ${
-                    active
-                      ? "border-cyan-300/60 bg-cyan-400/10 text-cyan-200"
-                      : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-white"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (layer.curve) engine.convertCurveToPath(layer.id);
-              engine.setPathEditing(layer.id);
-            }}
-            className="w-full rounded-lg border border-cyan-300/20 bg-cyan-400/[0.04] py-1.5 text-[9px] font-bold text-cyan-200 hover:bg-cyan-400/10"
-          >
-            ویرایش نقاط و دستگیره‌ها
-          </button>
+      {/* CANONICAL PROFILE GRID — one source (CURVE_PROFILES + engine
+          .setCurveProfile), so the label list and the geometry generator can
+          never drift apart. Switching a profile RE-PARAMETRIZES the layer:
+          a fresh spec is generated at the layer's current size, which is the
+          documented way out of editable mode. */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-white">پروفایل منحنی</span>
+          <span className="text-[9px] text-slate-500">مسیر واقعی / قابل ویرایش</span>
         </div>
-      )}
+        <div className="grid grid-cols-2 gap-1.5">
+          {CURVE_PROFILES.map(({ kind, label, glyph }) => {
+            const active = layer.curve?.kind === kind;
+            return (
+              <button
+                key={kind}
+                type="button"
+                aria-pressed={active}
+                onClick={() => engine.setCurveProfile(layer.id, kind)}
+                className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[9px] font-semibold transition ${
+                  active
+                    ? "border-cyan-300/60 bg-cyan-400/10 text-cyan-200"
+                    : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-white"
+                }`}
+              >
+                <span className="text-sm leading-none">{glyph}</span>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {!layer.curve ? (
+          <p className="text-[9px] leading-4 text-amber-300/80">
+            این مسیر ویرایش‌شده است (گره‌ها منبع شکل‌اند). انتخاب یک پروفایل، منحنی را با همان پارامترها از نو می‌سازد.
+          </p>
+        ) : null}
+      </div>
+
+      <CurveNodeCountRow engine={engine} layer={layer} />
 
       <CurveParameterEditor engine={engine} layer={layer} />
 
       {/* Arc Curvature Slider (Canva-like intuitive curve control).
           `bend` is the canonical model; the slider presents it as a ±100%
           percentage, matching the -100..100 `curvature` of older builds. */}
-      {isTwoPointCurve && (
+      {isBendArc && (
         <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/[0.05] p-3 space-y-2.5">
           <SliderRow
             label="انحنای کمان (قوس خط)"
@@ -631,6 +684,14 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
               {layer.points.length} نقطه{selection !== null ? ` — انتخاب: ${selection + 1}` : ""}
             </span>
           </div>
+          <button
+            type="button"
+            aria-pressed={state.showNodes}
+            onClick={() => engine.toggleShowNodes()}
+            className="w-full rounded-lg border border-white/10 bg-white/5 py-1.5 text-[10px] font-semibold text-slate-300 hover:text-white"
+          >
+            {state.showNodes ? "مخفی‌کردن گره‌ها (H)" : "نمایش گره‌ها (H)"}
+          </button>
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
@@ -661,6 +722,60 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
             روی نقطه بکشید تا جابه‌جا شود، دسته‌ها را بکشید تا انحنا تغییر کند، با نگه‌داشتن Alt تقارن دسته‌ها
             می‌شکند و دابل‌کلیک روی خط، نقطهٔ جدید اضافه می‌کند.
           </p>
+          <div className="space-y-2 border-t border-white/10 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-slate-300">انحنا روی بازه</span>
+              <span className="text-[9px] text-slate-400">
+                {rangeStart === null
+                  ? "با Shift دو گره را انتخاب کنید"
+                  : rangeEnd === null
+                    ? `ابتدا: ${rangeStart + 1} — نقطهٔ دوم را Shift+Click کنید`
+                    : `گره‌های ${Math.min(rangeStart, rangeEnd) + 1} تا ${Math.max(rangeStart, rangeEnd) + 1}`}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {CURVE_PROFILES.map(({ kind, label, glyph }) => (
+                <button
+                  key={`range-${kind}`}
+                  type="button"
+                  aria-pressed={partialCurveKind === kind}
+                  onClick={() => setPartialCurveKind(kind)}
+                  className={`rounded-lg border px-1.5 py-1.5 text-[9px] font-semibold ${
+                    partialCurveKind === kind
+                      ? "border-fuchsia-300/60 bg-fuchsia-400/10 text-fuchsia-200"
+                      : "border-white/10 bg-white/[0.03] text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <span className="mr-1">{glyph}</span>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="block text-[9px] text-slate-400">
+              دامنه: {partialCurveAmplitude}px
+              <input
+                type="range"
+                min={0}
+                max={500}
+                step={1}
+                value={partialCurveAmplitude}
+                onChange={(event) => setPartialCurveAmplitude(Number(event.target.value))}
+                className="mt-1 block w-full accent-fuchsia-400"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={rangeEnd === null}
+              onClick={() => {
+                if (rangeStart !== null && rangeEnd !== null) {
+                  engine.applyCurveToRange(layer.id, rangeStart, rangeEnd, partialCurveKind, partialCurveAmplitude);
+                }
+              }}
+              className="w-full rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/10 py-1.5 text-[10px] font-bold text-fuchsia-200 hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              اعمال انحنا فقط روی بازه
+            </button>
+          </div>
         </div>
       ) : null}
 

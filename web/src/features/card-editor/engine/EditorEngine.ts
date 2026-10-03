@@ -43,13 +43,22 @@ import {
 } from "../domain/path";
 import { outlineToEditablePath } from "../domain/freehand";
 import {
+  applyNodeCount,
+  curveEndpointEdit,
+  curveSpecMatchesGeometry,
+  regenerateCurveAnchors,
+  resampleCurveNodes,
+} from "../domain/curveEditable";
+import {
   CURVE_KIND_LABELS,
   DEFAULT_CURVE_SPEC,
   bakeCurve,
   curveAnchors,
   curveChordLength,
   normalizeCurveSpec,
+  normalizeNodeCount,
   reverseCurveSpec,
+  curvePointAt,
   type CurveKind,
   type CurveSpec,
 } from "../domain/curveGeometry";
@@ -105,7 +114,6 @@ import {
 } from "../domain/geometry/regions";
 import { regionsForDocument } from "../domain/geometry/documentRegions";
 import { clampStrokeWidth } from "../domain/stroke";
-import type { CurveProfile } from "../domain/curveLine";
 import {
   budgetForTier,
   MAX_PATH_POINTS,
@@ -254,6 +262,8 @@ export type EngineState = {
    * point-edited at a time, which is why this is an id and not a flag.
    */
   editingPathId: string | null;
+  showNodes: boolean;
+  curveRangeStart: AnchorSelection | null;
   canUndo: boolean;
   canRedo: boolean;
   dirty: boolean;
@@ -301,6 +311,8 @@ export class EditorEngine {
       snapping: true,
       snapGuides: [],
       editingPathId: null,
+      showNodes: true,
+      curveRangeStart: null,
       canUndo: false,
       canRedo: false,
       dirty: false,
@@ -532,8 +544,8 @@ export class EditorEngine {
   /**
    * Add a smooth curved line / arc (Canva-like curved line).
    */
-  addCurvedLine(curvature = 40, profile: CurveProfile = "arc"): string {
-    const layer = createCurvedLineLayer(100, 280, 500, 100, curvature, "#0ea5e9", profile);
+  addCurvedLine(curvature = 40): string {
+    const layer = createCurvedLineLayer(100, 280, 500, 100, curvature, "#0ea5e9");
     this.pushHistory();
     const layers = [...this.state.doc.layers, layer];
     this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(layer.id) });
@@ -676,6 +688,88 @@ export class EditorEngine {
     const layers = [...this.state.doc.layers, copy];
     this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(newId) });
     return newId;
+  }
+
+  /** Create a reflected copy of an editable path beside the original. */
+  duplicateMirroredPath(layerId: string, axis: "horizontal" | "vertical"): string | null {
+    const source = this.editablePath(layerId);
+    if (!source || source.points.length < 2 || source.rawD || source.bend !== undefined) return null;
+    const center = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+    const axisStart = axis === "horizontal"
+      ? { x: center.x, y: center.y - 1 }
+      : { x: center.x - 1, y: center.y };
+    const axisEnd = axis === "horizontal"
+      ? { x: center.x, y: center.y + 1 }
+      : { x: center.x + 1, y: center.y };
+    return this.duplicateMirroredPathAcrossAxis(layerId, axisStart, axisEnd);
+  }
+
+  /** Reflect an editable path across an arbitrary artboard-space axis line. */
+  duplicateMirroredPathAcrossAxis(
+    layerId: string,
+    axisStart: { x: number; y: number },
+    axisEnd: { x: number; y: number },
+  ): string | null {
+    const source = this.editablePath(layerId);
+    if (!source || source.points.length < 2 || source.rawD || source.bend !== undefined) return null;
+    const axisX = axisEnd.x - axisStart.x;
+    const axisY = axisEnd.y - axisStart.y;
+    const axisLengthSquared = axisX * axisX + axisY * axisY;
+    if (!Number.isFinite(axisLengthSquared) || axisLengthSquared < 1e-8) return null;
+    const angle = ((source.angle ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const reflect = (point: { x: number; y: number }) => {
+      const localX = point.x - source.width / 2;
+      const localY = point.y - source.height / 2;
+      const worldX = source.x + source.width / 2 + localX * cos - localY * sin;
+      const worldY = source.y + source.height / 2 + localX * sin + localY * cos;
+      const fromAxisX = worldX - axisStart.x;
+      const fromAxisY = worldY - axisStart.y;
+      const projection = (fromAxisX * axisX + fromAxisY * axisY) / axisLengthSquared;
+      const nearestX = axisStart.x + projection * axisX;
+      const nearestY = axisStart.y + projection * axisY;
+      return { x: nearestX * 2 - worldX, y: nearestY * 2 - worldY };
+    };
+    const points = source.points.map((point) => {
+      const anchor = reflect(point);
+      const handleIn = point.hIn ? reflect(point.hIn) : null;
+      const handleOut = point.hOut ? reflect(point.hOut) : null;
+      return {
+        x: anchor.x,
+        y: anchor.y,
+        hIn: handleIn,
+        hOut: handleOut,
+      };
+    });
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const mirrored = normalizePathLayer<PathLayer>(
+      {
+        ...source,
+        id,
+        x: 0,
+        y: 0,
+        angle: 0,
+        points,
+        rawD: undefined,
+        bend: undefined,
+        curve: undefined,
+        curveProfile: undefined,
+        pathMode: "pen",
+        locked: false,
+      },
+      pathPadding(source.strokeWidth),
+    );
+
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, mirrored] },
+      selection: this.withSelection(id),
+      editingPathId: id,
+      selectedAnchor: { layerId: id, index: 0 },
+      curveRangeStart: null,
+    });
+    return id;
   }
 
   /** Rename a layer (layer panel). */
@@ -1634,7 +1728,16 @@ export class EditorEngine {
     );
     this.pushHistory();
     const layers = [...this.state.doc.layers, layer];
-    this.emit({ doc: { ...this.state.doc, layers }, selection: this.withSelection(id) });
+    // A new curve opens in NODE EDITING with its first node focused, so the
+    // endpoints are immediately draggable on the canvas — creating a curve and
+    // then hunting for "edit points" would not be a vector editor.
+    this.emit({
+      doc: { ...this.state.doc, layers },
+      selection: this.withSelection(id),
+      tool: "select",
+      editingPathId: id,
+      selectedAnchor: { layerId: id, index: 0 },
+    });
     return id;
   }
 
@@ -1675,7 +1778,20 @@ export class EditorEngine {
     const layer = this.state.doc.layers.find((l) => l.id === layerId);
     if (!layer || layer.kind !== "path" || layer.locked || !layer.curve) return;
     const spec = normalizeCurveSpec({ ...layer.curve, ...patch });
-    const points = spec.kind === "custom" ? layer.points : curveAnchors(spec);
+    // A parameter edit may only re-derive the anchors while the spec is still a
+    // truthful description of them. Coherence is judged against the spec the
+    // layer ACTUALLY has (the stored one), never against the patched value:
+    // testing the patch would compare a curve against itself and always pass.
+    //
+    // If the user has already dragged a node or a handle, the spec was frozen by
+    // that gesture (see `freezeCurveSpec`), so this guard is about STALE specs:
+    // rewriting the anchors here would silently discard hand-edited geometry,
+    // which is the one thing a vector editor must never do.
+    const coherent = spec.kind === "custom" || curveSpecMatchesGeometry(layer.curve, layer.points);
+    const points =
+      spec.kind === "custom" || !coherent
+        ? layer.points
+        : regenerateCurveAnchors(spec, layer.points);
     const next = normalizePathLayer<PathLayer>(
       { ...layer, curve: spec, points, closed: spec.kind === "custom" ? layer.closed : false, bend: undefined, rawD: undefined },
       pathPadding(layer.strokeWidth),
@@ -1703,6 +1819,337 @@ export class EditorEngine {
     const spec = this.curveSpec(layerId);
     if (!spec) return;
     this.setCurveParam(layerId, reverseCurveSpec(spec));
+  }
+
+  /**
+   * RE-PARAMETRIZE a path as one of the canonical curve profiles.
+   *
+   * This is the single entry point behind the profile grid, and it is also the
+   * documented way OUT of editable mode: choosing a profile creates a fresh spec
+   * from the layer's CURRENT size (chord length and peak amplitude are read off
+   * the geometry that is on screen), so the curve is rebuilt from parameters
+   * again without jumping to a default 600px shape.
+   *
+   * The layer angle, stroke, and node count survive: rotation is a rigid
+   * transform on the layer, and the node count is carried into the new spec.
+   */
+  setCurveProfile(layerId: string, kind: CurveKind): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2) return false;
+    const previous = layer.curve ? normalizeCurveSpec(layer.curve) : null;
+
+    // Read the chord and the peak offset off the CURRENT geometry so the rebuilt
+    // curve lands where the old one was instead of somewhere else.
+    const first = layer.points[0];
+    const last = layer.points[layer.points.length - 1];
+    const chord = Math.hypot(last.x - first.x, last.y - first.y);
+    const peak = layer.points.reduce((max, point) => Math.max(max, Math.abs(point.y - first.y)), 0);
+
+    // The chord DIRECTION is read off the geometry too: a curve that was already
+    // rotated by dragging its endpoint must not snap back to horizontal.
+    const chordAngle = (Math.atan2(last.y - first.y, last.x - first.x) * 180) / Math.PI;
+    const spec = normalizeCurveSpec({
+      ...(previous ?? DEFAULT_CURVE_SPEC),
+      kind,
+      length: chord > 1 ? chord : previous?.length ?? DEFAULT_CURVE_SPEC.length,
+      amplitude: peak > 1 ? peak : previous?.amplitude ?? DEFAULT_CURVE_SPEC.amplitude,
+      chordAngle,
+      nodes: previous?.nodes ?? normalizeNodeCount(layer.points.length),
+    });
+    const next = normalizePathLayer<PathLayer>(
+      {
+        ...layer,
+        curve: spec,
+        pathMode: "curve",
+        points: regenerateCurveAnchors(spec, layer.points),
+        bend: undefined,
+        rawD: undefined,
+      },
+      pathPadding(layer.strokeWidth),
+    );
+    this.updateLayer(layerId, {
+      curve: next.curve,
+      pathMode: "curve",
+      points: next.points,
+      x: next.x,
+      y: next.y,
+      width: next.width,
+      height: next.height,
+      bend: undefined,
+      rawD: undefined,
+    } as Partial<CardLayer>);
+    return true;
+  }
+
+  applyCurveToRange(layerId: string, startIdx: number, endIdx: number, kind: CurveKind, amplitude?: number): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2 || kind === "custom") return false;
+    if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) return false;
+    const lo = Math.min(startIdx, endIdx);
+    const hi = Math.max(startIdx, endIdx);
+    if (lo < 0 || lo === hi || hi >= layer.points.length) return false;
+    const pts = layer.points.map((p) => ({
+      ...p,
+      hIn: p.hIn ? { ...p.hIn } : null,
+      hOut: p.hOut ? { ...p.hOut } : null,
+    }));
+    const first = pts[lo];
+    const last = pts[hi];
+    const chord = Math.hypot(last.x - first.x, last.y - first.y);
+    if (chord < 1) return false;
+    const amp = amplitude ?? Math.min(80, chord * 0.3);
+    const spec = normalizeCurveSpec({ kind, length: chord, amplitude: amp, frequency: 1 });
+    const count = hi - lo + 1;
+    const generated = Array.from({ length: count }, (_, index) =>
+      curvePointAt(spec, index / (count - 1)),
+    );
+    const rad = Math.atan2(last.y - first.y, last.x - first.x);
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const rotated = generated.map((point) => {
+      const g = {
+        x: point.x * cos - point.y * sin + first.x,
+        y: point.x * sin + point.y * cos + first.y,
+      };
+      return g;
+    });
+    rotated[0] = { x: first.x, y: first.y };
+    rotated[count - 1] = { x: last.x, y: last.y };
+    for (let i = 0; i < count; i++) {
+      const g = rotated[i];
+      pts[lo + i] = { ...pts[lo + i], x: g.x, y: g.y };
+    }
+    const tension = 1 / 3;
+    for (let i = 0; i < count; i++) {
+      const prev = rotated[Math.max(0, i - 1)];
+      const next = rotated[Math.min(count - 1, i + 1)];
+      const point = rotated[i];
+      const tx = ((next.x - prev.x) / 2) * tension;
+      const ty = ((next.y - prev.y) / 2) * tension;
+      if (i > 0) {
+        pts[lo + i].hIn = { x: point.x - tx, y: point.y - ty };
+      }
+      if (i < count - 1) {
+        pts[lo + i].hOut = { x: point.x + tx, y: point.y + ty };
+      }
+    }
+    this.applyPathPoints(layer, pts);
+    return true;
+  }
+
+  autoSmoothRange(layerId: string, startIdx: number, endIdx: number, tension = 0.28): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length < 2) return;
+    const lo = Math.min(startIdx, endIdx);
+    const hi = Math.max(startIdx, endIdx);
+    if (lo === hi || hi >= layer.points.length) return;
+    const pts = layer.points.map((p) => ({ ...p, hIn: p.hIn ? { ...p.hIn } : null, hOut: p.hOut ? { ...p.hOut } : null }));
+    for (let i = lo; i <= hi; i++) {
+      const prev = i > 0 ? pts[i - 1] : pts[i];
+      const next = i < pts.length - 1 ? pts[i + 1] : pts[i];
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const dPrev = Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y);
+      const dNext = Math.hypot(next.x - pts[i].x, next.y - pts[i].y);
+      const dTotal = dPrev + dNext || 1;
+      const hInLen = (dPrev / dTotal) * tension * 2;
+      const hOutLen = (dNext / dTotal) * tension * 2;
+      if (i > lo || i > 0) pts[i].hIn = { x: pts[i].x - dx * hInLen, y: pts[i].y - dy * hInLen };
+      if (i < hi || i < pts.length - 1) pts[i].hOut = { x: pts[i].x + dx * hOutLen, y: pts[i].y + dy * hOutLen };
+    }
+    this.applyPathPoints(layer, pts);
+  }
+
+  /* ------------------------- editable node count (§2) ------------------------- */
+
+  /**
+   * The EDITABLE node count of a curve layer — how many nodes the user can
+   * select and drag. Distinct from render/sample resolution by design.
+   *
+   * For a parametric curve it is `spec.nodes`; for a frozen (editable) curve it
+   * is simply how many anchors the layer has.
+   */
+  curveNodeCount(layerId: string): number {
+    const layer = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!layer || layer.kind !== "path") return 0;
+    if (layer.curve && layer.curve.kind !== "custom") return normalizeCurveSpec(layer.curve).nodes;
+    return layer.points.length;
+  }
+
+  /**
+   * Change the editable node count, preserving the drawn shape.
+   *
+   * Parametric curve → regenerated from the SAME parameters at the new density
+   * (exact, and amplitude/frequency/phase/symmetry/tangents/rotation/length are
+   * all preserved by construction).
+   *
+   * Frozen curve or plain path → nodes are redistributed along the existing
+   * geometry by ARC LENGTH (see `resampleCurveNodes`), endpoints kept verbatim.
+   *
+   * One history record per change, and the layer box is re-derived so the
+   * selection frame hugs the new geometry.
+   */
+  setCurveNodeCount(layerId: string, count: number): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer) return false;
+    const target = normalizeNodeCount(count);
+
+    // A legacy 2-point SAGITTA arc draws a CIRCLE, not the polyline through its
+    // two anchors — resampling those anchors would flatten the arc into a line.
+    // It is converted to the canonical parametric arc first (same chord, the
+    // sagitta becomes the amplitude, a negative bend becomes `reversed`), then
+    // the node count is applied to real geometry. One history record.
+    if (layer.bend !== undefined && layer.points.length === 2) {
+      const first = layer.points[0];
+      const last = layer.points[1];
+      const chord = Math.hypot(last.x - first.x, last.y - first.y);
+      if (!(chord > 1)) return false;
+      const spec = normalizeCurveSpec({
+        ...DEFAULT_CURVE_SPEC,
+        kind: "arc",
+        length: chord,
+        amplitude: Math.max(1, Math.abs(layer.bend) * (chord / 2)),
+        chordAngle: (Math.atan2(last.y - first.y, last.x - first.x) * 180) / Math.PI,
+        reversed: layer.bend < 0,
+        nodes: target,
+      });
+      const next = normalizePathLayer<PathLayer>(
+        {
+          ...layer,
+          curve: spec,
+          pathMode: "curve",
+          points: regenerateCurveAnchors(spec, layer.points),
+          bend: undefined,
+          rawD: undefined,
+        },
+        pathPadding(layer.strokeWidth),
+      );
+      this.updateLayer(layerId, {
+        curve: next.curve,
+        pathMode: "curve",
+        points: next.points,
+        x: next.x,
+        y: next.y,
+        width: next.width,
+        height: next.height,
+        bend: undefined,
+        rawD: undefined,
+      } as Partial<CardLayer>);
+      return true;
+    }
+
+    const spec = layer.curve && layer.curve.kind !== "custom" ? normalizeCurveSpec(layer.curve) : null;
+
+    // Coherence is judged against the spec the layer ACTUALLY has, and the
+    // requested node count is compared to it — not to the incoming patch (which
+    // always carries the new count and would make every change look like a
+    // no-op).
+    if (spec && curveSpecMatchesGeometry(layer.curve!, layer.points)) {
+      const applied = applyNodeCount(spec, layer.points, count, layer.closed);
+      if (applied.spec.nodes === spec.nodes) return false;
+      const next = normalizePathLayer<PathLayer>(
+        { ...layer, curve: applied.spec, points: applied.points, bend: undefined, rawD: undefined },
+        pathPadding(layer.strokeWidth),
+      );
+      this.updateLayer(layerId, {
+        curve: next.curve,
+        points: next.points,
+        x: next.x,
+        y: next.y,
+        width: next.width,
+        height: next.height,
+        bend: undefined,
+        rawD: undefined,
+      } as Partial<CardLayer>);
+      return true;
+    }
+
+    if (target === layer.points.length) return false;
+    this.applyPathPoints(layer, resampleCurveNodes(layer.points, target, layer.closed));
+    return true;
+  }
+
+  /**
+   * Is this layer a curve that is STILL described by its spec? The canvas uses
+   * it to pick the interaction: a parametric curve edits its chord on an
+   * endpoint drag, a plain/frozen path moves the anchor.
+   */
+  isParametricCurve(layerId: string): boolean {
+    const layer = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!layer || layer.kind !== "path" || !layer.curve || layer.curve.kind === "custom") return false;
+    return curveSpecMatchesGeometry(normalizeCurveSpec(layer.curve), layer.points);
+  }
+
+  /**
+   * Move ONE node of a curve by an explicit position.
+   *
+   * This is the engine entry point behind a canvas node drag on a CURVE:
+   *   - first/last anchor of a still-parametric curve → the CHORD moved, so the
+   *     spec is updated (length + chord angle) and the waveform is regenerated
+   *     along it. The curve keeps every parameter AND its own shape while the
+   *     dragged node tracks the pointer exactly, and the spec still describes
+   *     the anchors (so the inspector stays live).
+   *   - interior node, handle, or an already-frozen curve → the spec is frozen
+   *     (dropped) and the anchors become the geometry.
+   */
+  updateCurveNode(
+    layerId: string,
+    index: number,
+    position: { x: number; y: number },
+    options: { transient?: boolean } = {},
+  ): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || index < 0 || index >= layer.points.length) return;
+    // The canvas works in WORLD (artboard) coordinates — that is what the
+    // pointer produces — while the geometry is stored in the layer's own frame.
+    // Converting here keeps every call site honest and stops a drag from
+    // landing at `pointer + layer origin`.
+    const local = { x: position.x - layer.x, y: position.y - layer.y };
+    const spec = layer.curve && layer.curve.kind !== "custom" ? normalizeCurveSpec(layer.curve) : null;
+
+    if (spec && curveSpecMatchesGeometry(spec, layer.points)) {
+      const applied = curveEndpointEdit(spec, layer.points, index, local);
+      if (applied) {
+        // A live drag must NOT re-origin the box: `normalizePathLayer` would
+        // move the layer origin under the pointer mid-gesture. The box is
+        // re-derived once, at `commitPathEdit`.
+        if (options.transient) {
+          this.transientPatch(layerId, { curve: applied.spec, points: applied.points } as Partial<CardLayer>);
+          return;
+        }
+        const next = normalizePathLayer<PathLayer>(
+          { ...layer, curve: applied.spec, points: applied.points },
+          pathPadding(layer.strokeWidth),
+        );
+        this.updateLayer(layerId, {
+          curve: next.curve,
+          points: next.points,
+          x: next.x,
+          y: next.y,
+          width: next.width,
+          height: next.height,
+        } as Partial<CardLayer>);
+        return;
+      }
+    }
+    if (options.transient) {
+      this.transientPatch(layerId, {
+        points: moveAnchor(layer.points, index, local),
+        ...this.freezeCurveSpec(layer),
+      } as Partial<CardLayer>);
+      return;
+    }
+    this.applyPathPoints(layer, moveAnchor(layer.points, index, local));
+  }
+
+  /**
+   * Freeze a parametric curve into plain editable anchors: the spec stops being
+   * a description of the geometry and is DROPPED, so the document can never hold
+   * two conflicting representations. Used by the first direct node/handle edit.
+   */
+  private freezeCurveSpec(layer: PathLayer): Partial<CardLayer> {
+    if (!layer.curve) return {};
+    return { curve: undefined, curveProfile: undefined, pathMode: "pen" };
   }
 
   /**
@@ -2133,13 +2580,46 @@ export class EditorEngine {
   /**
    * Focus an anchor (view state — the point editor overlay reads it).
    *
-   * `additive` is the shift-click contract: it toggles the node in the group
-   * instead of replacing it, and NEVER clears on a miss (a shift-click on empty
-   * space must not throw the group away).
+   * `additive` toggles nodes outside point-edit range selection; while editing a
+   * path, the first shift-click starts a range and the second completes it.
    */
   selectAnchor(selection: AnchorSelection | null, additive = false): void {
     if (!additive || selection === null) {
-      this.emit({ selectedAnchor: selection });
+      this.emit({
+        selectedAnchor: selection,
+        anchorSelection: selection ? [selection] : [],
+        curveRangeStart: null,
+      });
+      return;
+    }
+    if (this.state.editingPathId === selection.layerId) {
+      const start = this.state.curveRangeStart;
+      const current = this.state.selectedAnchor;
+      const hasStartedRange =
+        start?.layerId === selection.layerId &&
+        current?.layerId === selection.layerId &&
+        current.index === start.index;
+      if (!hasStartedRange || selection.index === start?.index) {
+        const currentSelection = this.state.anchorSelection.filter((anchor) => anchor.layerId === selection.layerId);
+        const selected = currentSelection.some(
+          (anchor) => anchor.layerId === selection.layerId && anchor.index === selection.index,
+        );
+        const nextSelection = selected
+          ? currentSelection.filter(
+              (anchor) => !(anchor.layerId === selection.layerId && anchor.index === selection.index),
+            )
+          : [...currentSelection, selection];
+        this.emit({
+          selectedAnchor: selection,
+          anchorSelection: nextSelection,
+          curveRangeStart: selection,
+        });
+      } else {
+        this.emit({
+          selectedAnchor: selection,
+          anchorSelection: [selection],
+        });
+      }
       return;
     }
     const current = this.state.anchorSelection;
@@ -2165,12 +2645,26 @@ export class EditorEngine {
   setPathEditing(layerId: string | null): void {
     if (this.state.editingPathId === layerId) return;
     if (layerId === null) {
-      this.emit({ editingPathId: null, selectedAnchor: null });
+      this.emit({ editingPathId: null, selectedAnchor: null, anchorSelection: [], curveRangeStart: null });
       return;
     }
     const layer = this.editablePath(layerId);
     if (!layer) return;
-    this.emit({ editingPathId: layerId, selectedAnchor: { layerId, index: 0 } });
+    const first = { layerId, index: 0 };
+    this.emit({
+      editingPathId: layerId,
+      selectedAnchor: first,
+      anchorSelection: [first],
+      curveRangeStart: null,
+    });
+  }
+
+  toggleShowNodes(): void {
+    this.emit({ showNodes: !this.state.showNodes });
+  }
+
+  setCurveRangeStart(anchor: AnchorSelection | null): void {
+    this.emit({ curveRangeStart: anchor });
   }
 
   /**
@@ -2196,6 +2690,94 @@ export class EditorEngine {
     this.cornerAnchor(layerId, index);
   }
 
+  /** Set a node's tangent to a world-space angle and handle length. */
+  setAnchorTangent(layerId: string, index: number, angle: number, length: number): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || !Number.isInteger(index) || index < 0 || index >= layer.points.length) return false;
+    if (!Number.isFinite(angle) || !Number.isFinite(length) || length < 0 || length > 2000) return false;
+    const radians = ((angle - (layer.angle ?? 0)) * Math.PI) / 180;
+    const dx = Math.cos(radians) * length;
+    const dy = Math.sin(radians) * length;
+    const points = layer.points.map((current, currentIndex) =>
+      currentIndex === index
+        ? {
+            ...current,
+            hIn: length === 0 ? null : { x: current.x - dx, y: current.y - dy },
+            hOut: length === 0 ? null : { x: current.x + dx, y: current.y + dy },
+          }
+        : current,
+    );
+    const anchorWorld = this.pathAnchorWorldPosition(layer, index);
+    const source = layer.curve
+      ? ({ ...layer, ...this.freezeCurveSpec(layer), points } as PathLayer)
+      : ({ ...layer, points } as PathLayer);
+    const normalized = normalizePathLayer(source, pathPadding(layer.strokeWidth));
+    const correctedWorld = this.pathAnchorWorldPosition(normalized, index);
+    this.updateLayer(layerId, {
+      points: normalized.points,
+      x: normalized.x + anchorWorld.x - correctedWorld.x,
+      y: normalized.y + anchorWorld.y - correctedWorld.y,
+      width: normalized.width,
+      height: normalized.height,
+      curve: undefined,
+      curveProfile: undefined,
+      ...(layer.curve ? { pathMode: "pen" } : {}),
+    } as Partial<CardLayer>);
+    return true;
+  }
+
+  /** Move an anchor to an exact artboard coordinate, retaining its handles. */
+  setAnchorWorldPosition(layerId: string, index: number, position: { x: number; y: number }): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || !Number.isInteger(index) || index < 0 || index >= layer.points.length) return false;
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) return false;
+    const angle = ((layer.angle ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const centerX = layer.width / 2;
+    const centerY = layer.height / 2;
+    const dx = position.x - (layer.x + centerX);
+    const dy = position.y - (layer.y + centerY);
+    const local = {
+      x: dx * cos + dy * sin + centerX,
+      y: -dx * sin + dy * cos + centerY,
+    };
+    const moved = moveAnchor(layer.points, index, local);
+    const source = layer.curve
+      ? ({ ...layer, ...this.freezeCurveSpec(layer), points: moved } as PathLayer)
+      : ({ ...layer, points: moved } as PathLayer);
+    const normalized = normalizePathLayer(source, pathPadding(layer.strokeWidth));
+    const normalizedPoint = normalized.points[index];
+    const normalizedCenterX = normalized.width / 2;
+    const normalizedCenterY = normalized.height / 2;
+    const pointDx = normalizedPoint.x - normalizedCenterX;
+    const pointDy = normalizedPoint.y - normalizedCenterY;
+    const worldX = normalized.x + normalizedCenterX + pointDx * cos - pointDy * sin;
+    const worldY = normalized.y + normalizedCenterY + pointDx * sin + pointDy * cos;
+    this.updateLayer(layerId, {
+      points: normalized.points,
+      x: normalized.x + position.x - worldX,
+      y: normalized.y + position.y - worldY,
+      width: normalized.width,
+      height: normalized.height,
+      curve: undefined,
+      curveProfile: undefined,
+      ...(layer.curve ? { pathMode: "pen" } : {}),
+    } as Partial<CardLayer>);
+    return true;
+  }
+
+  private pathAnchorWorldPosition(layer: PathLayer, index: number): { x: number; y: number } {
+    const point = layer.points[index];
+    const angle = ((layer.angle ?? 0) * Math.PI) / 180;
+    const dx = point.x - layer.width / 2;
+    const dy = point.y - layer.height / 2;
+    return {
+      x: layer.x + layer.width / 2 + dx * Math.cos(angle) - dy * Math.sin(angle),
+      y: layer.y + layer.height / 2 + dx * Math.sin(angle) + dy * Math.cos(angle),
+    };
+  }
+
   /**
    * Toggle a specific anchor between smooth curve and sharp corner (Illustrator standard).
    */
@@ -2216,9 +2798,24 @@ export class EditorEngine {
   transientMoveAnchor(layerId: string, index: number, position: { x: number; y: number }): void {
     const layer = this.editablePath(layerId);
     if (!layer) return;
+    // A PARAMETRIC curve keeps its parameters while an ENDPOINT is dragged: the
+    // chord moved, so length is updated and the chord direction is folded into
+    // the layer angle. Any other node (or an already-frozen curve) has no
+    // parametric equivalent, so the spec is frozen and the anchors take over.
+    const spec = layer.curve && layer.curve.kind !== "custom" ? normalizeCurveSpec(layer.curve) : null;
+    if (spec && curveSpecMatchesGeometry(spec, layer.points)) {
+      const applied = curveEndpointEdit(spec, layer.points, index, position);
+      if (applied) {
+        this.transientPatch(layerId, {
+          curve: applied.spec,
+          points: applied.points,
+        } as Partial<CardLayer>);
+        return;
+      }
+    }
     this.transientPatch(layerId, {
       points: moveAnchor(layer.points, index, position),
-      ...(layer.curve ? { curve: undefined } : {}),
+      ...this.freezeCurveSpec(layer),
     } as Partial<CardLayer>);
   }
 
@@ -2234,7 +2831,35 @@ export class EditorEngine {
     if (!layer) return;
     this.transientPatch(layerId, {
       points: moveHandle(layer.points, index, which, position, symmetric),
-      ...(layer.curve ? { curve: undefined } : {}),
+      ...this.freezeCurveSpec(layer),
+    } as Partial<CardLayer>);
+  }
+
+  transientDragSegment(
+    layerId: string,
+    segIndex: number,
+    dx: number,
+    dy: number,
+  ): void {
+    const layer = this.editablePath(layerId);
+    if (!layer || segIndex < 0 || segIndex >= layer.points.length - (layer.closed ? 0 : 1)) return;
+    const pts = layer.points.map((p) => ({ ...p }));
+    const nextIdx = layer.closed ? (segIndex + 1) % pts.length : Math.min(segIndex + 1, pts.length - 1);
+    const from = pts[segIndex];
+    const to = pts[nextIdx];
+    const hOut = from.hOut ?? {
+      x: from.x + (to.x - from.x) / 3,
+      y: from.y + (to.y - from.y) / 3,
+    };
+    const hIn = to.hIn ?? {
+      x: to.x - (to.x - from.x) / 3,
+      y: to.y - (to.y - from.y) / 3,
+    };
+    from.hOut = { x: hOut.x + dx, y: hOut.y + dy };
+    to.hIn = { x: hIn.x + dx, y: hIn.y + dy };
+    this.transientPatch(layerId, {
+      points: pts,
+      ...this.freezeCurveSpec(layer),
     } as Partial<CardLayer>);
   }
 
@@ -2308,10 +2933,10 @@ export class EditorEngine {
   /**
    * Automatically convert all points of a path into a continuous, smooth, organic curve.
    */
-  autoSmoothLayer(layerId: string): void {
+  autoSmoothLayer(layerId: string, tension = 0.28): void {
     const layer = this.editablePath(layerId);
     if (!layer || layer.points.length < 2) return;
-    const smoothed = autoSmoothPoints(layer.points, layer.closed);
+    const smoothed = autoSmoothPoints(layer.points, layer.closed, tension);
     this.applyPathPoints(layer, smoothed);
   }
 
@@ -2332,7 +2957,7 @@ export class EditorEngine {
     // would make the next parameter edit silently regenerate the user's manual
     // geometry, which is not acceptable in a vector editor.
     const source = layer.curve
-      ? ({ ...layer, curve: undefined, curveProfile: undefined, pathMode: "pen", points } as PathLayer)
+      ? ({ ...layer, ...this.freezeCurveSpec(layer), points } as PathLayer)
       : ({ ...layer, points } as PathLayer);
     const normalized = normalizePathLayer(source, pathPadding(layer.strokeWidth));
     this.updateLayer(layer.id, {
@@ -2380,7 +3005,7 @@ export class EditorEngine {
     const layer = layerId ? this.editablePath(layerId) : null;
     if (!layer || layer.points.length === 0) return 0;
     const group = layer.points.map((_, index) => ({ layerId: layer.id, index }));
-    this.emit({ selectedAnchor: group[0], anchorSelection: group });
+    this.emit({ selectedAnchor: group[0], anchorSelection: group, curveRangeStart: null });
     return group.length;
   }
 
@@ -2394,8 +3019,20 @@ export class EditorEngine {
   selectAnchorsInRect(rect: WorldRect, additive = false, layerId: string | null = this.anchorTargetId()): number {
     const layer = layerId ? this.editablePath(layerId) : null;
     if (!layer) return 0;
-    const local: WorldRect = { x: rect.x - layer.x, y: rect.y - layer.y, width: rect.width, height: rect.height };
-    const found = anchorsInRect(layer.points, local, 0).map((index) => ({ layerId: layer.id, index }));
+    const angle = ((layer.angle ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const centerX = layer.width / 2;
+    const centerY = layer.height / 2;
+    const worldPoints = layer.points.map((point) => {
+      const dx = point.x - centerX;
+      const dy = point.y - centerY;
+      return {
+        x: layer.x + centerX + dx * cos - dy * sin,
+        y: layer.y + centerY + dx * sin + dy * cos,
+      };
+    });
+    const found = anchorsInRect(worldPoints, rect, 0).map((index) => ({ layerId: layer.id, index }));
     if (found.length === 0) {
       if (additive) return 0;
       this.clearAnchorSelection();
@@ -2405,12 +3042,12 @@ export class EditorEngine {
       ? this.state.anchorSelection.filter((anchor) => !found.some((hit) => hit.layerId === anchor.layerId && hit.index === anchor.index))
       : [];
     const group = [...existing, ...found];
-    this.emit({ selectedAnchor: group[0], anchorSelection: group });
+    this.emit({ selectedAnchor: group[0], anchorSelection: group, curveRangeStart: null });
     return found.length;
   }
 
   clearAnchorSelection(): void {
-    this.emit({ selectedAnchor: null, anchorSelection: [] });
+    this.emit({ selectedAnchor: null, anchorSelection: [], curveRangeStart: null });
   }
 
   /** Where a group drag starts: the geometry it is measured FROM. */

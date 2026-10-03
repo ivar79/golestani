@@ -47,11 +47,13 @@ type Props = {
   bounds?: { x: number; y: number; width: number; height: number } | null;
   /** Marks the frame as a group so the UI can label/space it differently. */
   group?: boolean;
+  /** Hide handles and rotation — only show the bounding outline. */
+  minimal?: boolean;
   onHandlePointerDown: (handle: ResizeHandle, event: React.PointerEvent) => void;
   onRotatePointerDown: (event: React.PointerEvent) => void;
 };
 
-function SelectionOverlayImpl({ layer, bounds, group = false, onHandlePointerDown, onRotatePointerDown }: Props) {
+function SelectionOverlayImpl({ layer, bounds, group = false, minimal = false, onHandlePointerDown, onRotatePointerDown }: Props) {
   const frame: Frame | null = bounds
     ? { ...bounds, angle: 0, locked: false }
     : layer
@@ -79,7 +81,7 @@ function SelectionOverlayImpl({ layer, bounds, group = false, onHandlePointerDow
       />
 
       {/* Resize handles */}
-      {frame.locked
+      {frame.locked || minimal
         ? null
         : HANDLES.map((handle) => (
             <div
@@ -93,7 +95,7 @@ function SelectionOverlayImpl({ layer, bounds, group = false, onHandlePointerDow
           ))}
 
       {/* Rotation handle — sits above the top edge on a short stem */}
-      {frame.locked ? null : (
+{frame.locked || minimal ? null : (
         <>
           <div
             className="pointer-events-none absolute left-1/2 bg-cyan-300/70"
