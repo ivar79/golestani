@@ -30,6 +30,18 @@ return [
     'catalog' => [
         'card_editor' => ['bool', 'کارت‌ساز دیجیتال', 'کارت ویزیت', true],
 
+        // CARD STUDIO (layered design document) access for an APPROVED
+        // designer. TWO independent conditions decide Level B writes
+        // (design_json mutation, personal templates, gallery submission,
+        // print-file replacement on a layered card):
+        //   1. users.designer_status === 'approved'  (program identity), and
+        //   2. THIS capability on the card's own business plan.
+        // Admins have an explicit, AUDITED bypass (never ownership,
+        // validation or throttling). The enforcement switch is the
+        // `studio_designer_only` site setting (staged rollout); while it is
+        // '0' the gate is dormant and behaviour is unchanged.
+        'designer_studio' => ['bool', 'استودیو طراحی کارت', 'کارت ویزیت', false],
+
         // PRIVATE custom templates: upload/keep personal templates and apply
         // them to own cards. Deliberately SEPARATE from the designer program
         // (users.designer_status = program identity; this = entitlement).
@@ -73,6 +85,7 @@ return [
         'description' => 'شروع رایگان با امکانات پایه برای هر کسب‌وکار.',
         'capabilities' => [
             'card_editor' => true,
+            'designer_studio' => false,
             'custom_templates' => false,
             'card_templates' => ['classic', 'local'],
             'card_themes' => ['navy', 'emerald'],

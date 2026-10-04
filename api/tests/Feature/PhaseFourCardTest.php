@@ -277,23 +277,36 @@ class PhaseFourCardTest extends TestCase
      | Designer: profile, referral code, attribution, moderation
      ------------------------------------------------------------------ */
 
-    public function test_user_gets_designer_profile_with_referral_code_and_role(): void
+    /**
+     * SECURITY REGRESSION (V1): the designer profile endpoint used to
+     * self-assign the designer role to any OTP user with one GET request.
+     * It is now designer-only and never grants the role.
+     */
+    public function test_plain_user_cannot_self_promote_via_designer_profile(): void
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('user');
+
+        $this->actingAs($user)->getJson('/api/designer/profile')->assertForbidden();
+        $this->assertFalse($user->fresh()->hasRole('designer'));
+    }
+
+    public function test_designer_gets_profile_with_referral_code(): void
+    {
+        $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
+        $user->assignRole('designer');
 
         $response = $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
         $code = $response->json('referral_code');
         $this->assertMatchesRegularExpression('/^DES-[A-Z0-9]{6}$/', $code);
         $this->assertStringContainsString("ref={$code}", $response->json('referral_link'));
-        $this->assertTrue($user->fresh()->hasRole('designer'));
     }
 
     public function test_designer_profile_can_be_updated(): void
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $user->assignRole('user');
+        $user->assignRole('designer');
 
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
@@ -403,7 +416,7 @@ class PhaseFourCardTest extends TestCase
     {
         Storage::fake('public');
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $user->assignRole('user');
+        $user->assignRole('designer');
 
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
@@ -428,9 +441,9 @@ class PhaseFourCardTest extends TestCase
     {
         Storage::fake('public');
         $userA = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $userA->assignRole('user');
+        $userA->assignRole('designer');
         $userB = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $userB->assignRole('user');
+        $userB->assignRole('designer');
 
         $this->actingAs($userA)->getJson('/api/designer/profile')->assertOk();
         $portfolioId = $this->actingAs($userA)->postJson('/api/designer/portfolios', [
@@ -447,7 +460,7 @@ class PhaseFourCardTest extends TestCase
     public function test_invalid_portfolio_type_is_rejected(): void
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $user->assignRole('user');
+        $user->assignRole('designer');
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
         $this->actingAs($user)->postJson('/api/designer/portfolios', [
@@ -459,7 +472,7 @@ class PhaseFourCardTest extends TestCase
     public function test_admin_designer_moderation_changes_status(): void
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $user->assignRole('user');
+        $user->assignRole('designer');
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
         $designer = Designer::where('user_id', $user->id)->first();

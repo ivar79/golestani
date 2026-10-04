@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\UserCardTemplate;
 use App\Services\CardDesignValidator;
 use App\Services\FeatureGate;
+use App\Services\StudioAccess;
 use App\Services\TemplateAssetService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,7 +35,16 @@ class MyTemplateController extends Controller
     {
         $user = $request->user();
         abort_unless($user !== null, 401);
-        $business = $user->businesses()->findOrFail((int) $request->input('business_id', 0) ?: $user->businesses()->value('id'));
+
+        // Multi-business resolution: an explicit business_id must be OWNED;
+        // otherwise the first owned business that actually passes BOTH the
+        // entitlement and the studio gate is used. A capability is never
+        // inherited from a different business of the same user.
+        $business = app(StudioAccess::class)->businessFor(
+            $user,
+            (int) $request->input('business_id', 0) ?: null,
+            'custom_templates',
+        );
         abort_unless(app(FeatureGate::class)->allows($business, 'custom_templates'), 403, 'قالب اختصاصی نیازمند پلن فعال با این امکان است.');
 
         return $business;
@@ -53,7 +63,9 @@ class MyTemplateController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $this->entitledBusiness($request);
+        $business = $this->entitledBusiness($request);
+        // LEVEL B: creating a personal template writes a design document.
+        app(StudioAccess::class)->assert($request, $business, 'personal_template.store');
 
         $data = $request->validate([
             'name_fa' => ['required', 'string', 'max:120'],
@@ -77,7 +89,9 @@ class MyTemplateController extends Controller
     public function update(Request $request, UserCardTemplate $template): JsonResponse
     {
         abort_unless((int) $template->user_id === (int) $request->user()?->id, 403, 'این قالب متعلق به شما نیست.');
-        $this->entitledBusiness($request);
+        $business = $this->entitledBusiness($request);
+        // LEVEL B: updating a personal template mutates a design document.
+        app(StudioAccess::class)->assert($request, $business, 'personal_template.update');
 
         $data = $request->validate([
             'name_fa' => ['sometimes', 'string', 'max:120'],
@@ -143,8 +157,9 @@ class MyTemplateController extends Controller
     {
         $user = $request->user();
         abort_unless($user !== null, 401);
-        $business = $user->businesses()->first();
-        abort_if($business === null || ! app(FeatureGate::class)->allows($business, 'custom_templates'), 403, 'قالب اختصاصی نیازمند پلن فعال با این امکان است.');
+        $business = $this->entitledBusiness($request);
+        // LEVEL B: the asset exists to author a personal template design.
+        app(StudioAccess::class)->assert($request, $business, 'personal_template.asset');
 
         $request->validate(['image' => array_merge(['required'], TemplateAssetService::UPLOAD_RULES)]);
 

@@ -174,7 +174,23 @@ class TemplateService
             $layers[] = $layer;
         }
 
-        return ['background' => $background, 'layers' => $layers];
+        // The document ENVELOPE is always materialized too, so every apply
+        // returns a COMPLETE editor document (version + artboard), not just
+        // background + layers. The studio apply pipeline validates and
+        // persists this directly; the legacy endpoints' client editor reads
+        // only background + layers, so the extra keys are additive.
+        $artboard = $doc['artboard'] ?? null;
+        $document = [
+            'version' => is_int($doc['version'] ?? null) ? $doc['version'] : 1,
+            'artboard' => [
+                'width' => (int) (is_array($artboard) ? ($artboard['width'] ?? 1050) : 1050),
+                'height' => (int) (is_array($artboard) ? ($artboard['height'] ?? 600) : 600),
+            ],
+            'background' => $background,
+            'layers' => $layers,
+        ];
+
+        return $document;
     }
 
     /** Replace {{token}} placeholders inside every scalar string field. */

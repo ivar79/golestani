@@ -102,6 +102,49 @@ class EditorPlanSeeder extends Seeder
                     'ads' => true,
                 ],
             ],
+            [
+                // DESIGNER PLAN (example starting point, like the rows above).
+                // The studio gate is capability-based, never slug-based: what
+                // makes this a "designer plan" is `designer_studio` (Card
+                // Studio for an approved designer on the SAME business) plus
+                // `custom_templates` (personal templates + gallery
+                // submission). The admin can reprice, rename or retune it
+                // from the Admin Panel like any other plan.
+                'name' => 'طراح حرفه‌ای',
+                'slug' => 'designer-pro',
+                'description' => 'پلن طراحان: استودیوی طراحی کارت، قالب اختصاصی و ارسال به گالری.',
+                'price' => 399000,
+                'currency' => 'IRR',
+                'duration_days' => 30,
+                'sort_order' => 3,
+                // Highest tier: buying up from a business plan is an UPGRADE,
+                // never a same-level side-grade.
+                'tier' => 3,
+                'is_public' => true,
+                'is_featured' => false,
+                'is_active' => true,
+                'features' => [
+                    'card_editor' => true,
+                    // THE designer capabilities (both mandatory for the full
+                    // Studio on a business that owns this plan).
+                    'designer_studio' => true,
+                    'custom_templates' => true,
+                    'card_templates' => ['classic', 'local', 'midnight', 'emerald', 'creative', 'pro-persian-carpet-toranj', 'pro-persian-architecture-gereh', 'pro-laser-cut-walnut-wood', 'pro-gol-o-morgh-miniature', 'pro-gold-foil-embossed', 'pro-marble-stone-gold', 'starter-modern-dark-gradient', 'starter-emerald-executive', 'starter-creative-diagonal', 'starter-tech-developer', 'starter-medical-health', 'starter-real-estate-gold', 'free-classic-navy', 'free-minimal-white', 'free-local-shop'],
+                    'card_themes' => ['navy', 'emerald', 'warm'],
+                    'card_fonts' => ['sans', 'vazir', 'serif'],
+                    'card_exports' => ['png', 'jpg', 'svg', 'pdf'],
+                    'print_file' => true,
+                    'max_layers' => null,
+                    'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path'],
+                    'card_premium_layer_kinds' => [],
+                    'max_premium_elements' => null,
+                    'max_cards' => null,
+                    'max_showcases' => 10,
+                    'max_ads' => 2,
+                    'showcase' => true,
+                    'ads' => true,
+                ],
+            ],
         ];
 
         foreach ($plans as $plan) {

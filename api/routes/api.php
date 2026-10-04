@@ -63,7 +63,13 @@ Route::prefix('auth')->group(function (): void {
 
 Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function (): void {
     Route::get('/businesses/{business}/card', [BusinessCardController::class, 'show']);
-    Route::put('/businesses/{business}/card', [BusinessCardController::class, 'save']);
+    // Card writes share ONE per-user throttle bucket (card-write) so hopping
+    // between the save and template-apply endpoints cannot reset the quota.
+    Route::put('/businesses/{business}/card', [BusinessCardController::class, 'save'])->middleware('throttle:card-write');
+    // THE canonical studio apply: the client names a source + template and
+    // NEVER sends a document (resolve → entitlement → clone + ids + fills →
+    // validate → persist, in one transaction).
+    Route::post('/businesses/{business}/card/template-apply', [BusinessCardController::class, 'applyTemplate'])->middleware('throttle:card-write');
     // Phase 4: authorized print-file download (owner/admin only, 403 else).
     Route::get('/businesses/{business}/card/print-file', [BusinessCardController::class, 'download']);
     // STANDARD Dashboard entitlement contract (owner/admin only):
@@ -71,9 +77,11 @@ Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function
     // payload — the single source the frontend mirrors for UX.
     Route::get('/businesses/{business}/entitlements', [BusinessEntitlementController::class, 'show']);
 });
-// P1: 'user' may bootstrap their own designer profile; the designer role
-// is assigned server-side on first create. Portfolio access stays owned.
-Route::middleware(['auth:sanctum', 'role:designer,user,admin'])->prefix('designer')->group(function (): void {
+// Designer profile + portfolios are for the DESIGNER IDENTITY only: the
+// role is granted exclusively by the admin approval workflow
+// (PATCH /admin/users/{user}/designer-status) — never self-assigned (the
+// removed bootstrap let any OTP user obtain the role with one GET).
+Route::middleware(['auth:sanctum', 'role:designer,admin'])->prefix('designer')->group(function (): void {
     Route::get('/profile', [DesignerController::class, 'profile']);
     Route::put('/profile', [DesignerController::class, 'update']);
     Route::get('/portfolios', [DesignerController::class, 'portfolios']);
@@ -126,13 +134,15 @@ Route::get('/card-templates', [CardTemplateController::class, 'index']);
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/card-templates/builtin/{templateId}/apply', [CardTemplateController::class, 'applyBuiltin']);
     Route::post('/card-templates/{templateId}/apply', [CardTemplateController::class, 'applyDb']);
-    // PRIVATE personal templates (custom_templates entitlement).
+    // PRIVATE personal templates (custom_templates entitlement). Authoring
+    // writes use their OWN throttle bucket (studio-authoring) — heavier and
+    // less frequent than the card editor, so they must not consume card-write.
     Route::get('/my/templates', [MyTemplateController::class, 'index']);
-    Route::post('/my/templates', [MyTemplateController::class, 'store']);
-    Route::put('/my/templates/{template}', [MyTemplateController::class, 'update']);
+    Route::post('/my/templates', [MyTemplateController::class, 'store'])->middleware('throttle:studio-authoring');
+    Route::put('/my/templates/{template}', [MyTemplateController::class, 'update'])->middleware('throttle:studio-authoring');
     Route::delete('/my/templates/{template}', [MyTemplateController::class, 'destroy']);
     Route::post('/my/templates/{template}/apply', [MyTemplateController::class, 'apply']);
-    Route::post('/my/templates-asset', [MyTemplateController::class, 'uploadAsset']);
+    Route::post('/my/templates-asset', [MyTemplateController::class, 'uploadAsset'])->middleware('throttle:studio-authoring');
     // Ownership-checked private asset door (personal template artwork).
     Route::get('/assets/private/{path}', [PrivateAssetController::class, 'show'])->where('path', '.*');
 });
@@ -142,7 +152,7 @@ Route::middleware('auth:sanctum')->prefix('designer')->group(function (): void {
     Route::get('/program/status', [DesignerTemplateController::class, 'programStatus']);
     Route::post('/program/request', [DesignerTemplateController::class, 'requestProgram']);
     Route::get('/templates', [DesignerTemplateController::class, 'index']);
-    Route::post('/templates', [DesignerTemplateController::class, 'store']);
+    Route::post('/templates', [DesignerTemplateController::class, 'store'])->middleware('throttle:studio-authoring');
 });
 // Admin moderation + CRUD for DB templates.
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin/templates')->group(function (): void {
@@ -191,6 +201,12 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/audit', [AdminController::class, 'auditLog']);
     Route::get('/users', [AdminController::class, 'users']);
     Route::patch('/users/{user}', [AdminController::class, 'updateUser']);
+    // Designer-approval workflow: the CANONICAL writer of
+    // users.designer_status (also syncs the designer role + legacy designers
+    // row + audit trail).
+    Route::patch('/users/{user}/designer-status', [AdminController::class, 'updateDesignerStatus']);
+    // Studio rollout board: gate switch state + per-user/business access.
+    Route::get('/studio/report', [AdminController::class, 'studioReport']);
     Route::patch('/showcases/{showcase}/moderate', [AdminController::class, 'moderateShowcase']);
     Route::patch('/advertisements/{advertisement}/moderate', [AdminController::class, 'moderateAdvertisement']);
     Route::get('/settings', [AdminController::class, 'settings']);

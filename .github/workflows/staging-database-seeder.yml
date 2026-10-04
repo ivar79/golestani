@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: true
+      render_deploy:
+        description: Trigger the Render deploy hook first (installs/build + API boot commands), then wait for /api/health
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ jobs:
   seed:
     name: Seed staging database
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     environment:
       name: staging
     env:
@@ -75,6 +80,51 @@ jobs:
             echo "Confirmation must exactly equal RUN_DATABASE_SEED."
             exit 1
           fi
+
+      - name: Trigger Render deploy (optional) and wait for health
+        if: ${{ inputs.render_deploy }}
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          API_BASE: ${{ secrets.RENDER_API_BASE_URL || 'https://one-ns2s.onrender.com' }}
+        run: |
+          set -euo pipefail
+
+          # Render performs the install/build (api/Dockerfile: composer install)
+          # and the required API boot commands (api/docker/start.sh:
+          # config:cache, migrate --force, storage:link, route:cache,
+          # view:cache). The schema-freshness preflight below depends on that
+          # deploy having completed first.
+          if [[ -z "${DEPLOY_HOOK:-}" ]]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL is not set; skipping the Render deploy trigger. If staging is behind main, the read-only preflight below fails with the exact missing migrations."
+            exit 0
+          fi
+
+          case "$DEPLOY_HOOK" in
+            https://*) ;;
+            *) echo "RENDER_DEPLOY_HOOK_URL must be an https URL."; exit 1 ;;
+          esac
+          hook_host="$(printf '%s' "$DEPLOY_HOOK" | awk -F/ '{print $3}')"
+          case "$hook_host" in
+            render.com|*.render.com) ;;
+            *) echo "RENDER_DEPLOY_HOOK_URL must point at a render.com host."; exit 1 ;;
+          esac
+
+          echo "Triggering the Render deploy hook for staging."
+          curl --fail --silent --show-error --max-time 30 --request POST "$DEPLOY_HOOK" >/dev/null
+
+          echo "Waiting for ${API_BASE%/}/api/health to report status=ok (up to 10 minutes)."
+          deadline=$((SECONDS + 600))
+          while (( SECONDS < deadline )); do
+            body="$(curl --silent --max-time 20 "${API_BASE%/}/api/health" || true)"
+            if printf '%s' "$body" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+              echo "Render health check passed; staging is running the freshly deployed main."
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo "Timed out waiting for the Render deployment to become healthy."
+          exit 1
 
       - name: Build disposable seeder image
         run: |

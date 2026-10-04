@@ -128,6 +128,10 @@ export type AdminUser = {
   is_active: boolean;
   created_at: string;
   roles: Array<{ name: string; display_name: string }>;
+  /** CANONICAL designer program status (users.designer_status). */
+  designer_status?: string;
+  /** Legacy program profile — compare with designer_status for divergence. */
+  designer?: { id: number; user_id: number; status: string } | null;
 };
 
 export async function getAdminUsers(page = 1) {
@@ -136,6 +140,14 @@ export async function getAdminUsers(page = 1) {
 
 export async function updateAdminUser(id: number, data: { name?: string; is_active?: boolean; roles?: string[] }) {
   return (await api.patch<AdminUser>(`/admin/users/${id}`, data)).data;
+}
+
+/**
+ * The CANONICAL designer-approval workflow: status + designer role + legacy
+ * `designers` row sync + audit, atomically. Reject/suspend need a reason.
+ */
+export async function updateAdminUserDesignerStatus(id: number, designerStatus: string, reason?: string) {
+  return (await api.patch<AdminUser>(`/admin/users/${id}/designer-status`, { designer_status: designerStatus, reason })).data;
 }
 
 export type AdminTaxonomy = {
@@ -270,7 +282,7 @@ export async function getAdminRevenueReport() {
   return (await api.get<{ subscriptions: { total: number; pending: number; active: number; revenue: number } }>("/admin/reports/revenue")).data;
 }
 
-export type AdminDesigner = { id: number; display_name: string; referral_code: string; status: string; bio: string | null; businesses_count: number; user?: { phone: string; email: string | null } };
+export type AdminDesigner = { id: number; display_name: string; referral_code: string; status: string; bio: string | null; businesses_count: number; user?: { phone: string; email: string | null; designer_status?: string } };
 
 export async function getAdminDesigners() {
   return (await api.get<{ data: AdminDesigner[] }>("/admin/designers")).data;
@@ -278,6 +290,34 @@ export async function getAdminDesigners() {
 
 export async function moderateAdminDesigner(id: number, status: string, moderation_note?: string) {
   return (await api.patch<AdminDesigner>(`/admin/designers/${id}/moderate`, { status, moderation_note })).data;
+}
+
+/** The studio rollout board (read-only) — gate switch, statuses, divergence. */
+export type StudioAccessReport = {
+  generated_at: string;
+  gate: { enforced: boolean; setting: string; capability: string };
+  users: {
+    total: number;
+    by_designer_status: Record<string, number>;
+    approved: number;
+    approved_without_business: number;
+    approved_without_studio_business: number;
+    /** canonical unset + legacy decided → review before studio:backfill-designers --apply. */
+    backfill_candidates: Array<{ user_id: number; designer_status: string; legacy_status: string; has_designer_role: boolean }>;
+    /** canonical already set and disagreeing with legacy → admin decides. */
+    divergent: Array<{ user_id: number; designer_status: string; legacy_status: string }>;
+    role_without_approval: Array<{ user_id: number; designer_status: string; legacy_status: string | null }>;
+  };
+  businesses: { total: number; with_card_editor: number; with_designer_studio: number };
+  subscriptions: { active: number };
+  admin_bypasses: {
+    total: number;
+    recent: Array<{ id: number; actor_id: number | null; subject_id: number | null; metadata: unknown; created_at: string }>;
+  };
+};
+
+export async function getStudioReport() {
+  return (await api.get<StudioAccessReport>("/admin/studio/report")).data;
 }
 
 export type AdminBusinessReport = { id: number; type: string; message: string; status: string; admin_note: string | null; business?: { name: string; slug: string }; reporter?: { phone: string } };

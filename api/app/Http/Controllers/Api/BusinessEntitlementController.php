@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Subscription;
 use App\Services\FeatureGate;
+use App\Services\StudioAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,6 +46,9 @@ class BusinessEntitlementController extends Controller
             // payload() includes plan + source + capabilities + `scheduled`
             // (the paid plan change waiting for the current lifetime to end).
             'entitlements' => app(FeatureGate::class)->payload($business),
+            // Studio gate decision for THIS business (UX only — the server
+            // re-checks every Level B write).
+            'studio' => app(StudioAccess::class)->payload($request->user(), $business),
             'subscription' => $subscription ? [
                 'id' => $subscription->id,
                 'plan_id' => (int) $subscription->plan_id,

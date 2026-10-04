@@ -14,6 +14,10 @@ class BusinessCardRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Explicit card target (unified selection contract). Optional so
+            // legacy clients keep the previous behavior; when present it MUST
+            // belong to the business (checked in the controller).
+            'card_id' => ['nullable', 'integer', 'min:1'],
             // Phase 4: five distinct card templates.
             'template' => ['nullable', 'in:classic,midnight,emerald,local,creative'],
             'theme' => ['nullable', 'in:navy,emerald,warm'],

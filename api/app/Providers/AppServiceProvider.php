@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use App\Database\PostgresBooleanSafeConnection;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Connection;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -40,7 +43,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Card Studio write throttling (defense in depth; NEVER a replacement
+        // for authorization or validation). One shared per-USER bucket for the
+        // card save + template-apply endpoints so switching endpoints cannot
+        // reset the quota, and a SEPARATE bucket for template authoring.
+        RateLimiter::for('card-write', function (Request $request): Limit {
+            return Limit::perMinute((int) config('studio.rate_limits.card_write', 120))
+                ->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('studio-authoring', function (Request $request): Limit {
+            return Limit::perMinute((int) config('studio.rate_limits.studio_authoring', 30))
+                ->by($request->user()?->id ?: $request->ip());
+        });
     }
 
     /**

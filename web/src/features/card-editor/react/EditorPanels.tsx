@@ -394,7 +394,7 @@ export function Toolbox({
         disabled={disabled}
         title={item.label}
         aria-pressed={isSelected}
-        className={`group flex w-full items-center gap-2 rounded-xl border px-2 py-2 text-right transition ${
+        className={`group flex w-[112px] shrink-0 items-center gap-2 rounded-xl border px-2 py-2 text-right transition md:w-full ${
           isSelected
             ? "border-cyan-300/50 bg-cyan-400/10 text-white"
             : "border-transparent bg-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
@@ -415,20 +415,20 @@ export function Toolbox({
 
   return (
     <div
-      className="relative z-[5000] flex max-h-[calc(100vh-8rem)] w-[142px] shrink-0 flex-col items-stretch gap-1 overflow-y-auto rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)]"
+      className="relative z-[5000] flex max-h-[calc(100vh-22rem)] w-full shrink-0 flex-row items-stretch gap-1 overflow-x-auto overflow-y-hidden rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)] md:w-[142px] md:flex-col md:overflow-x-hidden md:overflow-y-auto"
       role="toolbar"
       aria-label="ابزارهای استودیو"
     >
-      <h3 className="px-1 pb-1 text-right text-[10px] font-bold text-slate-400">ابزار کار</h3>
+      <h3 className="hidden px-1 pb-1 text-right text-[10px] font-bold text-slate-400 md:block">ابزار کار</h3>
 
       {primaryTools.map((kind) => renderToolButton(kind))}
 
-      <div className="my-1 h-px bg-white/10" />
-      <h3 className="px-1 pb-1 text-right text-[10px] font-bold text-slate-400">افزودن محتوا</h3>
+      <div className="mx-1 w-px shrink-0 bg-white/10 md:mx-0 md:my-1 md:h-px md:w-full" />
+      <h3 className="hidden px-1 pb-1 text-right text-[10px] font-bold text-slate-400 md:block">افزودن محتوا</h3>
       {addTools.map((kind) => renderToolButton(kind))}
 
       {showShapePicker && (
-        <div className="absolute right-full top-0 z-[10000] mr-2 w-[290px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+        <div className="absolute left-0 top-full z-[10000] mt-2 w-[290px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:left-auto md:right-full md:top-0 md:mt-0 md:mr-2">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-bold text-white">اشکال</span>
             <button type="button" onClick={() => setShowShapePicker(false)} className="text-[10px] text-slate-500 hover:text-white">بستن</button>
@@ -458,7 +458,7 @@ export function Toolbox({
       )}
 
       {showCurvePicker && (
-        <div className="absolute right-full top-[94px] z-[10000] mr-2 w-[300px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+        <div className="absolute left-0 top-full z-[10000] mt-2 w-[300px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:left-auto md:right-full md:top-[94px] md:mt-0 md:mr-2">
           <div className="mb-1 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] font-bold text-white">
               <Spline className="h-3.5 w-3.5 text-cyan-300" />

@@ -1,7 +1,24 @@
 import { useEffect, useState } from "react";
-import { getAdminUsers, updateAdminUser, type AdminUser } from "@/lib/admin";
+import { getAdminUsers, updateAdminUser, updateAdminUserDesignerStatus, type AdminUser } from "@/lib/admin";
 import { extractApiError } from "@/lib/api";
-import { Shield, UserX, UserCheck, Loader2, Phone, Mail, User } from "lucide-react";
+import { Shield, UserX, UserCheck, Loader2, Phone, Mail, User, Palette } from "lucide-react";
+
+/** Canonical designer program statuses (users.designer_status). */
+const DESIGNER_STATUSES = ["none", "pending", "approved", "rejected", "suspended"] as const;
+const DESIGNER_STATUS_LABELS: Record<string, string> = {
+  none: "بدون وضعیت",
+  pending: "در انتظار بررسی",
+  approved: "طراح تأییدشده",
+  rejected: "ردشده",
+  suspended: "تعلیق‌شده",
+};
+const DESIGNER_STATUS_STYLES: Record<string, string> = {
+  none: "border-white/10 bg-white/5 text-slate-400",
+  pending: "border-amber-400/30 bg-amber-400/10 text-amber-300",
+  approved: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+  rejected: "border-rose-400/30 bg-rose-400/10 text-rose-300",
+  suspended: "border-slate-400/30 bg-slate-400/10 text-slate-300",
+};
 
 export default function AdminUsersTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -57,6 +74,34 @@ export default function AdminUsersTab() {
     }
   };
 
+  /**
+   * Canonical designer approval: status + role + legacy row + audit are
+   * synced server-side in one transaction. Rejection/suspension REQUIRE a
+   * reason (collected here so the admin sees the rule up front).
+   */
+  const handleDesignerStatusChange = async (user: AdminUser, next: string) => {
+    let reason: string | undefined;
+    if (next === "rejected" || next === "suspended") {
+      const typed = window.prompt("دلیل رد/تعلیق وضعیت طراح را بنویسید (الزامی):", "");
+      if (typed === null) return;
+      if (!typed.trim()) {
+        alert("ثبت دلیل الزامی است.");
+        return;
+      }
+      reason = typed.trim();
+    }
+
+    setBusyId(user.id);
+    try {
+      const updated = await updateAdminUserDesignerStatus(user.id, next, reason);
+      setUsers((prev) => prev.map((row) => (row.id === user.id ? updated : row)));
+    } catch (err) {
+      alert(extractApiError(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (loading && users.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -91,6 +136,7 @@ export default function AdminUsersTab() {
                 <th className="px-5 py-3.5">کاربر</th>
                 <th className="px-5 py-3.5">شماره تماس</th>
                 <th className="px-5 py-3.5">نقش‌ها</th>
+                <th className="px-5 py-3.5">وضعیت طراح</th>
                 <th className="px-5 py-3.5">وضعیت</th>
                 <th className="px-5 py-3.5 text-left">عملیات</th>
               </tr>
@@ -134,6 +180,41 @@ export default function AdminUsersTab() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${
+                              DESIGNER_STATUS_STYLES[user.designer_status ?? "none"] ?? "border-white/10 text-slate-400"
+                            }`}
+                          >
+                            <Palette className="h-3 w-3" />
+                            {DESIGNER_STATUS_LABELS[user.designer_status ?? "none"] ?? user.designer_status}
+                          </span>
+                          {user.designer && user.designer.status !== (user.designer_status ?? "none") && (
+                            <span
+                              className="inline-flex items-center rounded-md border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300 whitespace-nowrap"
+                              title={`وضعیت قدیمی برنامه طراحان: ${DESIGNER_STATUS_LABELS[user.designer.status] ?? user.designer.status}`}
+                            >
+                              ناهم‌خوانی
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          value={user.designer_status ?? "none"}
+                          onChange={(event) => void handleDesignerStatusChange(user, event.target.value)}
+                          disabled={isBusy}
+                          className="rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1 text-[11px] text-slate-300"
+                          aria-label="تغییر وضعیت طراح"
+                        >
+                          {DESIGNER_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {DESIGNER_STATUS_LABELS[status]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
                       <span
                         className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${
                           user.is_active
@@ -173,7 +254,7 @@ export default function AdminUsersTab() {
               })}
               {users.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-slate-400">
+                  <td colSpan={6} className="py-12 text-center text-sm text-slate-400">
                     هیچ کاربری یافت نشد.
                   </td>
                 </tr>
@@ -223,6 +304,35 @@ export default function AdminUsersTab() {
                       {r.display_name}
                     </span>
                   ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 border-t border-white/[0.08] pt-2.5 text-xs text-slate-400">
+                <span className="flex items-center gap-1.5">
+                  <Palette className="h-3 w-3 text-fuchsia-400" /> وضعیت طراح
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {user.designer && user.designer.status !== (user.designer_status ?? "none") && (
+                    <span
+                      className="rounded-md border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300"
+                      title={`وضعیت قدیمی برنامه طراحان: ${DESIGNER_STATUS_LABELS[user.designer.status] ?? user.designer.status}`}
+                    >
+                      ناهم‌خوانی
+                    </span>
+                  )}
+                  <select
+                    value={user.designer_status ?? "none"}
+                    onChange={(event) => void handleDesignerStatusChange(user, event.target.value)}
+                    disabled={isBusy}
+                    className="rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1 text-[11px] text-slate-300"
+                    aria-label="تغییر وضعیت طراح"
+                  >
+                    {DESIGNER_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {DESIGNER_STATUS_LABELS[status]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

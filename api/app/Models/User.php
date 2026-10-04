@@ -63,6 +63,20 @@ class User extends Authenticatable
     {
         return ($this->designer_status ?? 'none') === 'approved';
     }
+
+    /**
+     * Studio access for a SPECIFIC business: approved designer identity AND
+     * that business' own plan granting the `designer_studio` capability —
+     * never inherited from another business of the same user.
+     *
+     * Advisory (UI/tests); the authoritative check — staged-rollout switch +
+     * audited admin bypass — is App\Services\StudioAccess.
+     */
+    public function canUseCardStudio(Business $business): bool
+    {
+        return $this->hasApprovedDesignerStatus()
+            && app(\App\Services\FeatureGate::class)->allows($business, 'designer_studio');
+    }
     public function designer(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(Designer::class); }
     public function businesses(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(Business::class); }
 }

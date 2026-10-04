@@ -445,7 +445,7 @@ class CardDesignJsonTest extends TestCase
     {
         Storage::fake('public');
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
-        $user->assignRole('user');
+        $user->assignRole('designer');
         $designer = Designer::create([
             'user_id' => $user->id,
             'display_name' => 'طراح تست',

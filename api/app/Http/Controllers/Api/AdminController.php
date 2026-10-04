@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Advertisement;
 use App\Models\Article;
 use App\Models\Business;
+use App\Models\Designer;
 use App\Models\Media;
 use App\Models\PageContent;
 use App\Models\Portfolio;
@@ -14,8 +15,12 @@ use App\Models\Showcase;
 use App\Models\SiteSetting;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\AuditTrail;
+use App\Services\StudioAccess;
+use App\Services\StudioAccessReport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -154,6 +159,11 @@ class AdminController extends Controller
     private const WRITABLE_SETTINGS = [
         // Designer program master switch (bool as string '1'/'0').
         'designer_program_enabled' => 'bool',
+        // Studio gate ENFORCEMENT switch (staged rollout). While '0' the
+        // designer-only studio gate is dormant and Level B writes behave
+        // exactly as before; flipping to '1' enforces designer approval +
+        // the designer_studio capability.
+        'studio_designer_only' => 'bool',
     ];
 
     /** Keys governed by the CMS whitelist (string payloads, pre-existing). */
@@ -247,7 +257,35 @@ return response()->json(Article::create($data), 201);
         $request->validate(['file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf,svg', 'max:10240']]);
         $file = $request->file('file');
 
+        // SVG is the only uploaded format here that can execute script when
+        // opened directly (the file is served from the public disk). Reject
+        // payloads carrying executable content; the nginx layer sandboxes SVG
+        // responses as a second line of defense.
+        $this->assertSafeSvg($file);
+
         return response()->json(Media::create(['path' => $file->store('media', 'public'), 'original_name' => $file->getClientOriginalName(), 'mime_type' => $file->getMimeType(), 'file_size' => $file->getSize()]), 201);
+    }
+
+    /**
+     * Deny SVG files that could script the API origin: <script>/<iframe>/
+     * <embed>/<foreignObject>, inline event handlers, javascript: URLs and XML
+     * entities (XXE). Plain logo/illustration SVGs pass untouched.
+     */
+    private function assertSafeSvg(UploadedFile $file): void
+    {
+        $isSvg = strtolower((string) $file->getClientOriginalExtension()) === 'svg'
+            || $file->getClientMimeType() === 'image/svg+xml';
+        if (! $isSvg) {
+            return;
+        }
+
+        $contents = (string) file_get_contents((string) $file->getRealPath());
+        $unsafe = preg_match('/<\s*(script|iframe|embed|foreignObject)\b/i', $contents) === 1
+            || preg_match('/\bon[a-z]+\s*=/i', $contents) === 1
+            || preg_match('/javascript\s*:/i', $contents) === 1
+            || preg_match('/<!ENTITY/i', $contents) === 1;
+
+        abort_if($unsafe, 422, 'فایل SVG ناایمن رد شد.');
     }
 
     public function mediaList(): JsonResponse
@@ -331,7 +369,10 @@ return response()->json(Article::create($data), 201);
 
     public function users(): JsonResponse
     {
-        return response()->json(User::with('roles')->latest()->paginate(25));
+        // designer:id,user_id,status feeds the divergence badge: the legacy
+        // `designers` row and the canonical users.designer_status must never
+        // silently disagree again.
+        return response()->json(User::with(['roles', 'designer:id,user_id,status'])->latest()->paginate(25));
     }
 
     public function updateUser(Request $request, User $user): JsonResponse
@@ -356,7 +397,88 @@ return response()->json(Article::create($data), 201);
             $user->roles()->sync($roleIds->values());
         }
 
-        return response()->json($user->fresh('roles'));
+        // Admin mutations are audited (role/status changes were previously
+        // invisible in the audit trail).
+        AuditTrail::record($request->user()?->id, 'admin.user_updated', 'user', $user->id, [
+            'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : null,
+            'name_changed' => array_key_exists('name', $data),
+            'roles' => is_array($roles) ? array_values(array_unique(array_map('strval', $roles))) : null,
+        ]);
+
+        return response()->json($user->fresh(['roles', 'designer:id,user_id,status']));
+    }
+
+    /**
+     * PATCH /admin/users/{user}/designer-status — the CANONICAL designer
+     * approval workflow.
+     *
+     * One transaction: users.designer_status (source of truth) + the designer
+     * ROLE (derived) + the legacy `designers` row (kept in sync) + an audit
+     * entry. Reject/suspend require a reason; the admin can never be locked
+     * out of their own account by a status change (the admin role is never
+     * touched).
+     */
+    public function updateDesignerStatus(Request $request, User $user): JsonResponse
+    {
+        $data = $request->validate([
+            'designer_status' => ['required', 'in:none,pending,approved,rejected,suspended'],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $status = $data['designer_status'];
+        abort_if(
+            in_array($status, ['rejected', 'suspended'], true) && empty($data['reason']),
+            422,
+            'برای رد یا تعلیق وضعیت طراح، ثبت دلیل الزامی است.'
+        );
+
+        DB::transaction(function () use ($request, $user, $status, $data): void {
+            /** @var User $locked */
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $previous = (string) ($locked->designer_status ?? 'none');
+
+            $locked->forceFill(['designer_status' => $status])->save();
+
+            // The designer role FOLLOWS the canonical status (access is
+            // always role-driven; the status alone opens no endpoint).
+            $roleAction = 'preserved';
+            if ($status === 'approved') {
+                $locked->assignRole('designer');
+                $roleAction = 'assigned';
+            } elseif ($locked->hasRole('designer')) {
+                $designerRoleId = Role::query()->where('name', 'designer')->value('id');
+                if ($designerRoleId !== null) {
+                    $locked->roles()->detach($designerRoleId);
+                    $locked->unsetRelation('roles');
+                    $roleAction = 'removed';
+                }
+            }
+
+            // Legacy program profile — keep both designer concepts in sync.
+            $designer = Designer::query()->where('user_id', $locked->id)->first();
+            if ($designer !== null) {
+                $designer->forceFill([
+                    'status' => $status === 'none' ? 'pending' : $status,
+                    'moderation_note' => $data['reason'] ?? $designer->moderation_note,
+                ])->save();
+            }
+
+            AuditTrail::record($request->user()?->id, 'admin.designer_status_changed', 'user', $locked->id, [
+                'from' => $previous,
+                'to' => $status,
+                'reason' => $data['reason'] ?? null,
+                'role' => $roleAction,
+                'designer_row' => $designer !== null,
+            ]);
+        });
+
+        return response()->json($user->fresh(['roles', 'designer:id,user_id,status']));
+    }
+
+    /** GET /admin/studio/report — the studio rollout board (read-only). */
+    public function studioReport(Request $request): JsonResponse
+    {
+        return response()->json(app(StudioAccessReport::class)->build());
     }
 
     public function moderateBusiness(Request $request, Business $business): JsonResponse

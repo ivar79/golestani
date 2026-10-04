@@ -195,6 +195,80 @@ class CardDesignValidator
         return $clean;
     }
 
+    // ------------------------------------------------------------------
+    // Canonical fingerprint (studio grandfathering / mutation detection)
+    // ------------------------------------------------------------------
+
+    /**
+     * Deterministic canonical form of a design document.
+     *
+     * The STUDIO GATE needs one answer: "does this submission change the
+     * document SEMANTICALLY?" Serialization differences — key order, integer
+     * vs float notation, omitted-but-defaulted fields — are NOT mutations.
+     * The comparison therefore applies, on BOTH sides:
+     *
+     *   1. strict normalization through validate() when possible (the same
+     *      whitelist + defaults as the write path),
+     *   2. a recursive key sort,
+     *   3. numeric normalization (40.0 ≡ 40, rounded to 6 decimals),
+     *   4. a deterministic JSON encode (see fingerprint()).
+     *
+     * A document that cannot be validated (legacy/foreign shape) falls back to
+     * structural sorting only — the comparison stays conservative: any real
+     * difference still counts as a mutation and hits the gate.
+     */
+    public static function canonical(mixed $design): mixed
+    {
+        if ($design === null) {
+            return null;
+        }
+
+        if (is_array($design)) {
+            try {
+                $design = app(self::class)->validate($design);
+            } catch (\Throwable) {
+                // Legacy/unvalidatable document — sort it structurally instead.
+            }
+        }
+
+        return self::canonicalize($design);
+    }
+
+    /** Canonical JSON fingerprint of a design document ("null" when absent). */
+    public static function fingerprint(mixed $design): string
+    {
+        return json_encode(
+            self::canonical($design),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+    }
+
+    /**
+     * Recursive canonicalization: associative keys sorted, list order kept,
+     * whole-valued floats collapsed to ints (JSON 40.0 ≠ 40 otherwise).
+     */
+    private static function canonicalize(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+
+            return array_map(static fn (mixed $item): mixed => self::canonicalize($item), $value);
+        }
+
+        if (is_float($value)) {
+            $rounded = round($value, 6);
+            if (floor($rounded) === $rounded && abs($rounded) < 1.0e15) {
+                return (int) $rounded;
+            }
+
+            return $rounded;
+        }
+
+        return $value;
+    }
+
     /**
      * One painted region/face.
      *

@@ -7,7 +7,10 @@ use App\Http\Requests\Business\BusinessCardRequest;
 use App\Models\Business;
 use App\Models\BusinessCard;
 use App\Services\CardDesignValidator;
+use App\Services\DesignEntitlements;
 use App\Services\FeatureGate;
+use App\Services\StudioAccess;
+use App\Services\StudioTemplateApply;
 use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -77,6 +80,9 @@ class BusinessCardController extends Controller
             $card->toArray() + $card->printFileMeta() + [
                 'entitlements' => $entitlements,
                 'locked' => $this->lockedFields($card, $entitlements['capabilities']),
+                // Studio gate decision (UX only — every Level B write is
+                // re-checked server-side with the audited admin bypass).
+                'studio' => app(StudioAccess::class)->payload($request->user(), $business),
             ]
         );
     }
@@ -87,7 +93,7 @@ class BusinessCardController extends Controller
 
         $gate = app(FeatureGate::class);
         $data = $request->validated();
-        $card = $business->cards()->firstOrNew(['template' => $data['template'] ?? 'classic']);
+        $card = $this->resolveCardTarget($business, $data);
 
         // ---- Entitlement gate on every scalar field -----------------------
         $entitlementErrors = $this->entitlementViolations($business, $card, $data);
@@ -113,6 +119,10 @@ class BusinessCardController extends Controller
             }
         }
 
+        // Studio gate decision for this request (only Level B actions record
+        // one); the response echoes it so the client mirrors the server.
+        $studio = null;
+
         // ---- Private print file --------------------------------------------
         if ($request->hasFile('print_file')) {
             if (! $gate->allows($business, 'print_file')) {
@@ -121,6 +131,14 @@ class BusinessCardController extends Controller
                     'entitlement_errors' => ['print_file' => 'locked'],
                     'entitlements' => $gate->payload($business),
                 ], 403));
+            }
+
+            // STUDIO GATE (Level B): replacing the print file of an EXISTING
+            // LAYERED card is a studio action — the layered document is the
+            // studio artifact. A first print file on a non-layered card stays
+            // LEVEL A and is never locked.
+            if ($card->exists && is_array($card->design_json)) {
+                $studio = app(StudioAccess::class)->assert($request, $business, 'print_file.replace', (int) $card->id);
             }
 
             if ($card->print_file_path) {
@@ -167,13 +185,29 @@ class BusinessCardController extends Controller
                 ], 403));
             }
 
+            // STUDIO GATE (Level B): once the `designer_studio` rollout switch
+            // is on, a SEMANTIC mutation of the document requires studio
+            // access. CANONICAL grandfathering: re-saving the stored document
+            // — even with different key order / 40 vs 40.0 notation — is not a
+            // mutation and stays allowed. Applies to the whole document, so
+            // reshaping the layer array cannot smuggle a change past the gate.
+            $isMutation = CardDesignValidator::fingerprint($data['design_json'])
+                !== CardDesignValidator::fingerprint($card->exists ? $card->design_json : null);
+            if ($isMutation) {
+                $studio = app(StudioAccess::class)->assert($request, $business, 'design_json.save', $card->exists ? (int) $card->id : null);
+            }
+
             // Phase 4 capability hardening: layer kinds / limits are
             // ENTITLEMENT-gated here (the validator stays purely structural —
             // it answers "is this a well-formed document", never "is this
             // plan allowed this"). The stored document is the grandfathering
             // baseline: re-saving it verbatim is always allowed; only GROWTH
             // beyond the current capability set is blocked.
-            $designErrors = $this->designCapabilityViolations($business, $card, $data['design_json']);
+            $designErrors = app(DesignEntitlements::class)->violations(
+                $business,
+                $card->exists && is_array($card->design_json) ? $card->design_json : null,
+                $data['design_json'],
+            );
             if ($designErrors !== []) {
                 abort(response()->json([
                     'message' => 'سند کارت شامل عناصری است که پلن شما مجاز نمی‌داند.',
@@ -197,7 +231,39 @@ class BusinessCardController extends Controller
         return response()->json($fresh->toArray() + $fresh->printFileMeta() + [
             'entitlements' => $entitlements,
             'locked' => $this->lockedFields($fresh, $entitlements['capabilities']),
+            'studio' => $studio ?? app(StudioAccess::class)->payload($request->user(), $business),
         ]);
+    }
+
+    /**
+     * POST /businesses/{business}/card/template-apply — THE canonical studio
+     * apply (amendment 4).
+     *
+     * The client names a SOURCE + a template; it never sends a document.
+     * Resolution → entitlement → materialize (clone + fresh ids + placeholder
+     * fill) → structural validation → entitlement accounting → persist happen
+     * here, in one transaction.
+     */
+    public function applyTemplate(Request $request, Business $business): JsonResponse
+    {
+        $this->authorizeOwner($request, $business);
+
+        $data = $request->validate([
+            'source' => ['required', 'in:builtin,db,personal'],
+            'template_id' => ['required'],
+            // Optional explicit card target (unified selection contract).
+            'card_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $result = app(StudioTemplateApply::class)->apply(
+            $request,
+            $business,
+            $data['source'],
+            $data['template_id'],
+            isset($data['card_id']) ? (int) $data['card_id'] : null,
+        );
+
+        return response()->json($result);
     }
 
     /**
@@ -280,149 +346,12 @@ class BusinessCardController extends Controller
     }
 
     /**
-     * Phase 4 capability violations for a submitted design document.
-     *
-     * Three entitlements govern the LAYERED document (all from the same
-     * capability map as every other gate — never plan names):
-     *   card_layer_kinds       — list of allowed layer kinds
-     *   max_layers             — int cap on total layers (null = unlimited)
-     *   max_premium_elements   — int cap on premium-kind layers (null = unlimited)
-     *   card_premium_layer_kinds — list of kinds COUNTED as premium elements
-     *
-     * GRANDFATHERING (same contract as ENTITLED_LIST_FIELDS): the STORED
-     * document is the baseline. Re-saving it verbatim is always allowed;
-     * each violation is computed on the GROWTH over the stored state, so a
-     * design saved under a richer plan stays editable (POLICY
-     * expired_card_access=readonly) while any increase is rejected.
-     *
-     * @param  array<string, mixed>  $design  raw client document (pre-validation)
-     * @return array<string, string> machine-readable errors ([] = allowed)
-     */
-    private function designCapabilityViolations(Business $business, BusinessCard $card, array $design): array
-    {
-        $gate = app(FeatureGate::class);
-        $caps = $gate->payload($business)['capabilities'];
-
-        $allowedKinds = (array) ($caps['card_layer_kinds'] ?? []);
-        $premiumKinds = (array) ($caps['card_premium_layer_kinds'] ?? []);
-        $submitted = $this->summarizeDesign($design);
-
-        // Baseline counts from the STORED document (may predate the current
-        // capability configuration — that is exactly what grandfathering is).
-        $baseline = $card->exists && is_array($card->design_json)
-            ? $this->summarizeDesign($card->design_json)
-            : ['counts' => [], 'total' => 0];
-
-        $errors = [];
-
-        // 1. Disallowed layer kinds — only NEW occurrences violate. A stored
-        //    document that already contains a kind the plan no longer grants
-        //    keeps it (re-save), but adding MORE of it is rejected.
-        //    Structurally UNKNOWN kinds ("iframe"…) are skipped here — they
-        //    are a whitelist question, not an entitlement question, and fall
-        //    through to the validator's 422.
-        foreach ($submitted['counts'] as $kind => $count) {
-            if (! in_array($kind, $this->knownLayerKinds(), true)) {
-                continue;
-            }
-            $storedCount = $baseline['counts'][$kind] ?? 0;
-            if ($count > $storedCount && ! in_array($kind, $allowedKinds, true)) {
-                $errors['design_layer_kinds'] = 'locked';
-                break;
-            }
-        }
-
-        // 2. Total layer cap — only growth over the stored total is measured.
-        $maxLayers = array_key_exists('max_layers', $caps) ? $caps['max_layers'] : null;
-        if (is_numeric($maxLayers)
-            && $submitted['total'] > (int) $maxLayers
-            && $submitted['total'] > $baseline['total']) {
-            $errors['max_layers'] = 'limit_reached';
-        }
-
-        // 3. Premium element cap — growth in premium-kind occurrences.
-        if ($premiumKinds !== [] && is_numeric($caps['max_premium_elements'] ?? null)) {
-            $premiumOf = fn (array $s): int => array_sum(array_intersect_key($s['counts'], array_flip($premiumKinds))) + 0;
-            if ($premiumOf($submitted) > (int) $caps['max_premium_elements']
-                && $premiumOf($submitted) > $premiumOf($baseline)) {
-                $errors['max_premium_elements'] = 'limit_reached';
-            }
-        }
-
-        // 4. Typography — the document's font families are the SAME product
-        //    capability as the template font (card_fonts), so a locked font is
-        //    locked in the document too. Grandfathering applies per font: a
-        //    family the STORED document already uses stays re-savable, while
-        //    SWITCHING to a non-entitled one is refused (server-side, so
-        //    flipping client state cannot unlock it).
-        $allowedFonts = (array) ($caps['card_fonts'] ?? []);
-        if ($allowedFonts !== []) {
-            $storedFonts = $this->designFonts(is_array($card->design_json) ? $card->design_json : []);
-            foreach ($this->designFonts($design) as $font) {
-                if (! in_array($font, $allowedFonts, true) && ! in_array($font, $storedFonts, true)) {
-                    $errors['design_fonts'] = 'locked';
-                    break;
-                }
-            }
-        }
-
-        return $errors;
-    }
-
-    /**
-     * Distinct text-layer font families used by a design document.
-     * Applies the validator's own default (vazir) so omitting the field cannot
-     * be used to slip past the card_fonts capability.
-     *
-     * @return list<string>
-     */
-    private function designFonts(array $design): array
-    {
-        $fonts = [];
-        foreach ((array) ($design['layers'] ?? []) as $layer) {
-            if (! is_array($layer) || ($layer['kind'] ?? null) !== 'text') {
-                continue;
-            }
-            $font = (string) ($layer['fontFamily'] ?? 'vazir');
-            if ($font !== '') {
-                $fonts[$font] = true;
-            }
-        }
-
-        return array_keys($fonts);
-    }
-
-    /**
-     * Kind-occurrence summary of a design document used for capability
-     * accounting. Accepts raw client input AND stored documents; unknown
-     * kinds are counted as themselves (the structural validator will reject
-     * them separately — counting must never crash here).
-     *
-     * @return array{counts: array<string, int>, total: int}
-     */
-    private function summarizeDesign(array $design): array
-    {
-        $counts = [];
-        $total = 0;
-        foreach ((array) ($design['layers'] ?? []) as $layer) {
-            if (! is_array($layer)) {
-                continue;
-            }
-            $kind = (string) ($layer['kind'] ?? '');
-            if ($kind === '') {
-                continue;
-            }
-            $counts[$kind] = ($counts[$kind] ?? 0) + 1;
-            $total++;
-        }
-
-        return ['counts' => $counts, 'total' => $total];
-    }
-
-    /**
      * Does the stored design use values the business is NO LONGER entitled
      * to (only reachable via grandfathering)? Such a design is "premium
      * locked" — export of it is governed by expired_card_access policy.
+     *
+     * The DOCUMENT-side accounting lives in DesignEntitlements (shared with
+     * the studio template-apply pipeline); this method adds the scalar fields.
      */
     private function designHasLockedValues(Business $business, BusinessCard $card): bool
     {
@@ -435,44 +364,10 @@ class BusinessCardController extends Controller
             }
         }
 
-        // The LAYERED document counts as well. Without this, a lapsed subscriber
-        // whose design only uses premium layer kinds (or more premium elements
-        // than the plan allows) would still be able to export it under POLICY
-        // expired_card_access=readonly — the document is exactly what that
-        // policy is meant to protect.
-        if (is_array($card->design_json)) {
-            $caps = $gate->payload($business)['capabilities'];
-            $counts = $this->summarizeDesign($card->design_json)['counts'];
-            $allowedKinds = (array) ($caps['card_layer_kinds'] ?? []);
-
-            foreach (array_keys($counts) as $kind) {
-                if (! in_array($kind, $this->knownLayerKinds(), true)) {
-                    continue; // structural, not entitlement — the validator owns it
-                }
-                if (! in_array($kind, $allowedKinds, true)) {
-                    return true;
-                }
-            }
-
-            $premiumKinds = (array) ($caps['card_premium_layer_kinds'] ?? []);
-            if ($premiumKinds !== [] && is_numeric($caps['max_premium_elements'] ?? null)) {
-                $premium = array_sum(array_intersect_key($counts, array_flip($premiumKinds)));
-                if ($premium > (int) $caps['max_premium_elements']) {
-                    return true;
-                }
-            }
-
-            $allowedFonts = (array) ($caps['card_fonts'] ?? []);
-            if ($allowedFonts !== []) {
-                foreach ($this->designFonts($card->design_json) as $font) {
-                    if (! in_array($font, $allowedFonts, true)) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
+        return app(DesignEntitlements::class)->hasLockedValues(
+            $business,
+            is_array($card->design_json) ? $card->design_json : null,
+        );
     }
 
     /**
@@ -493,7 +388,7 @@ class BusinessCardController extends Controller
         $locked['max_cards'] = FeatureGate::limitFromCapabilities($capabilities, 'max_cards');
         // Phase 4 layered-document capability mirrors (UX only).
         $locked['layer_kinds'] = array_values(array_intersect(
-            $this->knownLayerKinds(),
+            app(DesignEntitlements::class)->knownLayerKinds(),
             (array) ($capabilities['card_layer_kinds'] ?? [])
         ));
         $locked['max_layers'] = FeatureGate::limitFromCapabilities($capabilities, 'max_layers');
@@ -507,12 +402,6 @@ class BusinessCardController extends Controller
         ];
 
         return $locked;
-    }
-
-    /** Full universe of layer kinds (editor catalog). */
-    private function knownLayerKinds(): array
-    {
-        return ['text', 'image', 'qr', 'badge', 'shape', 'path'];
     }
 
     /** Full universe of values per list capability (editor catalogs). The
@@ -535,6 +424,27 @@ class BusinessCardController extends Controller
             'card_exports' => ['png', 'jpg', 'svg', 'pdf'],
             default => [],
         };
+    }
+
+    /**
+     * UNIFIED card selection contract.
+     *
+     * An explicit `card_id` (if provided) MUST belong to the business and is
+     * the target; otherwise the legacy template-keyed lookup is preserved
+     * verbatim so existing clients (and multi-card businesses) keep their
+     * exact previous behavior. No card is ever deleted or reassigned here.
+     */
+    private function resolveCardTarget(Business $business, array $data): BusinessCard
+    {
+        $cardId = isset($data['card_id']) ? (int) $data['card_id'] : 0;
+        if ($cardId > 0) {
+            $card = $business->cards()->whereKey($cardId)->first();
+            abort_if($card === null, 403, 'این کارت متعلق به این کسب‌وکار نیست.');
+
+            return $card;
+        }
+
+        return $business->cards()->firstOrNew(['template' => $data['template'] ?? 'classic']);
     }
 
     private function authorizeOwner(Request $request, Business $business): void

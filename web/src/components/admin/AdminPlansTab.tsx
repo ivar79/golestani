@@ -125,6 +125,9 @@ export default function AdminPlansTab() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editFeatures, setEditFeatures] = useState<Record<string, unknown>>({});
+  // Repricing an EXISTING plan (the API always supported it; the editor
+  // surfaces it too so "price the designer plan" is a panel action).
+  const [editPrice, setEditPrice] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -192,14 +195,20 @@ export default function AdminPlansTab() {
   async function startEdit(plan: AdminPlan) {
     setEditingId(plan.id);
     setEditFeatures({ ...(plan.features ?? {}) });
+    setEditPrice(String(plan.price));
     setNotice(null);
   }
 
   async function saveFeatures(plan: AdminPlan) {
+    const price = Number(editPrice);
+    if (!editPrice.trim() || !Number.isFinite(price) || price < 0) {
+      setError("قیمت پلن باید یک عدد نامنفی باشد.");
+      return;
+    }
     try {
-      await updateAdminPlan(plan.id, { features: editFeatures });
+      await updateAdminPlan(plan.id, { features: editFeatures, price: Math.floor(price) });
       setEditingId(null);
-      setNotice("امکانات پلن ذخیره شد — اشتراک‌های فعالِ موجود snapshot خود را نگه می‌دارند.");
+      setNotice("قیمت و امکانات پلن ذخیره شد — اشتراک‌های فعالِ موجود snapshot خود را نگه می‌دارند.");
       await refresh();
     } catch (requestError) {
       setError(extractApiError(requestError));
@@ -356,6 +365,16 @@ export default function AdminPlansTab() {
                   <td className="p-3">
                     {editingId === plan.id ? (
                       <div className="min-w-[280px] space-y-2">
+                        <label className="block text-[10px] font-black text-slate-500">
+                          قیمت (تومان)
+                          <input
+                            type="number"
+                            min="0"
+                            value={editPrice}
+                            onChange={(e) => setEditPrice(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1.5 text-xs text-white"
+                          />
+                        </label>
                         {grouped.map(([group, entries]) => (
                           <div key={group}>
                             <p className="mb-1 text-[10px] font-black text-slate-500">{group}</p>
@@ -380,7 +399,7 @@ export default function AdminPlansTab() {
                         </p>
                       </div>
                     ) : (
-                      <button type="button" onClick={() => void startEdit(plan)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10">ویرایش امکانات</button>
+                      <button type="button" onClick={() => void startEdit(plan)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10">ویرایش قیمت و امکانات</button>
                     )}
                   </td>
                   <td className="p-3">

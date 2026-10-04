@@ -49,11 +49,14 @@ import {
 } from "@/components/cards/FeatureGate";
 import {
   FREE_TIER_FALLBACK,
+  canOpenStudio,
   describeEntitlementErrors,
+  describeStudioStatus,
   extractEntitlementErrors,
   isAllowedValue,
   type EntitlementPayload,
   type CardLockState,
+  type StudioStatus,
 } from "@/lib/entitlements";
 import CardExportMenu from "@/components/cards/CardExportMenu";
 import { parseDocument } from "@/features/card-editor/domain/factory";
@@ -115,6 +118,8 @@ export type BusinessCardResponse = {
   front_image?: string | null;
   /** Server-resolved capability contract (UX mirror — backend is authoritative). */
   entitlements?: EntitlementPayload;
+  /** Studio gate decision (UX mirror — every Level B write is re-checked). */
+  studio?: StudioStatus;
   locked?: CardLockState;
 };
 
@@ -163,11 +168,18 @@ export default function CardMakerPage() {
   const [fontFamily, setFontFamily] = useState<CardFontFamily>("sans");
 
   const [cardData, setCardData] = useState<BusinessCardResponse | null>(null);
+  // Explicit card target (unified selection contract): the id load returned.
+  // Sent with every write so show/save/apply land on the SAME card row.
+  const [cardId, setCardId] = useState<number | null>(null);
   const [cardLoading, setCardLoading] = useState(false);
   // Entitlement mirror from the backend (UX only — every save/export is
   // re-authorized server-side; a 403 here falls back to the upgrade UI).
   const [entitlements, setEntitlements] = useState<EntitlementPayload>(FREE_TIER_FALLBACK);
   const [locked, setLocked] = useState<CardLockState | null>(null);
+  // Studio gate mirror: null = the server did not send a decision (older
+  // payloads) → never lock the UI on missing data; the backend still
+  // re-checks every Level B write itself.
+  const [studioAccess, setStudioAccess] = useState<StudioStatus | null>(null);
   const [cardCount] = useState(0);
   const [staleError, setStaleError] = useState<string | null>(null);
   const [printFile, setPrintFile] = useState<File | null>(null);
@@ -230,9 +242,15 @@ export default function CardMakerPage() {
       .get<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`)
       .then(({ data }) => {
         setCardData(data);
+        setCardId(typeof data.id === "number" ? data.id : null);
         setDesignJson(parseDocument(JSON.stringify(data.design_json ?? null)));
-        setEditorMode(Boolean(data.design_json));
+        // Auto-open the layered workspace ONLY when the server allows it: a
+        // grandfathered design must never flip a refused business into studio
+        // mode (the guards below would hide it, but editorMode must stay
+        // honest for the toggle state and the unsaved-changes logic).
+        setEditorMode(Boolean(data.design_json) && canOpenStudio(data.studio));
         if (data.entitlements) setEntitlements(data.entitlements);
+        if (data.studio) setStudioAccess(data.studio);
         if (data.locked) setLocked(data.locked);
         setStaleError(null);
         const tpl = data.template ?? "classic";
@@ -286,6 +304,19 @@ export default function CardMakerPage() {
     return () => ro.disconnect();
   }, [device, fullZoom]);
 
+  // The server's studio decision is authoritative: whenever it refuses the
+  // selected business (not an approved designer, business lacks the
+  // capability, revoked/expired/plan change), the advanced workspace closes
+  // immediately — even when a grandfathered layered card exists. Level A
+  // (scalar settings, legacy preview, export, print file) is untouched.
+  useEffect(() => {
+    if (!studioAccess || studioAccess.allowed) return;
+    // Deferred set (project pattern): setState leaves the effect body so
+    // react-hooks/set-state-in-effect stays satisfied; behavior unchanged.
+    const t = window.setTimeout(() => setEditorMode(false), 0);
+    return () => window.clearTimeout(t);
+  }, [studioAccess]);
+
   const validateFile = useCallback((file: File): string | null => {
     if (!ALLOWED_PRINT_TYPES.includes(file.type)) {
       return "فرمت فایل مجاز نیست — فقط JPEG، PNG، WebP یا PDF.";
@@ -328,11 +359,13 @@ export default function CardMakerPage() {
       formData.append("theme", theme);
       formData.append("font_size", fontSize);
       formData.append("font_family", fontFamily);
+      if (cardId) formData.append("card_id", String(cardId));
       if (printFile) formData.append("print_file", printFile);
 
       const res = await api.post<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`, formData);
       setCardData(res.data);
       if (res.data.entitlements) setEntitlements(res.data.entitlements);
+      if (res.data.studio) setStudioAccess(res.data.studio);
       if (res.data.locked) setLocked(res.data.locked);
       setPrintFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -353,6 +386,7 @@ export default function CardMakerPage() {
           const refreshed = await api.get<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`);
           setCardData(refreshed.data);
           if (refreshed.data.entitlements) setEntitlements(refreshed.data.entitlements);
+          if (refreshed.data.studio) setStudioAccess(refreshed.data.studio);
           if (refreshed.data.locked) setLocked(refreshed.data.locked);
         } catch {
           /* keep current payload; the error banner already explains state */
@@ -370,6 +404,7 @@ export default function CardMakerPage() {
     setMessage(null);
     try {
       const res = await api.put<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`, {
+        ...(cardId ? { card_id: cardId } : {}),
         template,
         theme,
         font_size: fontSize,
@@ -390,6 +425,7 @@ export default function CardMakerPage() {
   async function handleSaveDesign(doc: CardDocument) {
     if (!selectedBusiness) throw new Error("کسب‌وکاری انتخاب نشده است.");
     const res = await api.put<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`, {
+      ...(cardId ? { card_id: cardId } : {}),
       template,
       theme,
       font_size: fontSize,
@@ -399,6 +435,7 @@ export default function CardMakerPage() {
     setCardData(res.data);
     setDesignJson(doc);
     if (res.data.entitlements) setEntitlements(res.data.entitlements);
+    if (res.data.studio) setStudioAccess(res.data.studio);
     if (res.data.locked) setLocked(res.data.locked);
     setSavedSnapshot(`${template}|${theme}|${fontSize}|${fontFamily}`);
   }
@@ -421,12 +458,14 @@ export default function CardMakerPage() {
     form.append("theme", theme);
     form.append("font_size", fontSize);
     form.append("font_family", fontFamily);
+    if (cardId) form.append("card_id", String(cardId));
     // design_json is deliberately NOT sent here: multipart carries it as a
     // string (fails the `array` rule) and the controller only updates keys
     // present in the request, so the stored document stays untouched.
     const res = await api.post<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`, form);
     setCardData(res.data);
     if (res.data.entitlements) setEntitlements(res.data.entitlements);
+    if (res.data.studio) setStudioAccess(res.data.studio);
     if (res.data.locked) setLocked(res.data.locked);
     const path = res.data.front_image;
     if (!path) throw new Error("آپلود تصویر ثبت نشد.");
@@ -484,6 +523,7 @@ export default function CardMakerPage() {
       // Existing contract: record the chosen format so the backend entitlement
       // audit keeps seeing every export (unchanged behaviour, four formats now).
       await api.put(`/businesses/${selectedBusiness.id}/card`, {
+        ...(cardId ? { card_id: cardId } : {}),
         template,
         theme,
         font_size: fontSize,
@@ -563,13 +603,84 @@ export default function CardMakerPage() {
   const previewScale = fullZoom ? 1 : Math.min(fitScale, 1);
   const hasPrintFile = Boolean(cardData?.has_print_file || cardData?.print_file_path);
 
+  /* ---------------- Studio-open layout ---------------- */
+
+  /**
+   * Studio gate mirror (UX only): the server refuses Level B writes for
+   * non-approved designers / businesses without the capability — and lets
+   * admins through with an audited bypass. `null` (older payload) never locks.
+   */
+  const studioNeedsApproval = studioAccess?.reason === "not_approved";
+  /** Reason-specific sentence, or null when the studio is usable. */
+  const studioBlockReason = describeStudioStatus(studioAccess);
+  // A refused business must NOT expose the advanced authoring workspace at
+  // all — even when a grandfathered layered design exists: the server would
+  // reject every mutation, and the product contract is that unauthorized
+  // users never receive the full Studio UI. Level A (scalar settings, legacy
+  // preview, export, first print file) stays untouched.
+  const studioBlocked = !canOpenStudio(studioAccess);
+  const editorToggleDisabled = !editorAllowed || !selectedBusiness || studioBlocked;
+  const editorToggleTitle = !editorAllowed
+    ? "ویرایشگر پیشرفته در پلن فعلی فعال نیست"
+    : studioBlockReason ?? "ویرایشگر پیشرفته لایه‌ای";
+
+  /**
+   * True exactly when the layered studio is the page's whole job. The studio
+   * is a workspace, not a section of the page: while it is open the banner
+   * collapses to one compact row so the artboard AND the inspector column land
+   * inside a single screen instead of being pushed below a 120px header.
+   */
+  const studioOpen = Boolean(
+    editorMode && editorAllowed && selectedBusiness && !studioBlocked,
+  );
+
+  /** Business switcher — shared by the banner and the compact studio row. */
+  const businessPicker =
+    businesses && businesses.length > 1 ? (
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-slate-400">کسب‌وکار:</label>
+        <select
+          value={selectedBusiness?.id ?? ""}
+          onChange={(e) => {
+            const b = businesses.find((item) => item.id === Number(e.target.value));
+            if (b) setSelectedBusiness(b);
+          }}
+          className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+        >
+          {businesses.map((b) => (
+            <option key={b.id} value={b.id} className="bg-[#0c1626]">
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : null;
+
   const editor = (
     <EntitlementProvider value={entitlements}>
-    <main dir="rtl" className="min-h-screen bg-[#050B14] pb-20 pt-28 sm:pt-32 text-white">
+    <main
+      dir="rtl"
+      className={`min-h-screen bg-[#050B14] text-white ${
+        // Studio open ⇒ the editor IS the page: reclaim the banner's
+        // top/bottom breathing room so the workspace fits a single screen.
+        // (Outside the studio the original generous padding is untouched.)
+        studioOpen ? "pb-6 pt-32" : "pb-20 pt-28 sm:pt-32"
+      }`}
+    >
       <AppTaskbar />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        {/* Page Header */}
+        {/* Page Header — the full marketing banner outside the studio, one
+            compact row inside it (see studioOpen). */}
+        {studioOpen ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-base font-black text-white">کارت ویزیت‌ساز دیجیتال و چاپی</h1>
+              <span className="hidden text-xs text-slate-500 sm:inline">— استودیوی طراحی پیشرفته</span>
+            </div>
+            {businessPicker}
+          </div>
+        ) : (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-6">
           <div>
             <span className="rounded-md bg-cyan-500/10 px-2.5 py-1 text-xs font-bold text-cyan-400 border border-cyan-500/20">
@@ -581,26 +692,9 @@ export default function CardMakerPage() {
             </p>
           </div>
 
-          {businesses && businesses.length > 1 && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400">کسب‌وکار:</label>
-              <select
-                value={selectedBusiness?.id ?? ""}
-                onChange={(e) => {
-                  const b = businesses.find((item) => item.id === Number(e.target.value));
-                  if (b) setSelectedBusiness(b);
-                }}
-                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-              >
-                {businesses.map((b) => (
-                  <option key={b.id} value={b.id} className="bg-[#0c1626]">
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {businessPicker}
         </div>
+        )}
 
         {/* Server-corrected entitlement error (stale-cap safety) */}
         {staleError && (
@@ -649,10 +743,10 @@ export default function CardMakerPage() {
           </div>
         )}
 
-        {editorMode && editorAllowed && selectedBusiness ? (
-          <div className="mt-8 w-full">
-            <div className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-4 sm:p-6 backdrop-blur-xl">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+        {editorMode && editorAllowed && selectedBusiness && !studioBlocked ? (
+          <div className="mt-4 w-full">
+            <div className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-3 sm:p-4 backdrop-blur-xl">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -675,6 +769,21 @@ export default function CardMakerPage() {
                   />
                 </div>
               </div>
+
+              {studioBlockReason && (
+                <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-3">
+                  <p className="flex items-center gap-1.5 text-[11px] leading-5 text-amber-200">
+                    <Lock className="h-3.5 w-3.5 shrink-0" />
+                    {studioBlockReason}
+                  </p>
+                  <Link
+                    href="/pricing"
+                    className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-bold text-amber-300 hover:bg-amber-400/20"
+                  >
+                    ارتقا
+                  </Link>
+                </div>
+              )}
 
               <CardStudio
                 key={selectedBusiness.id}
@@ -932,8 +1041,8 @@ export default function CardMakerPage() {
                 <button
                   type="button"
                   onClick={() => setEditorMode((v) => !v)}
-                  disabled={!editorAllowed || !selectedBusiness}
-                  title={editorAllowed ? "ویرایشگر پیشرفته لایه‌ای" : "ویرایشگر پیشرفته در پلن فعلی فعال نیست"}
+                  disabled={editorToggleDisabled}
+                  title={editorToggleTitle}
                   aria-pressed={editorMode}
                   className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
                     editorMode
@@ -989,6 +1098,25 @@ export default function CardMakerPage() {
                 </div>
               </div>
 
+              {/* Server studio decision — visible Level A state so a blocked
+                  business sees the real reason instead of a dead button. */}
+              {studioBlockReason && (
+                <div className="mt-4 flex w-full items-start justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-3">
+                  <p className="flex items-center gap-1.5 text-[11px] leading-5 text-amber-200">
+                    <Lock className="h-3.5 w-3.5 shrink-0" />
+                    {studioBlockReason}
+                  </p>
+                  {!studioNeedsApproval && (
+                    <Link
+                      href="/pricing"
+                      className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-bold text-amber-300 hover:bg-amber-400/20"
+                    >
+                      ارتقا
+                    </Link>
+                  )}
+                </div>
+              )}
+
               {/* Scaled preview stage — two render paths (plan decision):
                   editorMode + design_json → layered studio; otherwise the
                   legacy template renderer (existing cards unchanged). */}
@@ -997,7 +1125,7 @@ export default function CardMakerPage() {
                   <div className="flex aspect-[1.586/1] w-full items-center justify-center rounded-2xl border border-white/5 bg-white/[0.03]">
                     <div className="h-full w-full max-w-2xl animate-pulse rounded-2xl bg-white/5" />
                   </div>
-                ) : editorMode && editorAllowed ? (
+                ) : editorMode && editorAllowed && !studioBlocked ? (
                   <CardStudio
                     key={selectedBusiness.id}
                     business={selectedBusiness}

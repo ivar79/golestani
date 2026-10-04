@@ -5,9 +5,9 @@
  * with gold-foil styling and high-density luxury vector curves.
  */
 
-import { ARTBOARD, type CardLayer, type ShapeLayer, type TextLayer, type PathLayer, type QrLayer } from "./document";
+import { ARTBOARD, type CardLayer, type ShapeLayer, type TextLayer, type PathLayer, type QrLayer, type ImageLayer } from "./document";
 import type { Business } from "@/lib/businesses";
-import { multiLayerShamsehD, carpetToranjD, carpetLachakD, laserCutLatticeD, shamsehD } from "./ornaments/geometry";
+import { carpetToranjD, carpetLachakD, laserCutLatticeD, shamsehD } from "./ornaments/geometry";
 
 export type TemplateTier = "free" | "starter" | "pro";
 
@@ -105,47 +105,170 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
   {
     id: "pro-persian-architecture-gereh",
     category: "persian",
-    name: "معماری سنتی و گره‌چینی شمسه ایرانی",
+    name: "معماری سنتی و گره‌چینی شمسه ۱۲ پر طلاکوب",
     tier: "pro",
-    description: "گره‌چینی شمسه ۱۲ پر معماری صفوی با جلوه طلاکوب و نقوش هندسی اصیل",
-    background: "linear-gradient(135deg, #180d05 0%, #2b1708 50%, #100803 100%)",
+    description: "طرح اصلی طلاکوب صفوی روی زمینهٔ فیروزه‌ای — شمسهٔ ۱۲ پر، قاب گره‌چینی و اسلیمی‌های واقعی برداری با متن‌های آمادهٔ روی کارت",
+    background: "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
     tag: "👑 ویژه VIP",
+    // ---------------------------------------------------------------------
+    // Real traced artwork (ported from the gold-card kit, files (3)/
+    // gold-card-kit): the motif is ONE fixed SVG asset, the document only
+    // carries the design reference + the text lines — exactly the kit's
+    // "store the parameters, not the motif" contract.
+    //
+    // Kit canvas is 2736×1520 (1.8) while the artboard is 1050×600 (1.75),
+    // so `cover` keeps the centred 2660×1520 window and the kit's pixel
+    // coordinates convert with ONE factor on both axes
+    // (1050/2660 = 600/1520 = 0.3947368):
+    //     x_art = (x_kit − 38) × 0.3947368     y_art = y_kit × 0.3947368
+    // Kit texts are baseline-anchored (text-anchor=middle); our text layers
+    // are boxes whose single line is vertically centred, hence
+    //     y_box = y_baseline_art − 0.36·fontSize − height/2
+    // The kit's own 1000-threshold/9-band palette is baked into the asset,
+    // including the teal ground, so only the text is editable here.
+    // ---------------------------------------------------------------------
     buildLayers: (b) => [
       {
-        id: uid("path"), kind: "path", name: "شمسه ۱۲ پر طلاکوب",
-        x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 0.9,
+        id: uid("image"), kind: "image", name: "شمسه ۱۲ پر طلاکوب — طرح اصلی",
+        x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 1,
         locked: true, hidden: false, color: null, background: null,
-        closed: true, points: [], rawD: multiLayerShamsehD(870, 190, 140),
-        fill: null, stroke: "#BF953F", strokeWidth: 2,
-      } satisfies PathLayer,
+        src: "storage/templates/vector/pro-gold-shamsa-teal.svg", radius: 0, objectFit: "cover",
+      } satisfies ImageLayer,
       {
         id: uid("text"), kind: "text",
-        x: 70, y: 80, width: 640, height: 68, angle: 0, opacity: 1,
-        locked: false, hidden: false, color: "#FCF6BA", background: null,
-        text: b.name || "معماری اصیل و دکوراسیون سنتی",
-        fontSize: 48, fontWeight: 800, align: "start", fontFamily: "serif",
+        x: 205, y: 259, width: 640, height: 52, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#0c3b48", background: null,
+        text: b.name || "طراحی معماری سنتی و گره‌چینی",
+        fontSize: 33, fontWeight: 700, align: "center", fontFamily: "vazir",
       } satisfies TextLayer,
       {
         id: uid("text"), kind: "text",
-        x: 70, y: 165, width: 640, height: 38, angle: 0, opacity: 1,
-        locked: false, hidden: false, color: "#e2b755", background: null,
-        text: b.category || "طراحی فضاهای میراثی، ارسی، مقرنس و گره‌چینی چوبی",
-        fontSize: 22, fontWeight: 600, align: "start", fontFamily: "vazir",
+        x: 205, y: 310, width: 640, height: 24, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#0c3b48", background: null,
+        text: b.category || "گره‌چینی، ارسی و دکوراسیون سنتی",
+        fontSize: 15, fontWeight: 400, align: "center", fontFamily: "vazir",
       } satisfies TextLayer,
-      {
-        id: uid("text"), kind: "text",
-        x: 70, y: 450, width: 640, height: 38, angle: 0, opacity: 1,
-        locked: false, hidden: false, color: "#ffffff", background: null,
-        text: `نشانی آتلیه: ${b.address || "اصفهان، میدان نقش جهان"}`,
-        fontSize: 20, fontWeight: 500, align: "start", fontFamily: "vazir",
-      } satisfies TextLayer,
-      {
-        id: uid("qr"), kind: "qr",
-        x: 800, y: 380, width: 140, height: 140, angle: 0, opacity: 1,
-        locked: false, hidden: false, color: null, background: null,
-        payload: b.slug || "e2e_owner", dark: "#180d05", light: "#FCF6BA",
-      } satisfies QrLayer,
     ],
+  },
+  // =========================================================================
+  // 👑 BACK FACES of the traced gold-shamsa card (same kit, mirrored halves).
+  //
+  // The product renders ONE face per card, so each back face is published as
+  // its own gallery design: `storage/templates/vector/pro-gold-shamsa-back-*.svg`
+  // is a full 2736×1520 face in the kit's coordinate space, mirroring the
+  // ornament to the opposite half while the contact block stays centred on
+  // the kit's x=2030 (right) / x=706 (mirrored) baseline.
+  // =========================================================================
+  {
+    id: "pro-persian-architecture-gereh-back",
+    category: "persian",
+    name: "پشت کارت طلاکوب شمسه ۱۲ پر (اطلاعات در سمت راست)",
+    tier: "pro",
+    description: "روی دیگر کارت: زمینهٔ فیروزه‌ای گره‌چینی با شمسهٔ طلاکوب و ستون اطلاعات تماس در سمت راست",
+    background: "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
+    tag: "👑 ویژه VIP",
+    buildLayers: (b) => {
+      const website = (b.social_links as { website?: string } | undefined)?.website;
+      return [
+        {
+          id: uid("image"), kind: "image", name: "پشت کارت — شمسه ۱۲ پر طلاکوب",
+          x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 1,
+          locked: true, hidden: false, color: null, background: null,
+          src: "storage/templates/vector/pro-gold-shamsa-back-left.svg", radius: 0, objectFit: "cover",
+        } satisfies ImageLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 571.3, y: 190, width: 430, height: 42, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#f1dba0", background: null,
+          text: b.name || "نام و نام خانوادگی",
+          fontSize: 28, fontWeight: 700, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 571.3, y: 235, width: 430, height: 22, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: b.category || "سمت و تخصص",
+          fontSize: 14, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 571.3, y: 285, width: 430, height: 26, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: b.phone || "۰۹۱۲ ۳۴۵ ۶۷۸۹",
+          fontSize: 17, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 571.3, y: 314.8, width: 430, height: 22, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          // Empty website ⇒ an empty (invisible) line rather than stale text.
+          text: website || "",
+          fontSize: 14, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 571.3, y: 342, width: 430, height: 22, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: b.address || "تهران، خیابان ولیعصر، پلاک ۱۲۰",
+          fontSize: 13, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+      ];
+    },
+  },
+  {
+    id: "pro-persian-architecture-gereh-back-mirrored",
+    category: "persian",
+    name: "پشت کارت طلاکوب شمسه ۱۲ پر (اطلاعات در سمت چپ)",
+    tier: "pro",
+    description: "همان پشت کارت با شمسهٔ قرینه در سمت راست و ستون اطلاعات تماس در سمت چپ",
+    background: "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
+    tag: "👑 ویژه VIP",
+    buildLayers: (b) => {
+      const website = (b.social_links as { website?: string } | undefined)?.website;
+      return [
+        {
+          id: uid("image"), kind: "image", name: "پشت کارت — شمسه ۱۲ پر طلاکوب",
+          x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 1,
+          locked: true, hidden: false, color: null, background: null,
+          src: "storage/templates/vector/pro-gold-shamsa-back-right.svg", radius: 0, objectFit: "cover",
+        } satisfies ImageLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 48.7, y: 190, width: 430, height: 42, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#f1dba0", background: null,
+          text: b.name || "نام و نام خانوادگی",
+          fontSize: 28, fontWeight: 700, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 48.7, y: 235, width: 430, height: 22, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: b.category || "سمت و تخصص",
+          fontSize: 14, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 48.7, y: 285, width: 430, height: 26, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: b.phone || "۰۹۱۲ ۳۴۵ ۶۷۸۹",
+          fontSize: 17, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 48.7, y: 314.8, width: 430, height: 22, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: website || "",
+          fontSize: 14, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+        {
+          id: uid("text"), kind: "text",
+          x: 48.7, y: 342, width: 430, height: 22, angle: 0, opacity: 1,
+          locked: false, hidden: false, color: "#e8e2cf", background: null,
+          text: b.address || "تهران، خیابان ولیعصر، پلاک ۱۲۰",
+          fontSize: 13, fontWeight: 400, align: "center", fontFamily: "vazir",
+        } satisfies TextLayer,
+      ];
+    },
   },
   {
     id: "pro-laser-cut-walnut-wood",
@@ -700,6 +823,110 @@ export const TEMPLATES_CATALOG: TemplateDef[] = [
         x: 820, y: 380, width: 140, height: 140, angle: 0, opacity: 1,
         locked: false, hidden: false, color: null, background: null,
         payload: b.slug || "e2e_owner", dark: "#78350f", light: "#ffffff",
+      } satisfies QrLayer,
+    ],
+  },
+
+  // =========================================================================
+  // 🖼️ PHOTOGRAPH-TRACED PERSIAN CARPET (artwork asset, traced from the
+  // original 2K JPG). The motifs ship as ONE system-storage SVG so the
+  // document stays tiny: the traced path data is 2.98 MB, far beyond the
+  // server's 100 KB document cap (MAX_BYTES) and 60 KB per-rawD cap, so it
+  // CANNOT be embedded as vector layers — it is served as an asset instead.
+  //
+  // The background <rect> was stripped from the SVG, so the motifs are
+  // transparent and the card's own `background` shows through: changing the
+  // card background needs no re-authoring and no UI change.
+  //
+  // `objectFit: "cover"` is exact here, not an approximation: the SVG viewBox
+  // is 2688x1536 (1.75) and the artboard is 1050x600 (1.75), so cover neither
+  // crops nor distorts. `ImageLayer` only admits "cover" | "contain" anyway.
+  // =========================================================================
+  {
+    id: "pro-persian-carpet-artwork",
+    category: "persian",
+    name: "فرش ایرانی — طرح اصلی (روی زمینهٔ روشن)",
+    tier: "pro",
+    description: "طرح اصلی فرش دستباف کاشان با نقوش اسلیمی، ترنج مرکزی و قاب گل‌وموسی — نسخهٔ روشن",
+    background: "linear-gradient(135deg, #f6efde 0%, #f2e8d2 50%, #efe3c9 100%)",
+    tag: "👑 ویژه VIP",
+    buildLayers: (b) => [
+      {
+        id: uid("image"), kind: "image", name: "طرح فرش اصلی",
+        x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 1,
+        locked: true, hidden: false, color: null, background: null,
+        src: "storage/templates/vector/pro-carpet-cream.svg", radius: 0, objectFit: "cover",
+      } satisfies ImageLayer,
+      {
+        id: uid("text"), kind: "text",
+        x: 70, y: 96, width: 640, height: 62, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#2a1f14", background: null,
+        text: b.name || "فرش دستباف و نگارگری فاخر",
+        fontSize: 44, fontWeight: 800, align: "start", fontFamily: "serif",
+      } satisfies TextLayer,
+      {
+        id: uid("text"), kind: "text",
+        x: 70, y: 168, width: 640, height: 34, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#6b5137", background: null,
+        text: b.category || "اصیل‌ترین نقوش اسلیمی و ختایی ایرانی",
+        fontSize: 20, fontWeight: 600, align: "start", fontFamily: "vazir",
+      } satisfies TextLayer,
+      {
+        id: uid("text"), kind: "text",
+        x: 70, y: 448, width: 640, height: 34, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#3d2d1c", background: null,
+        text: `☎ تلفن هماهنگی: ${b.phone || "۰۲۱-۵۵۶۶۷۷۸۸"}`,
+        fontSize: 20, fontWeight: 600, align: "start", fontFamily: "sans",
+      } satisfies TextLayer,
+      {
+        id: uid("qr"), kind: "qr",
+        x: 812, y: 392, width: 130, height: 130, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: null, background: null,
+        payload: b.slug || "e2e_owner", dark: "#2a1f14", light: "#f6efde",
+      } satisfies QrLayer,
+    ],
+  },
+  {
+    id: "pro-persian-carpet-artwork-dark",
+    category: "persian",
+    name: "فرش ایرانی — طرح اصلی (روی زمینهٔ تیره)",
+    tier: "pro",
+    description: "همان طرح اصلی فرش کاشان با نقوش روشن برای زمینهٔ سرمه‌ای و متن طلایی",
+    background: "linear-gradient(135deg, #070e1c 0%, #0d1b33 50%, #050b17 100%)",
+    tag: "👑 ویژه VIP",
+    buildLayers: (b) => [
+      {
+        id: uid("image"), kind: "image", name: "طرح فرش اصلی",
+        x: 0, y: 0, width: ARTBOARD.width, height: ARTBOARD.height, angle: 0, opacity: 1,
+        locked: true, hidden: false, color: null, background: null,
+        src: "storage/templates/vector/pro-carpet-light.svg", radius: 0, objectFit: "cover",
+      } satisfies ImageLayer,
+      {
+        id: uid("text"), kind: "text",
+        x: 70, y: 96, width: 640, height: 62, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#FCF6BA", background: null,
+        text: b.name || "فرش دستباف و نگارگری فاخر",
+        fontSize: 44, fontWeight: 800, align: "start", fontFamily: "serif",
+      } satisfies TextLayer,
+      {
+        id: uid("text"), kind: "text",
+        x: 70, y: 168, width: 640, height: 34, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#e2b755", background: null,
+        text: b.category || "اصیل‌ترین نقوش اسلیمی و ختایی ایرانی",
+        fontSize: 20, fontWeight: 600, align: "start", fontFamily: "vazir",
+      } satisfies TextLayer,
+      {
+        id: uid("text"), kind: "text",
+        x: 70, y: 448, width: 640, height: 34, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: "#ffffff", background: null,
+        text: `☎ تلفن هماهنگی: ${b.phone || "۰۲۱-۵۵۶۶۷۷۸۸"}`,
+        fontSize: 20, fontWeight: 600, align: "start", fontFamily: "sans",
+      } satisfies TextLayer,
+      {
+        id: uid("qr"), kind: "qr",
+        x: 812, y: 392, width: 130, height: 130, angle: 0, opacity: 1,
+        locked: false, hidden: false, color: null, background: null,
+        payload: b.slug || "e2e_owner", dark: "#070e1c", light: "#FCF6BA",
       } satisfies QrLayer,
     ],
   },

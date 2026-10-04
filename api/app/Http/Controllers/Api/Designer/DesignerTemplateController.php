@@ -8,6 +8,7 @@ use App\Models\SiteSetting;
 use App\Models\TemplateAsset;
 use App\Services\CardDesignValidator;
 use App\Services\FeatureGate;
+use App\Services\StudioAccess;
 use App\Services\TemplateAssetService;use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,10 +62,17 @@ class DesignerTemplateController extends Controller
         abort_unless($user !== null && $user->hasApprovedDesignerStatus(), 403, 'فقط طراحان تأییدشده می‌توانند قالب ثبت کنند.');
 
         // The custom_templates ENTITLEMENT is resolved from the submitter's
-        // own business subscription (designer ≠ necessarily a business owner,
-        // so absence of a business means no entitlement).
-        $business = $user->businesses()->first();
-        abort_if($business === null || ! app(FeatureGate::class)->allows($business, 'custom_templates'), 403, 'امکان قالب اختصاصی برای پلن شما فعال نیست.');
+        // OWN business subscription (designer ≠ necessarily a business owner,
+        // so absence of a business means no entitlement). Multi-business
+        // users never inherit: an explicit business_id must be owned, and the
+        // no-id fallback picks a business that actually passes BOTH the
+        // entitlement and the studio gate (the old `businesses()->first()`
+        // could read the capability from an unrelated business).
+        $business = app(StudioAccess::class)->businessFor($user, (int) $request->input('business_id', 0) ?: null, 'custom_templates');
+        abort_unless(app(FeatureGate::class)->allows($business, 'custom_templates'), 403, 'امکان قالب اختصاصی برای پلن شما فعال نیست.');
+
+        // LEVEL B (gallery submission): the studio gate applies as well.
+        app(StudioAccess::class)->assert($request, $business, 'gallery_submit');
 
         $data = $request->validate([
             'name_fa' => ['required', 'string', 'max:120'],

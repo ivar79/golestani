@@ -735,18 +735,31 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       ref={containerRef}
       dir="ltr"
       className={`relative z-0 w-full overflow-hidden rounded-[24px] border border-white/[0.07] ${
-        state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""
-      } ${spaceDown ? "cursor-grab" : ""}`}
+        // Viewport cap: in fit-to-width mode the artboard is always SMALLER
+        // than this (fitToContainer scales it to the available width), so the
+        // cap only trims empty stage margin and keeps the inspector column on
+        // screen. It deliberately does NOT apply while point-editing — that
+        // mode grows `height: auto` around the node toolbar and must be free to
+        // expand past the fold (pannable with space + drag).
+        //
+        // 22rem = the chrome ABOVE the workspace grid (the fixed taskbar ends
+        // at ~104px on lg, plus the compact page row, studio toolbar and
+        // paddings) plus breathing room, so the whole studio fits one screen.
+        // The toolbox and inspector column use the SAME cap to stay aligned.
+        state.editingPathId && !preview ? "" : "max-h-[calc(100vh-22rem)]"
+      } ${state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""} ${
+        spaceDown ? "cursor-grab" : ""
+      }`}
       onPointerDownCapture={onMirrorAxisPointerDown}
       onPointerDown={onStagePointerDown}
       onPointerMove={onStagePointerMove}
       onPointerUp={onStagePointerUp}
       onWheel={onStageWheel}
       style={{
-        minHeight: 500,
+        minHeight: 420,
         height: state.editingPathId && !preview
           ? "auto"
-          : Math.max(500, Math.round(doc.artboard.height * zoom) + 44),
+          : Math.max(420, Math.round(doc.artboard.height * zoom) + 44),
         background:
           "radial-gradient(circle at 50% 16%, rgba(49, 70, 92, 0.22), transparent 34%), radial-gradient(circle at 12% 88%, rgba(16, 185, 129, 0.045), transparent 28%), #060b12",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025), 0 28px 80px rgba(0,0,0,0.32)",
@@ -1547,15 +1560,25 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       )}
 
       {/* EXPORT SURFACE — 1:1 unscaled artboard, visually hidden but still
-          in the DOM so html-to-image can rasterize it. Positioned off the
-          normal flow so it never affects layout. EXACTLY matches the stage
-          visuals (same LayeredCard projection), so exported PNG/JPG output
-          and the on-screen preview always agree. */}
+          in the DOM so html-to-image can rasterize it. EXACTLY matches the
+          stage visuals (same LayeredCard projection), so exported PNG/JPG
+          output and the on-screen preview always agree.
+
+          PLACEMENT CONTRACT: it must stay INSIDE this stage container, which
+          already clips (`overflow-hidden`). The obvious "park it far off-screen"
+          trick (`position: fixed; left: -99999px`) silently backfires: the
+          nearest ancestor carrying `backdrop-filter` — the studio wrapper in
+          card-maker/page.tsx uses `backdrop-blur-xl` — becomes the containing
+          block for fixed descendants in Chromium, so the box resolves like
+          `absolute` and grows the DOCUMENT's scrollWidth by ~100 000 px.
+
+          The `opacity-0` lives on THIS wrapper, never on `exportRef` itself:
+          html-to-image clones only the ref node into a foreignObject (ancestor
+          styles never travel with it), but an opacity on the cloned node itself
+          would produce a fully transparent PNG/JPG. `exportRef` keeps its
+          explicit width/height so `node.offsetWidth` still drives pixelRatio. */}
       {exportRef ? (
-        <div
-          aria-hidden="true"
-          style={{ position: "fixed", left: -99999, top: 0, width: doc.artboard.width, height: doc.artboard.height }}
-        >
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-0">
           <div ref={exportRef} style={{ width: doc.artboard.width, height: doc.artboard.height }}>
             <LayeredCard doc={doc} scale={1} />
           </div>

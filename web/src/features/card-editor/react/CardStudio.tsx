@@ -25,7 +25,7 @@ import { createDocumentFromBusiness, type TemplateKey } from "../domain/factory"
 import type { CardDocument } from "../domain/document";
 import { SaveQueue } from "../domain/saveQueue";
 import { auditDocument, budgetForTier } from "../domain/saveLimits";
-import { describeEntitlementErrors, extractEntitlementErrors, limitOf } from "@/lib/entitlements";
+import { describeEntitlementErrors, describeStudioErrors, extractEntitlementErrors, extractStudioErrors, limitOf } from "@/lib/entitlements";
 import { EditorStage } from "./EditorStage";
 import { useEntitlements } from "@/components/cards/FeatureGate";
 import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel } from "./EditorPanels";
@@ -158,8 +158,11 @@ export function CardStudio({
         setSaveStatus({
           kind: "error",
           message:
+            describeStudioErrors(extractStudioErrors(error)) ??
             describeEntitlementErrors(extractEntitlementErrors(error)) ??
-            (status === 422
+            (status === 429
+              ? "تعداد درخواست‌ها زیاد است؛ چند لحظه صبر کنید و دوباره تلاش کنید."
+              : status === 422
               ? "سند کارت با ساختار مجاز سرور همخوانی نیست — بخشی از طرح ذخیره نشد."
               : error instanceof Error
                 ? error.message
@@ -317,7 +320,10 @@ export function CardStudio({
           <>
             <Toolbox engine={engine} onUploadImage={onUploadImage} />
 
-            <div className="flex max-h-[calc(100vh-8rem)] min-w-0 flex-col space-y-2 rounded-[18px] border border-white/[0.08] bg-[#0d131c] p-1.5">
+            {/* Same viewport cap as the stage (EditorStage) so the three
+                workspace columns share one height and the studio fits a
+                single screen instead of pushing the inspector below the fold. */}
+            <div className="flex max-h-[calc(100vh-22rem)] min-w-0 flex-col space-y-2 rounded-[18px] border border-white/[0.08] bg-[#0d131c] p-1.5">
               <div className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-xl border border-white/[0.08] bg-[#121a25] p-1 backdrop-blur-2xl">
                 <button
                   type="button"

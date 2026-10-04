@@ -27,7 +27,7 @@ class ImportTemplates extends Command
         $disk = Storage::disk('public');
         $registered = 0;
 
-        foreach (['optimized', 'thumbnails', 'uploaded'] as $folder) {
+        foreach (['optimized', 'thumbnails', 'uploaded', 'vector'] as $folder) {
             foreach ($disk->allFiles("templates/{$folder}") as $relative) {
                 if (str_contains($relative, '..')) {
                     continue;

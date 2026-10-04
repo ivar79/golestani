@@ -183,15 +183,27 @@ class PermissionsTest extends TestCase
         $this->assertTrue($orphan->fresh()->hasRole('business_owner'));
     }
 
-    // ---------- designer bootstrap ----------
+    // ---------- designer identity (admin-granted only) ----------
 
-    public function test_user_bootstrapping_designer_profile_gets_designer_role(): void
+    /**
+     * SECURITY REGRESSION (V1): hitting the designer profile endpoint as a
+     * plain user must not grant the designer role (any OTP user could once
+     * self-promote with a single GET).
+     */
+    public function test_user_cannot_self_promote_to_designer(): void
     {
         $user = $this->userWithRole('user', '09130000010');
 
-        $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
+        $this->actingAs($user)->getJson('/api/designer/profile')->assertForbidden();
 
-        $this->assertTrue($user->fresh()->hasRole('designer'));
+        $this->assertFalse($user->fresh()->hasRole('designer'));
+    }
+
+    public function test_designer_role_passes_the_designer_gate(): void
+    {
+        $designer = $this->userWithRole('designer', '09130000012');
+
+        $this->actingAs($designer)->getJson('/api/designer/profile')->assertOk();
     }
 
     public function test_designer_cannot_access_business_panel(): void

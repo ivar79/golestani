@@ -213,6 +213,72 @@ export function extractEntitlementErrors(error: unknown): Record<string, string>
 }
 
 /**
+ * The CARD STUDIO gate block the backend adds to every card payload.
+ * UX mirror only — the server re-checks every Level B write.
+ */
+export type StudioStatus = {
+  /** Is the designer-only gate enforced yet? (staged rollout switch). */
+  enforced: boolean;
+  /** May THIS user mutate design documents for THIS business? */
+  allowed: boolean;
+  /** True when an admin was let through the audited bypass. */
+  bypass: boolean;
+  /** stage_off | designer | admin_bypass | not_approved | no_capability */
+  reason: string;
+  designer_status: string;
+  /** Does this business' own plan grant the designer_studio capability? */
+  capability: boolean;
+};
+
+/** Server studio 403 body (`studio_errors`). */
+export function extractStudioErrors(error: unknown): Record<string, string> | null {
+  const data = (error as { response?: { data?: { studio_errors?: Record<string, string> } } })?.response?.data;
+  return data?.studio_errors && Object.keys(data.studio_errors).length > 0 ? data.studio_errors : null;
+}
+
+/**
+ * Human sentence for a studio refusal (null when it was not a studio refusal),
+ * so a blocked save names the real reason instead of a generic failure.
+ */
+export function describeStudioErrors(errors: Record<string, string> | null | undefined): string | null {
+  if (!errors) return null;
+  const reason = Object.values(errors)[0];
+  switch (reason) {
+    case "not_approved":
+      return "استودیوی طراحی فقط برای طراحان تأییدشده فعال است؛ برای عضویت در برنامه طراحان درخواست دهید.";
+    case "no_capability":
+      return "پلن این کسب‌وکار امکان «استودیو طراحی» را ندارد؛ برای ادامه پلن را ارتقا دهید.";
+    case "stage_off":
+      return null;
+    default:
+      return "استودیوی طراحی برای این کسب‌وکار فعال نیست.";
+  }
+}
+
+/**
+ * Frontend mirror of the server studio decision (UX only — the server
+ * re-authorizes every Level B write): the sentence shown when the full
+ * authoring workspace must NOT open for this business, or null when it may.
+ * A missing decision (older payload) never blocks.
+ */
+export function describeStudioStatus(status: StudioStatus | null | undefined): string | null {
+  if (!status || status.allowed) return null;
+  if (status.reason === "not_approved") {
+    return "ویرایش و ذخیرهٔ طرح لایه‌ای فقط برای طراحان تأییدشده فعال است؛ برای عضویت در برنامه طراحان درخواست دهید.";
+  }
+  return "پلن این کسب‌وکار امکان «استودیو طراحی» را ندارد؛ تغییر طرح ذخیره نمی‌شود — برای ادامه پلن را ارتقا دهید.";
+}
+
+/**
+ * May the advanced authoring workspace open for this decision? The gate is
+ * capability + approved-designer on the SAME business; admins come through
+ * as an audited bypass and the server remains authoritative for every write.
+ */
+export function canOpenStudio(status: StudioStatus | null | undefined): boolean {
+  return !status || status.allowed === true;
+}
+
+/**
  * Render a plan's feature list from the SERVER catalog labels — the pricing
  * page must never hardcode feature names or values.
  */

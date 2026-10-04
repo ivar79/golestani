@@ -17,7 +17,7 @@
     "background": "linear-gradient(135deg, #070e1c 0%, #0d1b33 50%, #050b17 100%)",
     "layers": [
      {
-      "id": "shape-z0ksvmy",
+      "id": "shape-v4o4bmu",
       "kind": "shape",
       "shape": "rect",
       "x": 20,
@@ -36,7 +36,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "shape-lfbplxr",
+      "id": "shape-r230qd6",
       "kind": "shape",
       "shape": "rect",
       "x": 32,
@@ -55,7 +55,7 @@
       "strokeStyle": "dashed"
      },
      {
-      "id": "path-06vpqe4",
+      "id": "path-k7smcq3",
       "kind": "path",
       "name": "لچک بالا-راست",
       "x": 0,
@@ -76,7 +76,7 @@
       "strokeWidth": 1.5
      },
      {
-      "id": "path-apav68d",
+      "id": "path-d9wbyym",
       "kind": "path",
       "name": "لچک پایین-راست",
       "x": 0,
@@ -97,7 +97,7 @@
       "strokeWidth": 1.5
      },
      {
-      "id": "path-ehdvyia",
+      "id": "path-1ayztvi",
       "kind": "path",
       "name": "ترنج مرکزی فرش",
       "x": 0,
@@ -118,7 +118,7 @@
       "strokeWidth": 2
      },
      {
-      "id": "text-7k9w0kr",
+      "id": "text-2bmyif2",
       "kind": "text",
       "x": 70,
       "y": 90,
@@ -137,7 +137,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-5l32tn7",
+      "id": "text-u097ees",
       "kind": "text",
       "x": 70,
       "y": 175,
@@ -156,7 +156,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-eja46pd",
+      "id": "text-faeeo1n",
       "kind": "text",
       "x": 70,
       "y": 440,
@@ -175,7 +175,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-y76ge1s",
+      "id": "qr-4mltgaf",
       "kind": "qr",
       "x": 800,
       "y": 380,
@@ -196,113 +196,336 @@
   },
   {
    "id": "pro-persian-architecture-gereh",
-   "name": "معماری سنتی و گره‌چینی شمسه ایرانی",
+   "name": "معماری سنتی و گره‌چینی شمسه ۱۲ پر طلاکوب",
    "tier": "pro",
    "category": "persian",
-   "description": "گره‌چینی شمسه ۱۲ پر معماری صفوی با جلوه طلاکوب و نقوش هندسی اصیل",
-   "background": "linear-gradient(135deg, #180d05 0%, #2b1708 50%, #100803 100%)",
+   "description": "طرح اصلی طلاکوب صفوی روی زمینهٔ فیروزه‌ای — شمسهٔ ۱۲ پر، قاب گره‌چینی و اسلیمی‌های واقعی برداری با متن‌های آمادهٔ روی کارت",
+   "background": "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
    "document": {
     "version": 1,
     "artboard": {
      "width": 1050,
      "height": 600
     },
-    "background": "linear-gradient(135deg, #180d05 0%, #2b1708 50%, #100803 100%)",
+    "background": "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
     "layers": [
      {
-      "id": "path-y4r1zbt",
-      "kind": "path",
-      "name": "شمسه ۱۲ پر طلاکوب",
+      "id": "image-01x5gto",
+      "kind": "image",
+      "name": "شمسه ۱۲ پر طلاکوب — طرح اصلی",
       "x": 0,
       "y": 0,
       "width": 1050,
       "height": 600,
       "angle": 0,
-      "opacity": 0.9,
+      "opacity": 1,
       "locked": true,
       "hidden": false,
       "color": null,
       "background": null,
-      "closed": true,
-      "points": [],
-      "rawD": "M 870 50 L 888.76 120 L 940 68.76 L 921.24 138.76 L 991.24 120 L 940 171.24 L 1010 190 L 940 208.76 L 991.24 260 L 921.24 241.24 L 940 311.24 L 888.76 260 L 870 330 L 851.24 260 L 800 311.24 L 818.76 241.24 L 748.76 260 L 800 208.76 L 730 190 L 800 171.24 L 748.76 120 L 818.76 138.76 L 800 68.76 L 851.24 120 Z M 870 89.2 L 883.5 139.6 L 920.4 102.7 L 906.9 153.1 L 957.3 139.6 L 920.4 176.5 L 970.8 190 L 920.4 203.5 L 957.3 240.4 L 906.9 226.9 L 920.4 277.3 L 883.5 240.4 L 870 290.8 L 856.5 240.4 L 819.6 277.3 L 833.1 226.9 L 782.7 240.4 L 819.6 203.5 L 769.2 190 L 819.6 176.5 L 782.7 139.6 L 833.1 153.1 L 819.6 102.7 L 856.5 139.6 Z M 870 128.4 L 882.76 159.2 L 913.56 146.44 L 900.8 177.24 L 931.6 190 L 900.8 202.76 L 913.56 233.56 L 882.76 220.8 L 870 251.6 L 857.24 220.8 L 826.44 233.56 L 839.2 202.76 L 808.4 190 L 839.2 177.24 L 826.44 146.44 L 857.24 159.2 Z",
-      "fill": null,
-      "stroke": "#BF953F",
-      "strokeWidth": 2
+      "src": "storage/templates/vector/pro-gold-shamsa-teal.svg",
+      "radius": 0,
+      "objectFit": "cover"
      },
      {
-      "id": "text-5ieo1q9",
+      "id": "text-smdninl",
       "kind": "text",
-      "x": 70,
-      "y": 80,
+      "x": 205,
+      "y": 259,
       "width": 640,
-      "height": 68,
+      "height": 52,
       "angle": 0,
       "opacity": 1,
       "locked": false,
       "hidden": false,
-      "color": "#FCF6BA",
+      "color": "#0c3b48",
       "background": null,
       "text": "{{name}}",
-      "fontSize": 48,
-      "fontWeight": 800,
-      "align": "start",
-      "fontFamily": "serif"
+      "fontSize": 33,
+      "fontWeight": 700,
+      "align": "center",
+      "fontFamily": "vazir"
      },
      {
-      "id": "text-dg7f332",
+      "id": "text-5jsb0ni",
       "kind": "text",
-      "x": 70,
-      "y": 165,
+      "x": 205,
+      "y": 310,
       "width": 640,
-      "height": 38,
+      "height": 24,
       "angle": 0,
       "opacity": 1,
       "locked": false,
       "hidden": false,
-      "color": "#e2b755",
+      "color": "#0c3b48",
       "background": null,
       "text": "{{category}}",
-      "fontSize": 22,
-      "fontWeight": 600,
-      "align": "start",
+      "fontSize": 15,
+      "fontWeight": 400,
+      "align": "center",
       "fontFamily": "vazir"
-     },
+     }
+    ]
+   }
+  },
+  {
+   "id": "pro-persian-architecture-gereh-back",
+   "name": "پشت کارت طلاکوب شمسه ۱۲ پر (اطلاعات در سمت راست)",
+   "tier": "pro",
+   "category": "persian",
+   "description": "روی دیگر کارت: زمینهٔ فیروزه‌ای گره‌چینی با شمسهٔ طلاکوب و ستون اطلاعات تماس در سمت راست",
+   "background": "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
+   "document": {
+    "version": 1,
+    "artboard": {
+     "width": 1050,
+     "height": 600
+    },
+    "background": "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
+    "layers": [
      {
-      "id": "text-u9qz1z1",
-      "kind": "text",
-      "x": 70,
-      "y": 450,
-      "width": 640,
-      "height": 38,
+      "id": "image-26hqb8z",
+      "kind": "image",
+      "name": "پشت کارت — شمسه ۱۲ پر طلاکوب",
+      "x": 0,
+      "y": 0,
+      "width": 1050,
+      "height": 600,
       "angle": 0,
       "opacity": 1,
-      "locked": false,
-      "hidden": false,
-      "color": "#ffffff",
-      "background": null,
-      "text": "نشانی آتلیه: {{address}}",
-      "fontSize": 20,
-      "fontWeight": 500,
-      "align": "start",
-      "fontFamily": "vazir"
-     },
-     {
-      "id": "qr-x4u9abc",
-      "kind": "qr",
-      "x": 800,
-      "y": 380,
-      "width": 140,
-      "height": 140,
-      "angle": 0,
-      "opacity": 1,
-      "locked": false,
+      "locked": true,
       "hidden": false,
       "color": null,
       "background": null,
-      "payload": "{{slug}}",
-      "dark": "#180d05",
-      "light": "#FCF6BA"
+      "src": "storage/templates/vector/pro-gold-shamsa-back-left.svg",
+      "radius": 0,
+      "objectFit": "cover"
+     },
+     {
+      "id": "text-nywzng6",
+      "kind": "text",
+      "x": 571.3,
+      "y": 190,
+      "width": 430,
+      "height": 42,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#f1dba0",
+      "background": null,
+      "text": "{{name}}",
+      "fontSize": 28,
+      "fontWeight": 700,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-7kw5eow",
+      "kind": "text",
+      "x": 571.3,
+      "y": 235,
+      "width": 430,
+      "height": 22,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{category}}",
+      "fontSize": 14,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-46lhmt1",
+      "kind": "text",
+      "x": 571.3,
+      "y": 285,
+      "width": 430,
+      "height": 26,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{phone}}",
+      "fontSize": 17,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-ufnx5gd",
+      "kind": "text",
+      "x": 571.3,
+      "y": 314.8,
+      "width": 430,
+      "height": 22,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{website}}",
+      "fontSize": 14,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-0etnf98",
+      "kind": "text",
+      "x": 571.3,
+      "y": 342,
+      "width": 430,
+      "height": 22,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{address}}",
+      "fontSize": 13,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     }
+    ]
+   }
+  },
+  {
+   "id": "pro-persian-architecture-gereh-back-mirrored",
+   "name": "پشت کارت طلاکوب شمسه ۱۲ پر (اطلاعات در سمت چپ)",
+   "tier": "pro",
+   "category": "persian",
+   "description": "همان پشت کارت با شمسهٔ قرینه در سمت راست و ستون اطلاعات تماس در سمت چپ",
+   "background": "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
+   "document": {
+    "version": 1,
+    "artboard": {
+     "width": 1050,
+     "height": 600
+    },
+    "background": "linear-gradient(135deg, #0f5a6e 0%, #0c4a5c 50%, #062a36 100%)",
+    "layers": [
+     {
+      "id": "image-5al16jj",
+      "kind": "image",
+      "name": "پشت کارت — شمسه ۱۲ پر طلاکوب",
+      "x": 0,
+      "y": 0,
+      "width": 1050,
+      "height": 600,
+      "angle": 0,
+      "opacity": 1,
+      "locked": true,
+      "hidden": false,
+      "color": null,
+      "background": null,
+      "src": "storage/templates/vector/pro-gold-shamsa-back-right.svg",
+      "radius": 0,
+      "objectFit": "cover"
+     },
+     {
+      "id": "text-r4375oc",
+      "kind": "text",
+      "x": 48.7,
+      "y": 190,
+      "width": 430,
+      "height": 42,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#f1dba0",
+      "background": null,
+      "text": "{{name}}",
+      "fontSize": 28,
+      "fontWeight": 700,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-friuok5",
+      "kind": "text",
+      "x": 48.7,
+      "y": 235,
+      "width": 430,
+      "height": 22,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{category}}",
+      "fontSize": 14,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-zt2oc5u",
+      "kind": "text",
+      "x": 48.7,
+      "y": 285,
+      "width": 430,
+      "height": 26,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{phone}}",
+      "fontSize": 17,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-6kmclm4",
+      "kind": "text",
+      "x": 48.7,
+      "y": 314.8,
+      "width": 430,
+      "height": 22,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{website}}",
+      "fontSize": 14,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-dl85gcp",
+      "kind": "text",
+      "x": 48.7,
+      "y": 342,
+      "width": 430,
+      "height": 22,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e8e2cf",
+      "background": null,
+      "text": "{{address}}",
+      "fontSize": 13,
+      "fontWeight": 400,
+      "align": "center",
+      "fontFamily": "vazir"
      }
     ]
    }
@@ -323,7 +546,7 @@
     "background": "linear-gradient(135deg, #2b1810 0%, #3d2317 40%, #1f110b 100%)",
     "layers": [
      {
-      "id": "path-8aohle2",
+      "id": "path-yzih7j2",
       "kind": "path",
       "name": "شبکه‌بندی مشبک چوبی",
       "x": 0,
@@ -344,7 +567,7 @@
       "strokeWidth": 1.5
      },
      {
-      "id": "text-rmp0l8z",
+      "id": "text-81zaljn",
       "kind": "text",
       "x": 60,
       "y": 80,
@@ -363,7 +586,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-2plk8yl",
+      "id": "text-xnm638f",
       "kind": "text",
       "x": 60,
       "y": 165,
@@ -382,7 +605,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-2jmdvos",
+      "id": "text-fdmr7f3",
       "kind": "text",
       "x": 60,
       "y": 450,
@@ -401,7 +624,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-hs9fl6q",
+      "id": "qr-ujnc9b0",
       "kind": "qr",
       "x": 870,
       "y": 380,
@@ -436,7 +659,7 @@
     "background": "linear-gradient(135deg, #091224 0%, #112244 50%, #060c18 100%)",
     "layers": [
      {
-      "id": "shape-34oxmdc",
+      "id": "shape-ascvgu8",
       "kind": "shape",
       "shape": "rect",
       "x": 18,
@@ -455,7 +678,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "path-x0k5gc8",
+      "id": "path-aatof0f",
       "kind": "path",
       "name": "شمسه ۱۰ پر",
       "x": 0,
@@ -476,7 +699,7 @@
       "strokeWidth": 2
      },
      {
-      "id": "text-ucllpv3",
+      "id": "text-gl08y6v",
       "kind": "text",
       "x": 60,
       "y": 75,
@@ -495,7 +718,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-ucbeur3",
+      "id": "text-4d7f7y4",
       "kind": "text",
       "x": 60,
       "y": 155,
@@ -514,7 +737,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-ah11z0h",
+      "id": "text-gm37v7a",
       "kind": "text",
       "x": 60,
       "y": 440,
@@ -533,7 +756,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-81mxhyu",
+      "id": "qr-qwf54vi",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -568,7 +791,7 @@
     "background": "linear-gradient(135deg, #121212 0%, #1e1e1e 50%, #0a0a0a 100%)",
     "layers": [
      {
-      "id": "shape-e3sdnzw",
+      "id": "shape-bu7oxjb",
       "kind": "shape",
       "shape": "rect",
       "x": 24,
@@ -587,7 +810,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-5ye5h6x",
+      "id": "text-qh9vhv5",
       "kind": "text",
       "x": 64,
       "y": 80,
@@ -606,7 +829,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-je5dnsq",
+      "id": "text-3483uai",
       "kind": "text",
       "x": 64,
       "y": 160,
@@ -625,7 +848,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-y95cl9v",
+      "id": "text-4qooszy",
       "kind": "text",
       "x": 64,
       "y": 450,
@@ -644,7 +867,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-te4ff7f",
+      "id": "qr-0ojj44g",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -679,7 +902,7 @@
     "background": "linear-gradient(135deg, #1c1917 0%, #292524 50%, #0c0a09 100%)",
     "layers": [
      {
-      "id": "shape-12tylab",
+      "id": "shape-8kow8r6",
       "kind": "shape",
       "shape": "rect",
       "x": 30,
@@ -698,7 +921,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-o4ewa6l",
+      "id": "text-8gdhil6",
       "kind": "text",
       "x": 70,
       "y": 90,
@@ -717,7 +940,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-ejhj5ke",
+      "id": "text-ggtqfxr",
       "kind": "text",
       "x": 70,
       "y": 170,
@@ -736,7 +959,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-vi7tjw7",
+      "id": "text-to4cf9s",
       "kind": "text",
       "x": 70,
       "y": 440,
@@ -755,7 +978,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-gyhak16",
+      "id": "qr-xqb21kk",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -790,7 +1013,7 @@
     "background": "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
     "layers": [
      {
-      "id": "shape-jwz91mw",
+      "id": "shape-qd07oz9",
       "kind": "shape",
       "shape": "rect",
       "x": 40,
@@ -806,7 +1029,7 @@
       "radius": 3
      },
      {
-      "id": "text-vtfapv5",
+      "id": "text-xax0mvg",
       "kind": "text",
       "x": 40,
       "y": 65,
@@ -825,7 +1048,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-mb5edit",
+      "id": "text-u5k138n",
       "kind": "text",
       "x": 40,
       "y": 140,
@@ -844,7 +1067,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-i45mvf3",
+      "id": "text-c9lnl4u",
       "kind": "text",
       "x": 40,
       "y": 450,
@@ -863,7 +1086,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-eiby7a3",
+      "id": "qr-p28x2xe",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -898,7 +1121,7 @@
     "background": "linear-gradient(135deg, #064e3b 0%, #022c22 100%)",
     "layers": [
      {
-      "id": "shape-e0gsanq",
+      "id": "shape-wkox5qw",
       "kind": "shape",
       "shape": "rect",
       "x": 24,
@@ -917,7 +1140,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-vccyxd9",
+      "id": "text-hol5js7",
       "kind": "text",
       "x": 60,
       "y": 70,
@@ -936,7 +1159,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-nm1cqtg",
+      "id": "text-uswgd3b",
       "kind": "text",
       "x": 60,
       "y": 145,
@@ -955,7 +1178,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-n0fd3t3",
+      "id": "text-0j1udkk",
       "kind": "text",
       "x": 60,
       "y": 440,
@@ -974,7 +1197,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-y4rlwzo",
+      "id": "qr-3g4tlm2",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1009,7 +1232,7 @@
     "background": "#18181b",
     "layers": [
      {
-      "id": "text-yzvt51s",
+      "id": "text-7v6gd6h",
       "kind": "text",
       "x": 50,
       "y": 70,
@@ -1028,7 +1251,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-ugxvlej",
+      "id": "text-8ybt638",
       "kind": "text",
       "x": 50,
       "y": 145,
@@ -1047,7 +1270,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-ofrk378",
+      "id": "text-grtfx0a",
       "kind": "text",
       "x": 50,
       "y": 450,
@@ -1066,7 +1289,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-vupjp2y",
+      "id": "qr-1mj70fw",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1101,7 +1324,7 @@
     "background": "#020617",
     "layers": [
      {
-      "id": "shape-15hlau2",
+      "id": "shape-p2s1dn0",
       "kind": "shape",
       "shape": "rect",
       "x": 30,
@@ -1120,7 +1343,7 @@
       "strokeStyle": "solid"
      },
      {
-      "id": "text-8nmyapr",
+      "id": "text-q21vs0g",
       "kind": "text",
       "x": 60,
       "y": 70,
@@ -1139,7 +1362,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "text-94rd1s9",
+      "id": "text-mhufouq",
       "kind": "text",
       "x": 60,
       "y": 145,
@@ -1158,7 +1381,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-me4pbjs",
+      "id": "text-aphtde8",
       "kind": "text",
       "x": 60,
       "y": 440,
@@ -1177,7 +1400,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-m26lqdw",
+      "id": "qr-l50ygv7",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1212,7 +1435,7 @@
     "background": "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)",
     "layers": [
      {
-      "id": "text-3d317hp",
+      "id": "text-tgo7k5q",
       "kind": "text",
       "x": 50,
       "y": 70,
@@ -1231,7 +1454,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-1j0j490",
+      "id": "text-0pmumv2",
       "kind": "text",
       "x": 50,
       "y": 145,
@@ -1250,7 +1473,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-fdhqjkr",
+      "id": "text-qu0oxv8",
       "kind": "text",
       "x": 50,
       "y": 440,
@@ -1269,7 +1492,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-8gwkcxp",
+      "id": "qr-71vzto2",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1304,7 +1527,7 @@
     "background": "linear-gradient(135deg, #0c1421 0%, #17253d 100%)",
     "layers": [
      {
-      "id": "text-4dt7c6e",
+      "id": "text-cq264l1",
       "kind": "text",
       "x": 50,
       "y": 70,
@@ -1323,7 +1546,7 @@
       "fontFamily": "serif"
      },
      {
-      "id": "text-itdd9h7",
+      "id": "text-hd5dm36",
       "kind": "text",
       "x": 50,
       "y": 145,
@@ -1342,7 +1565,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-hx7dw6p",
+      "id": "text-tmab7m1",
       "kind": "text",
       "x": 50,
       "y": 440,
@@ -1361,7 +1584,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-mvybny7",
+      "id": "qr-ch9qp7e",
       "kind": "qr",
       "x": 810,
       "y": 370,
@@ -1396,7 +1619,7 @@
     "background": "#f8fafc",
     "layers": [
      {
-      "id": "shape-u1qz12s",
+      "id": "shape-un13723",
       "kind": "shape",
       "shape": "rect",
       "x": 0,
@@ -1412,7 +1635,7 @@
       "radius": 0
      },
      {
-      "id": "text-9bb7kqb",
+      "id": "text-lz1bax0",
       "kind": "text",
       "x": 48,
       "y": 64,
@@ -1431,7 +1654,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-2aabpuk",
+      "id": "text-x6q8i6r",
       "kind": "text",
       "x": 48,
       "y": 140,
@@ -1450,7 +1673,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-rr7sk9o",
+      "id": "text-z3cmsby",
       "kind": "text",
       "x": 48,
       "y": 460,
@@ -1469,7 +1692,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-oml38qx",
+      "id": "qr-46zjwxw",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -1504,7 +1727,7 @@
     "background": "#ffffff",
     "layers": [
      {
-      "id": "text-z5l9nyd",
+      "id": "text-hjnp15f",
       "kind": "text",
       "x": 48,
       "y": 70,
@@ -1523,7 +1746,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-ed1d7gq",
+      "id": "text-axzd4op",
       "kind": "text",
       "x": 48,
       "y": 145,
@@ -1542,7 +1765,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-9k7z4oz",
+      "id": "text-zx6mufp",
       "kind": "text",
       "x": 48,
       "y": 450,
@@ -1561,7 +1784,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "qr-dp0zxci",
+      "id": "qr-lwy82aw",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -1596,7 +1819,7 @@
     "background": "#fffbebe0",
     "layers": [
      {
-      "id": "text-q5j2zdi",
+      "id": "text-t5j42a9",
       "kind": "text",
       "x": 48,
       "y": 70,
@@ -1615,7 +1838,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-r4idt8z",
+      "id": "text-h2qxmpf",
       "kind": "text",
       "x": 48,
       "y": 145,
@@ -1634,7 +1857,7 @@
       "fontFamily": "vazir"
      },
      {
-      "id": "text-a4qy01y",
+      "id": "text-lymephs",
       "kind": "text",
       "x": 48,
       "y": 450,
@@ -1653,7 +1876,7 @@
       "fontFamily": "sans"
      },
      {
-      "id": "qr-3gmsw5e",
+      "id": "qr-sz3gr9e",
       "kind": "qr",
       "x": 820,
       "y": 380,
@@ -1668,6 +1891,226 @@
       "payload": "{{slug}}",
       "dark": "#78350f",
       "light": "#ffffff"
+     }
+    ]
+   }
+  },
+  {
+   "id": "pro-persian-carpet-artwork",
+   "name": "فرش ایرانی — طرح اصلی (روی زمینهٔ روشن)",
+   "tier": "pro",
+   "category": "persian",
+   "description": "طرح اصلی فرش دستباف کاشان با نقوش اسلیمی، ترنج مرکزی و قاب گل‌وموسی — نسخهٔ روشن",
+   "background": "linear-gradient(135deg, #f6efde 0%, #f2e8d2 50%, #efe3c9 100%)",
+   "document": {
+    "version": 1,
+    "artboard": {
+     "width": 1050,
+     "height": 600
+    },
+    "background": "linear-gradient(135deg, #f6efde 0%, #f2e8d2 50%, #efe3c9 100%)",
+    "layers": [
+     {
+      "id": "image-tsnqmz1",
+      "kind": "image",
+      "name": "طرح فرش اصلی",
+      "x": 0,
+      "y": 0,
+      "width": 1050,
+      "height": 600,
+      "angle": 0,
+      "opacity": 1,
+      "locked": true,
+      "hidden": false,
+      "color": null,
+      "background": null,
+      "src": "storage/templates/vector/pro-carpet-cream.svg",
+      "radius": 0,
+      "objectFit": "cover"
+     },
+     {
+      "id": "text-7iw5sy4",
+      "kind": "text",
+      "x": 70,
+      "y": 96,
+      "width": 640,
+      "height": 62,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#2a1f14",
+      "background": null,
+      "text": "{{name}}",
+      "fontSize": 44,
+      "fontWeight": 800,
+      "align": "start",
+      "fontFamily": "serif"
+     },
+     {
+      "id": "text-srsdh31",
+      "kind": "text",
+      "x": 70,
+      "y": 168,
+      "width": 640,
+      "height": 34,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#6b5137",
+      "background": null,
+      "text": "{{category}}",
+      "fontSize": 20,
+      "fontWeight": 600,
+      "align": "start",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-1kc04sx",
+      "kind": "text",
+      "x": 70,
+      "y": 448,
+      "width": 640,
+      "height": 34,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#3d2d1c",
+      "background": null,
+      "text": "☎ تلفن هماهنگی: {{phone}}",
+      "fontSize": 20,
+      "fontWeight": 600,
+      "align": "start",
+      "fontFamily": "sans"
+     },
+     {
+      "id": "qr-4xsduus",
+      "kind": "qr",
+      "x": 812,
+      "y": 392,
+      "width": 130,
+      "height": 130,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": null,
+      "background": null,
+      "payload": "{{slug}}",
+      "dark": "#2a1f14",
+      "light": "#f6efde"
+     }
+    ]
+   }
+  },
+  {
+   "id": "pro-persian-carpet-artwork-dark",
+   "name": "فرش ایرانی — طرح اصلی (روی زمینهٔ تیره)",
+   "tier": "pro",
+   "category": "persian",
+   "description": "همان طرح اصلی فرش کاشان با نقوش روشن برای زمینهٔ سرمه‌ای و متن طلایی",
+   "background": "linear-gradient(135deg, #070e1c 0%, #0d1b33 50%, #050b17 100%)",
+   "document": {
+    "version": 1,
+    "artboard": {
+     "width": 1050,
+     "height": 600
+    },
+    "background": "linear-gradient(135deg, #070e1c 0%, #0d1b33 50%, #050b17 100%)",
+    "layers": [
+     {
+      "id": "image-5jverrj",
+      "kind": "image",
+      "name": "طرح فرش اصلی",
+      "x": 0,
+      "y": 0,
+      "width": 1050,
+      "height": 600,
+      "angle": 0,
+      "opacity": 1,
+      "locked": true,
+      "hidden": false,
+      "color": null,
+      "background": null,
+      "src": "storage/templates/vector/pro-carpet-light.svg",
+      "radius": 0,
+      "objectFit": "cover"
+     },
+     {
+      "id": "text-ito62mc",
+      "kind": "text",
+      "x": 70,
+      "y": 96,
+      "width": 640,
+      "height": 62,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#FCF6BA",
+      "background": null,
+      "text": "{{name}}",
+      "fontSize": 44,
+      "fontWeight": 800,
+      "align": "start",
+      "fontFamily": "serif"
+     },
+     {
+      "id": "text-mlc7hda",
+      "kind": "text",
+      "x": 70,
+      "y": 168,
+      "width": 640,
+      "height": 34,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#e2b755",
+      "background": null,
+      "text": "{{category}}",
+      "fontSize": 20,
+      "fontWeight": 600,
+      "align": "start",
+      "fontFamily": "vazir"
+     },
+     {
+      "id": "text-omad0q6",
+      "kind": "text",
+      "x": 70,
+      "y": 448,
+      "width": 640,
+      "height": 34,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": "#ffffff",
+      "background": null,
+      "text": "☎ تلفن هماهنگی: {{phone}}",
+      "fontSize": 20,
+      "fontWeight": 600,
+      "align": "start",
+      "fontFamily": "sans"
+     },
+     {
+      "id": "qr-jsw3ygc",
+      "kind": "qr",
+      "x": 812,
+      "y": 392,
+      "width": 130,
+      "height": 130,
+      "angle": 0,
+      "opacity": 1,
+      "locked": false,
+      "hidden": false,
+      "color": null,
+      "background": null,
+      "payload": "{{slug}}",
+      "dark": "#070e1c",
+      "light": "#FCF6BA"
      }
     ]
    }
