@@ -289,9 +289,12 @@ const FONT_OPTIONS: { value: string; label: string }[] = [
 export function Toolbox({
   engine,
   onUploadImage,
+  qrPayload,
 }: {
   engine: EditorEngine;
   onUploadImage?: (file: File) => Promise<string>;
+  /** Canonical QR payload (the edited business's slug) seeded into new QR layers. */
+  qrPayload?: string;
 }) {
   const state = useCardEditor(engine);
   const entitlements = useEntitlements();
@@ -339,6 +342,13 @@ export function Toolbox({
       return;
     }
     engine.setTool("select");
+    // The QR tool must produce a REAL code: a fresh layer is seeded with the
+    // edited business's slug (the only payload our own QR endpoint can render).
+    // An empty payload used to leave the layer at its placeholder forever.
+    if (kind === "qr") {
+      engine.addLayer("qr", qrPayload ? { payload: qrPayload } : undefined);
+      return;
+    }
     engine.addLayer(kind as LayerKind);
   }
 
@@ -394,7 +404,7 @@ export function Toolbox({
         disabled={disabled}
         title={item.label}
         aria-pressed={isSelected}
-        className={`group flex w-[112px] shrink-0 items-center gap-2 rounded-xl border px-2 py-2 text-right transition md:w-full ${
+        className={`group flex w-[124px] shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2.5 text-right transition md:w-full ${
           isSelected
             ? "border-cyan-300/50 bg-cyan-400/10 text-white"
             : "border-transparent bg-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
@@ -405,7 +415,7 @@ export function Toolbox({
         ) : (
           <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-cyan-200" : "text-slate-300 group-hover:text-white"}`} />
         )}
-        <span className="min-w-0 text-[10px] font-semibold leading-4">
+        <span className="min-w-0 text-[11px] font-semibold leading-4">
           {item.label}
         </span>
         {!kindAllowed && <span className="absolute -left-1 -top-1"><PremiumBadge label="" /></span>}
@@ -415,16 +425,16 @@ export function Toolbox({
 
   return (
     <div
-      className="relative z-[5000] flex max-h-[calc(100vh-22rem)] w-full shrink-0 flex-row items-stretch gap-1 overflow-x-auto overflow-y-hidden rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)] md:w-[142px] md:flex-col md:overflow-x-hidden md:overflow-y-auto"
+      className="relative z-[5000] flex w-full shrink-0 flex-row items-stretch gap-1 overflow-x-auto overflow-y-hidden rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)] md:h-full md:w-auto md:flex-col md:overflow-x-hidden md:overflow-y-auto"
       role="toolbar"
       aria-label="ابزارهای استودیو"
     >
-      <h3 className="hidden px-1 pb-1 text-right text-[10px] font-bold text-slate-400 md:block">ابزار کار</h3>
+      <h3 className="hidden px-1 pb-1 text-right text-[11px] font-bold tracking-tight text-slate-300 md:block">ابزار کار</h3>
 
       {primaryTools.map((kind) => renderToolButton(kind))}
 
       <div className="mx-1 w-px shrink-0 bg-white/10 md:mx-0 md:my-1 md:h-px md:w-full" />
-      <h3 className="hidden px-1 pb-1 text-right text-[10px] font-bold text-slate-400 md:block">افزودن محتوا</h3>
+      <h3 className="hidden px-1 pb-1 text-right text-[11px] font-bold tracking-tight text-slate-300 md:block">افزودن محتوا</h3>
       {addTools.map((kind) => renderToolButton(kind))}
 
       {showShapePicker && (
@@ -727,9 +737,12 @@ export function DrawingPanel({ engine }: { engine: EditorEngine }) {
 export function InspectorPanel({
   engine,
   onUploadImage,
+  businessSlug,
 }: {
   engine: EditorEngine;
   onUploadImage?: (file: File) => Promise<string>;
+  /** The edited business's slug — the QR tool's canonical payload. */
+  businessSlug?: string;
 }) {
   const state = useCardEditor(engine);
   const selected = state.doc.layers.find((l) => l.id === state.selection.layerId) ?? null;
@@ -970,26 +983,6 @@ export function InspectorPanel({
             onChange={(e) => void onImageFilePicked(e.target.files?.[0] ?? null)}
           />
           {imageError && <p className="mt-2 text-[10px] font-semibold text-rose-300">{imageError}</p>}
-          {/* Mirror (flip) toggles — applied in the renderer via scaleX/Y. */}
-          <div className="mt-3 flex gap-2">
-            {(
-              [
-                { key: "flipX", label: "آینه افقی" },
-                { key: "flipY", label: "آینه عمودی" },
-              ] as const
-            ).map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => engine.updateLayer(selected.id, { [key]: !selected[key] } as never)}
-                className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold ${
-                  selected[key] ? "border-cyan-400 bg-cyan-500/15 text-cyan-200" : "border-white/10 bg-white/5 text-slate-400"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <label className="mt-3 block">
             <span className="mb-1 block text-[11px] font-semibold text-slate-300">گوشه گرد</span>
             <input
@@ -1013,9 +1006,42 @@ export function InspectorPanel({
       )}
 
       {selected.kind === "qr" && (
-        <p className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[10px] leading-4 text-slate-400">
-          محتوای این QR به صفحهٔ رسمی کسب‌وکار شما متصل است و از endpoint سامانه پر می‌شود.
-        </p>
+        <div className="space-y-2 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.05] p-3">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold text-slate-200">مقصد کد QR (نامک کسب‌وکار)</span>
+            <input
+              dir="ltr"
+              value={(selected as QrLayer).payload}
+              placeholder={businessSlug ?? "my-business"}
+              onChange={(e) => {
+                // A QR payload IS a business slug: the code is rendered by our
+                // own endpoint, so anything else could never resolve. Invalid
+                // characters are dropped as the user types instead of being
+                // saved and silently failing later.
+                const next = e.target.value.replace(/[^A-Za-z0-9_-]/g, "");
+                engine.updateLayer(selected.id, { payload: next } as never);
+              }}
+              className="w-full rounded-lg border border-white/15 bg-white/5 p-2 text-xs text-white outline-none focus:border-cyan-400"
+            />
+          </label>
+          <p className="text-[10px] leading-4 text-slate-400">
+            کد QR از نشانی رسمی همان کسب‌وکار ساخته می‌شود (صفحهٔ <span dir="ltr">/b/{businessSlug ?? "…"}</span>) و روی بوم، پیش‌نمایش و خروجی یکسان است.
+          </p>
+          {!(selected as QrLayer).payload ? (
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/[0.08] px-2 py-1.5 text-[10px] leading-4 text-amber-200">
+              تا وقتی نامک مقصد خالی باشد، این لایه فقط جای‌گیر است و کدی تولید نمی‌شود.
+            </p>
+          ) : null}
+          {businessSlug && (selected as QrLayer).payload !== businessSlug ? (
+            <button
+              type="button"
+              onClick={() => engine.updateLayer(selected.id, { payload: businessSlug } as never)}
+              className="w-full rounded-lg border border-cyan-400/40 bg-cyan-500/15 py-1.5 text-[11px] font-bold text-cyan-100 hover:bg-cyan-500/25"
+            >
+              بازگشت به صفحهٔ همین کسب‌وکار
+            </button>
+          ) : null}
+        </div>
       )}
 
       {selected.kind === "path" && <PathInspectorSection engine={engine} layer={selected} />}
@@ -1086,6 +1112,37 @@ export function InspectorPanel({
             />
           </div>
         </div>
+        {/* MIRROR — layer-level flip for EVERY kind (text, shape, path, QR,
+            badge, image). It lives in the shared transform block, not inside
+            the image inspector, because the frame transform mirrors any layer
+            about its own centre on the canvas and in the SVG/PDF export. */}
+        <div className="mt-2">
+          <span className="mb-1 block text-[10px] text-slate-500">آینه کردن</span>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                { axis: "x", key: "flipX", label: "آینه افقی ⇆" },
+                { axis: "y", key: "flipY", label: "آینه عمودی ⇅" },
+              ] as const
+            ).map(({ axis, key, label }) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={Boolean(selected[key])}
+                onClick={() => engine.toggleFlip(selected.id, axis)}
+                title="آینه‌کردن لایه حول مرکز خودش؛ در ذخیره، بازخوانی و خروجی حفظ می‌شود"
+                className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                  selected[key]
+                    ? "border-cyan-400 bg-cyan-500/15 text-cyan-200"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:text-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Quick transform actions */}
         <div className="mt-2 flex gap-2">
           <button

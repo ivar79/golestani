@@ -22,6 +22,7 @@ import { shouldBeginHandleDrag } from "../domain/penGesture";
 import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
 import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
+import { useQrAssets } from "./useQrAssets";
 import {
   clampZoom,
   keepInside,
@@ -53,6 +54,9 @@ function worldAnchorPosition(layer: PathLayer, index: number): { x: number; y: n
 
 export function EditorStage({ engine, doc, exportRef, preview = false }: Props) {
   const state = useCardEditor(engine);
+  // Owner-session QR assets: the canvas AND the export surface read the same
+  // DOM, so registering here is what makes a draft business's QR real in both.
+  useQrAssets(doc);
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const isManualZoomRef = useRef(false);
@@ -257,10 +261,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     // brush must pass their pointer events straight through to the stage so a
     // click on an existing layer anchors/starts a stroke instead of dragging.
     if (state.tool !== "select") return;
-    // While POINT-EDITING, pressing anywhere on a layer's hit-area (that is not
-    // an anchor/handle — those stop propagation above) starts the NODE MARQUEE
-    // instead of dragging the layer, exactly like Figma's vector mode.
-    if (state.editingPathId) {
+    // While POINT-EDITING, pressing on the EDITED path's hit-area starts the
+    // NODE MARQUEE instead of dragging the layer, exactly like Figma's vector
+    // mode. Pressing a DIFFERENT layer leaves point-editing and selects it —
+    // otherwise the mode (entered automatically right after a stroke is drawn)
+    // swallowed the click and the existing line/path could not be re-selected.
+    if (state.editingPathId === layerId) {
       const pos = pointerPos(event);
       nodeMarqueeRef.current = { x0: pos.x, y0: pos.y };
       marqueeEndRef.current = null;
@@ -520,7 +526,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
       return;
     }
-    if (state.editingPathId) engine.setPathEditing(null);
+    // Empty-canvas press in point-edit mode keeps the marquee contract above
+    // (Esc leaves the mode); otherwise it is a plain deselect.
     engine.select(null);
   };
 
@@ -734,22 +741,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     <div
       ref={containerRef}
       dir="ltr"
+      // No viewport cap any more: the workspace GRID owns the height and this
+      // column scrolls when the artboard needs more room, so the canvas is
+      // never squeezed into a strip and never silently clipped.
       className={`relative z-0 w-full overflow-hidden rounded-[24px] border border-white/[0.07] ${
-        // Viewport cap: in fit-to-width mode the artboard is always SMALLER
-        // than this (fitToContainer scales it to the available width), so the
-        // cap only trims empty stage margin and keeps the inspector column on
-        // screen. It deliberately does NOT apply while point-editing — that
-        // mode grows `height: auto` around the node toolbar and must be free to
-        // expand past the fold (pannable with space + drag).
-        //
-        // 22rem = the chrome ABOVE the workspace grid (the fixed taskbar ends
-        // at ~104px on lg, plus the compact page row, studio toolbar and
-        // paddings) plus breathing room, so the whole studio fits one screen.
-        // The toolbox and inspector column use the SAME cap to stay aligned.
-        state.editingPathId && !preview ? "" : "max-h-[calc(100vh-22rem)]"
-      } ${state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""} ${
-        spaceDown ? "cursor-grab" : ""
-      }`}
+        state.tool === "draw" || state.tool === "pen" ? "cursor-crosshair touch-none" : ""
+      } ${spaceDown ? "cursor-grab" : ""}`}
       onPointerDownCapture={onMirrorAxisPointerDown}
       onPointerDown={onStagePointerDown}
       onPointerMove={onStagePointerMove}

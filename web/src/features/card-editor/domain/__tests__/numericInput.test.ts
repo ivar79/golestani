@@ -163,10 +163,30 @@ describe("engine setNumericField", () => {
     expect(resized.points[2].y).toBe(25); // 50 scaled by 0.5
   });
 
-  it("an angle entry is wrapped into the validator's ±180 range", () => {
+  it("an exact angle entry is stored VERBATIM (P0 rotation regression)", () => {
+    // The field used to wrap every entry into (-180,180], so 270° came back as
+    // -90° and the number the user typed was lost. Inside the document's
+    // supported range (±360) the typed value is now the stored value.
     const engine = new EditorEngine(docWith(layer("t")));
     expect(engine.setNumericField("t", "angle", "270")).toBe(true);
-    expect(engine.getState().doc.layers[0].angle).toBe(-90);
+    expect(engine.getState().doc.layers[0].angle).toBe(270);
+
+    expect(engine.setNumericField("t", "angle", "-45.5")).toBe(true);
+    expect(engine.getState().doc.layers[0].angle).toBe(-45.5);
+
+    expect(engine.setNumericField("t", "angle", "360")).toBe(true);
+    expect(engine.getState().doc.layers[0].angle).toBe(360);
+  });
+
+  it("an angle past a full rotation keeps its VISUAL equivalent", () => {
+    // Beyond ±360 the value is reduced to the same on-canvas angle (400° → 40°)
+    // instead of being clamped to 360°, which would have changed the design.
+    const engine = new EditorEngine(docWith(layer("t")));
+    expect(engine.setNumericField("t", "angle", "400")).toBe(true);
+    expect(engine.getState().doc.layers[0].angle).toBe(40);
+
+    expect(engine.setNumericField("t", "angle", "720")).toBe(true);
+    expect(engine.getState().doc.layers[0].angle).toBe(0);
   });
 
   it("a rejected expression writes NOTHING (document untouched, no history)", () => {

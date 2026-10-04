@@ -105,6 +105,15 @@ export type LayerBase = {
   effect?: "glass" | "velvet" | "gold" | "silver" | "neon" | "none" | null;
   /** Direct arc curvature for 2-point curved lines (-100 to +100). */
   curvature?: number;
+  /**
+   * Mirror flags (optional for backwards compatibility). They live on the
+   * LAYER BASE — not on the image layer — because mirroring is a frame-level
+   * transform: every kind (text, shape, path, QR, badge, image) mirrors about
+   * its own centre in the canvas AND in the SVG/PDF export, and the flags are
+   * whitelisted for every kind by the server validator.
+   */
+  flipX?: boolean;
+  flipY?: boolean;
 };
 
 export type TextLayer = LayerBase & {
@@ -131,9 +140,6 @@ export type ImageLayer = LayerBase & {
   src: string;
   radius: number;
   objectFit: "cover" | "contain";
-  /** Mirror flags (optional for backwards compatibility). */
-  flipX?: boolean;
-  flipY?: boolean;
 };
 
 export type QrLayer = LayerBase & {

@@ -274,7 +274,12 @@ export function PathEditOverlay({
       height={layer.height}
       viewBox={`0 0 ${layer.width} ${layer.height}`}
       style={{
-        pointerEvents: "auto",
+        // CLICK-THROUGH CONTRACT: the overlay box itself is INERT — only its
+        // interactive children (nodes, handles, the wide segment hit path) take
+        // pointer events. A box-sized overlay used to swallow every click that
+        // landed inside a path's bounding box, so once point-edit mode was on,
+        // another layer underneath could never be selected again.
+        pointerEvents: "none",
         left: layer.x,
         top: layer.y,
         width: layer.width,

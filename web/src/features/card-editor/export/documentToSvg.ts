@@ -361,12 +361,6 @@ function imageMarkup(layer: ImageLayer, assets: SvgAssetMap, defs: string[]): st
   }
 
   const fit = layer.objectFit === "contain" ? "xMidYMid meet" : "xMidYMid slice";
-  const flipX = layer.flipX ? -1 : 1;
-  const flipY = layer.flipY ? -1 : 1;
-  const transform =
-    flipX === 1 && flipY === 1
-      ? ""
-      : ` transform="translate(${flipX === -1 ? n(layer.width) : 0} ${flipY === -1 ? n(layer.height) : 0}) scale(${flipX} ${flipY})"`;
 
   if (!href) {
     // Honest placeholder: same tone as the canvas's "no image" state.
@@ -374,7 +368,7 @@ function imageMarkup(layer: ImageLayer, assets: SvgAssetMap, defs: string[]): st
   }
 
   return (
-    `<image${transform}${clip} x="0" y="0" width="${n(layer.width)}" height="${n(layer.height)}" ` +
+    `<image${clip} x="0" y="0" width="${n(layer.width)}" height="${n(layer.height)}" ` +
     `preserveAspectRatio="${fit}" href="${escapeXml(href)}" xlink:href="${escapeXml(href)}"/>`
   );
 }
@@ -428,9 +422,21 @@ function layerBody(
  */
 function layerFrame(layer: CardLayer, body: string): string {
   const angle = layer.angle ?? 0;
+  const flipX = layer.flipX ? -1 : 1;
+  const flipY = layer.flipY ? -1 : 1;
+  const cx = n(layer.width / 2);
+  const cy = n(layer.height / 2);
+  // EXACT mirror of the canvas frame (LayeredCardRenderer.layerStyle): rotation
+  // and mirroring act about the layer's centre. Written as the centred matrix
+  // T(cx,cy) · R · S · T(-cx,-cy) so the exported SVG is pixel-identical to the
+  // editor for every layer kind — including a mirrored image, whose flags used
+  // to be handled inside imageMarkup alone.
+  const inner =
+    (angle ? `rotate(${n(angle)})` : "") +
+    (flipX === -1 || flipY === -1 ? ` scale(${flipX} ${flipY})` : "");
   const transform =
     `translate(${n(layer.x)} ${n(layer.y)})` +
-    (angle ? ` rotate(${n(angle)} ${n(layer.width / 2)} ${n(layer.height / 2)})` : "");
+    (inner.trim() === "" ? "" : ` translate(${cx} ${cy}) ${inner.trim()} translate(${n(-layer.width / 2)} ${n(-layer.height / 2)})`);
   const opacity = layer.opacity < 1 ? ` opacity="${n(layer.opacity)}"` : "";
   return `<g transform="${transform}"${opacity} data-layer="${escapeXml(layer.id)}">${body}</g>`;
 }

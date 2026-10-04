@@ -311,19 +311,22 @@ export function CardStudio({
         </div>
       </div>
 
-      {/* Studio workspace: canvas, labeled tools, and inspector remain distinct. */}
-      <div className="relative grid grid-cols-1 items-start gap-2 rounded-2xl border border-white/[0.09] bg-[#0a0f16] p-1.5 shadow-[0_18px_54px_rgba(0,0,0,0.32)] md:grid-cols-[minmax(0,1fr)_142px_280px]">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-[18px]">
+      {/* STUDIO WORKSPACE — a real three-column editor.
+          The GRID owns one tall height (so the canvas finally gets the space),
+          and every column scrolls inside itself. The old design capped all
+          three columns at `calc(100vh-22rem)` at once, which is what shrank the
+          canvas to a strip and buried the inspector in nested mini-scrollers. */}
+      <div className="relative grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-white/[0.09] bg-[#0a0f16] p-1.5 shadow-[0_18px_54px_rgba(0,0,0,0.32)] md:h-[calc(100vh-9.5rem)] md:min-h-[560px] md:grid-cols-[minmax(0,1fr)_150px_288px] xl:grid-cols-[minmax(0,1fr)_166px_336px]">
+        <div className="min-w-0 rounded-[18px] md:h-full md:min-h-0 md:overflow-y-auto">
           <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} />
         </div>
         {preview ? null : (
           <>
-            <Toolbox engine={engine} onUploadImage={onUploadImage} />
+            <Toolbox engine={engine} onUploadImage={onUploadImage} qrPayload={business.slug} />
 
-            {/* Same viewport cap as the stage (EditorStage) so the three
-                workspace columns share one height and the studio fits a
-                single screen instead of pushing the inspector below the fold. */}
-            <div className="flex max-h-[calc(100vh-22rem)] min-w-0 flex-col space-y-2 rounded-[18px] border border-white/[0.08] bg-[#0d131c] p-1.5">
+            {/* The inspector owns its own scroll region, exactly like the
+                toolbox — no shared viewport cap, no nested fixed heights. */}
+            <div className="flex min-h-0 min-w-0 flex-col space-y-2 overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#0d131c] p-1.5 md:h-full">
               <div className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-xl border border-white/[0.08] bg-[#121a25] p-1 backdrop-blur-2xl">
                 <button
                   type="button"
@@ -390,7 +393,7 @@ export function CardStudio({
                 {panelTab === "inspector" && (
                   <>
                     {state.selection.layerId ? (
-                      <InspectorPanel engine={engine} onUploadImage={onUploadImage} />
+                      <InspectorPanel engine={engine} onUploadImage={onUploadImage} businessSlug={business.slug} />
                     ) : (
                       <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-6 text-center text-slate-400">
                         <Sliders className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />

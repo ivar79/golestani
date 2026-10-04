@@ -1,8 +1,53 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ShapeSvg, LayerVisual } from "../LayeredCardRenderer";
-import type { PathLayer, ShapeLayer } from "../../domain/document";
+import { ShapeSvg, LayerVisual, layerStyle } from "../LayeredCardRenderer";
+import type { PathLayer, QrLayer, ShapeLayer, TextLayer } from "../../domain/document";
+import { clearQrAssets, registerQrAsset } from "../../domain/qrAssets";
+
+function textLayer(overrides: Partial<TextLayer> = {}): TextLayer {
+  return {
+    id: "t1",
+    kind: "text",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 60,
+    angle: 0,
+    opacity: 1,
+    locked: false,
+    hidden: false,
+    color: null,
+    background: null,
+    text: "کسب‌وکار من",
+    fontSize: 24,
+    fontWeight: 600,
+    align: "start",
+    fontFamily: "vazir",
+    ...overrides,
+  };
+}
+
+function qrLayer(overrides: Partial<QrLayer> = {}): QrLayer {
+  return {
+    id: "q1",
+    kind: "qr",
+    x: 0,
+    y: 0,
+    width: 120,
+    height: 120,
+    angle: 0,
+    opacity: 1,
+    locked: false,
+    hidden: false,
+    color: null,
+    background: null,
+    payload: "golestani",
+    dark: "#000000",
+    light: "#ffffff",
+    ...overrides,
+  };
+}
 
 function shapeLayer(overrides: Partial<ShapeLayer> = {}): ShapeLayer {
   return {
@@ -149,6 +194,45 @@ describe("PathVisual", () => {
       }),
     );
     expect(closed).toContain("Z");
+  });
+
+  describe("frame transforms — rotation + mirror for EVERY kind", () => {
+    it("keeps the transform undefined when a layer is unrotated and unmirrored", () => {
+      expect(layerStyle(shapeLayer(), 1).transform).toBeUndefined();
+    });
+
+    it("composes rotation and mirroring in ONE frame transform", () => {
+      expect(layerStyle(shapeLayer({ angle: 30 }), 1).transform).toBe("rotate(30deg)");
+      expect(layerStyle(shapeLayer({ flipX: true }), 1).transform).toBe("scale(-1, 1)");
+      expect(layerStyle(shapeLayer({ flipY: true }), 1).transform).toBe("scale(1, -1)");
+      expect(layerStyle(shapeLayer({ angle: 30, flipX: true, flipY: true }), 1).transform).toBe("rotate(30deg) scale(-1, -1)");
+    });
+
+    it("mirrors a text layer (not only images)", () => {
+      expect(layerStyle(textLayer({ flipX: true, angle: -12.5 }), 1).transform).toBe("rotate(-12.5deg) scale(-1, 1)");
+    });
+  });
+
+  describe("QR visual source", () => {
+    afterEach(() => clearQrAssets());
+
+    it("renders the cached same-origin proxy when no owner session registered the slug", () => {
+      const markup = renderToStaticMarkup(createElement(LayerVisual, { layer: qrLayer() }));
+      expect(markup).toContain('src="/api/qr/golestani"');
+    });
+
+    it("renders the authenticated asset once the owner session registers it", () => {
+      registerQrAsset("golestani", "data:image/svg+xml;base64,AAAA");
+      const markup = renderToStaticMarkup(createElement(LayerVisual, { layer: qrLayer() }));
+      expect(markup).toContain('src="data:image/svg+xml;base64,AAAA"');
+      expect(markup).not.toContain('src="/api/qr/golestani"');
+    });
+
+    it("keeps the honest placeholder while the payload is empty", () => {
+      const markup = renderToStaticMarkup(createElement(LayerVisual, { layer: qrLayer({ payload: "" }) }));
+      expect(markup).not.toContain("<img");
+      expect(markup).toContain("QR");
+    });
   });
 
   describe("resolver contract (rawD / bend)", () => {

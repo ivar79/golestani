@@ -35,6 +35,7 @@ import { mediaSrc } from "@/lib/media";
 import { resolveLayerPathD } from "../domain/path";
 import { resolveShapePaint, type SvgPrimitive } from "../domain/shapes";
 import { resolveStroke, type ResolvedStroke } from "../domain/stroke";
+import { qrSrcFor } from "../domain/qrAssets";
 import { gradientLine, gradientRadius, isGradientCss, parseGradientCss, svgColor, type SvgGradientSpec } from "../domain/svgGradient";
 import {
   paintedRegions,
@@ -66,6 +67,15 @@ export function layerStyle(layer: CardLayer, z: number): CSSProperties {
     filter = "drop-shadow(0 2px 8px rgba(200, 200, 200, 0.35))";
   }
 
+  // FRAME TRANSFORMS: rotation and mirroring are applied ONCE here, about the
+  // layer's own centre (CSS default transform-origin), so every kind mirrors
+  // identically and the SVG/PDF exporter reproduces the exact same matrix.
+  const flipX = layer.flipX ? -1 : 1;
+  const flipY = layer.flipY ? -1 : 1;
+  const rotation = layer.angle ? `rotate(${layer.angle}deg)` : "";
+  const mirror = flipX === -1 || flipY === -1 ? `scale(${flipX}, ${flipY})` : "";
+  const transform = `${rotation} ${mirror}`.trim();
+
   return {
     position: "absolute",
     left: layer.x,
@@ -73,7 +83,7 @@ export function layerStyle(layer: CardLayer, z: number): CSSProperties {
     width: layer.width,
     height: layer.height,
     opacity: layer.hidden ? 0 : layer.opacity,
-    transform: layer.angle ? `rotate(${layer.angle}deg)` : undefined,
+    transform: transform === "" ? undefined : transform,
     zIndex: z,
     pointerEvents: "none",
     backdropFilter,
@@ -260,8 +270,8 @@ function TextVisual({ layer }: { layer: TextLayer }) {
 function ImageVisual({ layer }: { layer: ImageLayer }) {
   const [broken, setBroken] = useState(false);
   // Same-origin proxy: rasterizable by html-to-image AND displayable publicly.
+  // Mirroring is NOT applied here — the layer frame owns it for every kind.
   const src = mediaSrc(layer.src);
-  const flip = `${layer.flipX ? -1 : 1}, ${layer.flipY ? -1 : 1}`;
   return (
     <div
       style={{
@@ -278,7 +288,7 @@ function ImageVisual({ layer }: { layer: ImageLayer }) {
           src={src}
           alt=""
           className="h-full w-full"
-          style={{ objectFit: layer.objectFit, transform: `scale(${flip})` }}
+          style={{ objectFit: layer.objectFit }}
           onError={() => setBroken(true)}
         />
       ) : null}
@@ -293,8 +303,13 @@ function ImageVisual({ layer }: { layer: ImageLayer }) {
  * the placeholder is the honest state rather than a broken image.
  */
 const QrVisual = memo(function QrVisual({ payload, light }: { payload: string; light: string }) {
-  const [failed, setFailed] = useState(false);
-  const slug = payload.trim();
+  // WHICH source failed — not a boolean. A QR that failed before its
+  // authenticated asset arrived (draft business) is retried automatically the
+  // moment the source changes, with no state-adjusting effect.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  // Owner-session override first (a draft business has no public QR), then the
+  // cached same-origin proxy. Both are OUR endpoint — never a third party.
+  const src = qrSrcFor(payload);
   return (
     <div
       style={{
@@ -309,13 +324,13 @@ const QrVisual = memo(function QrVisual({ payload, light }: { payload: string; l
         justifyContent: "center",
       }}
     >
-      {slug && !failed ? (
-        // eslint-disable-next-line @next/next/no-img-element -- same-origin SVG, inlined on export
+      {src && failedSrc !== src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- same-origin SVG or owner-session data URL, inlined on export
         <img
-          src={`/api/qr/${encodeURIComponent(slug)}`}
+          src={src}
           alt=""
           className="h-full w-full"
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(src)}
         />
       ) : (
         <span style={{ fontSize: 10, color: "#94a3b8" }}>QR</span>

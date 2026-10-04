@@ -144,7 +144,23 @@ describe("serializeDocument — document frame", () => {
 describe("serializeDocument — layer frame", () => {
   it("positions a layer with a translate and rotates about its own centre", () => {
     const svg = serializeDocument(doc([shapeLayer({ x: 40, y: 25, width: 200, height: 100, angle: 30 })]));
-    expect(svg).toContain('transform="translate(40 25) rotate(30 100 50)"');
+    // Centred matrix: T(pos) · T(cx,cy) · R · T(-cx,-cy) — the exact SVG
+    // equivalent of the canvas's `transform-origin: 50% 50%` frame.
+    expect(svg).toContain('transform="translate(40 25) translate(100 50) rotate(30) translate(-100 -50)"');
+  });
+
+  it("mirrors ANY layer kind about its own centre (not just images)", () => {
+    const flipped = serializeDocument(
+      doc([textLayer({ x: 10, y: 20, width: 200, height: 60, flipX: true })]),
+      { fontCss: "@font-face{}" },
+    );
+    expect(flipped).toContain("scale(-1 1)");
+    // Rotation and mirroring compose in the ONE frame transform: scale innermost.
+    const both = serializeDocument(doc([shapeLayer({ x: 0, y: 0, width: 100, height: 40, angle: 90, flipY: true })]));
+    expect(both).toContain("rotate(90) scale(1 -1)");
+
+    const vertical = serializeDocument(doc([shapeLayer({ flipY: true })]));
+    expect(vertical).toContain("scale(1 -1)");
   });
 
   it("omits the rotation when the layer is not rotated", () => {
@@ -365,11 +381,13 @@ describe("serializeDocument — media", () => {
     expect(svg).toContain("clip-path=\"url(#clip-i1)\"");
   });
 
-  it("mirrors an image with a transform instead of ignoring the flip flags", () => {
+  it("mirrors an image through the shared frame transform", () => {
     const svg = serializeDocument(doc([imageLayer({ flipX: true })]), {
       assets: { "/storage/cards/logo.png": "data:image/png;base64,AAAA" },
     });
     expect(svg).toContain("scale(-1 1)");
+    // ONE flip location: the image body itself must not carry a second scale.
+    expect((svg.match(/scale\(/g) ?? []).length).toBe(1);
   });
 
   it("draws a QR frame always, and the code itself when the asset exists", () => {

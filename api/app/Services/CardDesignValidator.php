@@ -367,6 +367,18 @@ class CardDesignValidator
             $clean['effect'] = $layer['effect'];
         }
 
+        // Mirror flags are LAYER-LEVEL (every kind), exactly like `effect`:
+        // the canvas frame and the SVG/PDF export both mirror about the layer's
+        // own centre, so a text/shape/path/QR/badge layer must round-trip them
+        // too. Emitted only when the input carries them, so documents stored
+        // before the upgrade stay byte-identical.
+        if (array_key_exists('flipX', $layer)) {
+            $clean['flipX'] = (bool) $layer['flipX'];
+        }
+        if (array_key_exists('flipY', $layer)) {
+            $clean['flipY'] = (bool) $layer['flipY'];
+        }
+
         $clean['text'] = '';
         switch ($kind) {
             case 'text':

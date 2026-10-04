@@ -26,6 +26,7 @@ import { jsPDF } from "jspdf";
 import "svg2pdf.js";
 import type { BadgeLayer, CardDocument, TextLayer } from "../domain/document";
 import { mediaSrc } from "@/lib/media";
+import { qrSrcFor } from "../domain/qrAssets";
 import { RTL_CHARACTERS, badgeTextLayout, serializeDocument, svgColor, type SvgAssetMap } from "./documentToSvg";
 import { exportFileName } from "./formats";
 
@@ -126,10 +127,14 @@ function assetRequests(doc: CardDocument, scale: number): AssetRequest[] {
       if (url) requests.push({ key: layer.src, url, targetWidth: Math.ceil(layer.width * scale) });
     } else if (layer.kind === "qr") {
       const slug = layer.payload.trim();
-      if (slug) {
+      // Owner-session data URL first (a draft business has no public QR); the
+      // same-origin proxy stays the fallback for approved businesses, where it
+      // is cacheable and unauthenticated by design.
+      const url = qrSrcFor(slug);
+      if (slug && url) {
         requests.push({
           key: slug,
-          url: `/api/qr/${encodeURIComponent(slug)}`,
+          url,
           targetWidth: Math.ceil(layer.width * scale),
         });
       }

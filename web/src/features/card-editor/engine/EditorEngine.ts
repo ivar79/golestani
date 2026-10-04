@@ -141,13 +141,21 @@ export type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
  */
 export type SavePolicy = { budget: SaveBudget; unlimited: boolean };
 
-/** Normalize any angle into (−180, 180] so stored values always satisfy the validator's ±360 clamp. */
+/**
+ * Normalize any angle into (−180, 180] — the reduction used by ROTATION
+ * GESTURES and by values that fall outside the document's supported range.
+ * Exact numeric entry does NOT go through this: an angle the user types inside
+ * ±360 (including negatives past −180) is stored verbatim, so the number on
+ * screen is the number on the layer.
+ */
 export function wrapAngle(deg: number): number {
   if (!Number.isFinite(deg)) return 0;
   let a = deg % 360;
   if (a > 180) a -= 360;
   if (a <= -180) a += 360;
-  return a === -0 ? 0 : a;
+  // Object.is keeps −0 out of the document (and reads as the intent, unlike
+  // `a === -0`, which the bundler flags as a comparison that also matches 0).
+  return Object.is(a, -0) ? 0 : a;
 }
 
 /** The active tool. `draw` is freehand, `pen` is the Bezier pen. */
@@ -175,7 +183,7 @@ export const NUMERIC_FIELD_LIMITS: Record<NumericField, { min: number; max: numb
   y: { min: -20000, max: 20000, decimals: 2 },
   width: { min: 1, max: 20000, decimals: 2 },
   height: { min: 1, max: 20000, decimals: 2 },
-  angle: { min: -360, max: 360, decimals: 2 },
+  angle: { min: -3600, max: 3600, decimals: 2 },
   strokeWidth: { min: 0, max: 400, decimals: 2 },
   fontSize: { min: 4, max: 800, decimals: 2 },
 };
@@ -383,6 +391,17 @@ export class EditorEngine {
    * a plain click sets a single selection. Null clears everything.
    */
   select(layerId: string | null, additive = false): void {
+    // POINT-EDIT EXIT CONTRACT: selecting a DIFFERENT layer always leaves the
+    // path point-editor. Without this, a mode entered automatically when a
+    // stroke is drawn (commitFreehandSamples) silently swallowed every later
+    // click — the layer hit-areas started a node marquee instead of selecting,
+    // so an existing line/path could not be reliably re-selected.
+    if (this.state.editingPathId !== null && this.state.editingPathId !== layerId) {
+      // Also covers `select(null)` (deselect / the edited layer was deleted):
+      // point-editing a layer that is no longer selected would leave the node
+      // overlay attached to the wrong thing.
+      this.emit({ editingPathId: null, selectedAnchor: null, anchorSelection: [], curveRangeStart: null });
+    }
     if (additive && layerId !== null) {
       const current = this.state.selection.ids;
       const has = current.includes(layerId);
@@ -636,6 +655,22 @@ export class EditorEngine {
     this.pushHistory(options.group ?? null);
     const layers = this.state.doc.layers.map((layer) => (layer.id === layerId ? next : layer));
     this.emit({ doc: { ...this.state.doc, layers } });
+  }
+
+  /**
+   * Mirror a layer about its own centre (horizontal or vertical). ONE
+   * implementation for every kind — the frame transform does the work in the
+   * canvas and in the SVG/PDF export, so a mirrored text/shape/path/QR layer
+   * survives save, reload and export exactly like a mirrored image always did.
+   * Returns the new value of the toggled flag (null when the layer is gone).
+   */
+  toggleFlip(layerId: string, axis: "x" | "y"): boolean | null {
+    const target = this.state.doc.layers.find((l) => l.id === layerId);
+    if (!target || target.locked) return null;
+    const key = axis === "x" ? "flipX" : "flipY";
+    const next = !target[key];
+    this.updateLayer(layerId, { [key]: next } as Partial<CardLayer>);
+    return next;
   }
 
   /**
@@ -3259,7 +3294,16 @@ export class EditorEngine {
     if (!layer || layer.locked) return false;
     const limits = NUMERIC_FIELD_LIMITS[field];
     const current = readLayerNumber(layer, field);
-    const parsed = parseNumericInput(raw, current, limits);
+    // NEGATIVE ANGLE ENTRY (P0 regression): the shared parser reads a leading
+    // `-` as the RELATIVE shorthand (`-10` = current − 10), which is right for
+    // X/Y/W/H but made an exact negative rotation impossible to type — the
+    // user asked for -45° and the layer turned to (angle − 45). Rotation is a
+    // value the user READS and retypes, so a leading minus in this field is an
+    // absolute negative number; `+N` still works as the relative increment.
+    const angleAbsoluteNegative = field === "angle" && /^-\s*[0-9.]/.test(raw.trim());
+    const parsed = angleAbsoluteNegative
+      ? parseNumericInput(raw.trim().replace(/^-\s*/, "0-"), current, limits)
+      : parseNumericInput(raw, current, limits);
     if (!parsed.ok) return false;
 
     if (field === "strokeWidth" || field === "fontSize") {
@@ -3276,7 +3320,15 @@ export class EditorEngine {
       height: layer.height,
       angle: layer.angle ?? 0,
     };
-    if (field === "angle") box.angle = wrapAngle(parsed.value);
+    if (field === "angle") {
+      // EXACT ENTRY CONTRACT (P0 regression): inside the supported rotation
+      // range the typed value is stored VERBATIM — negatives stay negative and
+      // a value past a half turn (e.g. 200°) is no longer silently re-spelled
+      // as -160°. Only an angle outside the server's ±360 clamp is reduced to
+      // its VISUAL EQUIVALENT (400° → 40°), because that changes nothing on
+      // the canvas while keeping the stored document valid.
+      box.angle = Math.abs(parsed.value) > 360 ? wrapAngle(parsed.value) : parsed.value;
+    }
     else if (field === "width") box.width = parsed.value;
     else if (field === "height") box.height = parsed.value;
     else if (field === "x") box.x = parsed.value;
