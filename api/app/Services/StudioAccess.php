@@ -44,6 +44,7 @@ class StudioAccess
     public const REASON_ADMIN_BYPASS = 'admin_bypass';
     public const REASON_NOT_APPROVED = 'not_approved';
     public const REASON_NO_CAPABILITY = 'no_capability';
+    public const REASON_NOT_OWNER = 'not_owner';
 
     /** Is the gate currently enforced? ('0'/missing = staged off). */
     public static function enforced(): bool
@@ -61,15 +62,20 @@ class StudioAccess
         $enforced = self::enforced();
         $designerStatus = (string) ($user?->designer_status ?? 'none');
         $capability = app(FeatureGate::class)->allows($business, self::CAPABILITY);
+        $ownsBusiness = $user !== null && (int) $business->user_id === (int) $user->id;
 
         $decision = [
-            'allowed' => true,
+            'allowed' => $ownsBusiness,
             'bypass' => false,
-            'reason' => self::REASON_STAGE_OFF,
+            'reason' => $ownsBusiness ? self::REASON_STAGE_OFF : self::REASON_NOT_OWNER,
             'enforced' => $enforced,
             'designer_status' => $designerStatus,
             'capability' => $capability,
         ];
+
+        if (! $ownsBusiness) {
+            return $decision;
+        }
 
         if (! $enforced) {
             return $decision;
@@ -108,6 +114,11 @@ class StudioAccess
     public function assert(Request $request, Business $business, string $action, ?int $cardId = null): array
     {
         $user = $request->user();
+        abort_unless(
+            $user !== null && (int) $business->user_id === (int) $user->id,
+            403,
+            'دسترسی به این کسب‌وکار مجاز نیست.'
+        );
         $decision = $this->resolve($user, $business);
 
         if (! $decision['allowed']) {

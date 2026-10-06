@@ -604,23 +604,24 @@ export function pathBBoxExact(points: PathPoint[], closed = false): { x: number;
 }
 
 /**
- * The segment and parameter CLOSEST to a point — the hit test behind "click a
- * segment to insert an anchor" and "hover to highlight a segment".
+ * The segment, parameter and POINT closest to a target — the hit test behind
+ * "click a segment to insert an anchor", "hover to highlight a segment" and the
+ * bend gesture (which needs the projected POINT, not just the distance).
  *
  * Sampling rather than solving the cubic: this drives a pointer affordance, and
  * ~24 samples per segment are indistinguishable from exact within a few tenths
  * of a pixel while staying trivially testable.
+ *
+ * It takes SEGMENTS rather than anchors so a caller whose geometry is not the
+ * anchor list (a legacy `bend` arc, a parsed `rawD`) can hit-test the very shape
+ * that is drawn — see `nearestPointOnLayerPath`.
  */
-export function nearestSegmentParam(
-  points: PathPoint[],
-  closed: boolean,
+export function nearestSegmentOnCubics(
+  segments: CubicSegment[],
   target: Pt,
   steps = 24,
-): { segIndex: number; t: number; distance: number } | null {
-  const segments = segmentCubics(points, closed);
-  if (segments.length === 0) return null;
-
-  let best: { segIndex: number; t: number; distance: number } | null = null;
+): { segIndex: number; t: number; distance: number; point: Pt } | null {
+  let best: { segIndex: number; t: number; distance: number; point: Pt } | null = null;
   for (let segIndex = 0; segIndex < segments.length; segIndex += 1) {
     const segment = segments[segIndex];
     for (let step = 0; step <= steps; step += 1) {
@@ -628,11 +629,45 @@ export function nearestSegmentParam(
       const point = cubicAt(segment.p0, segment.c1, segment.c2, segment.p1, t);
       const distance = Math.hypot(point.x - target.x, point.y - target.y);
       if (best === null || distance < best.distance) {
-        best = { segIndex, t, distance };
+        best = { segIndex, t, distance, point };
       }
     }
   }
-  return best;
+  if (!best) return null;
+
+  // REFINE the winner inside one sample window. The coarse scan pins the segment
+  // and a bracket around t; a ternary search inside it lands on the true
+  // projection, so the bend dot does not bob by half a sample step while the user
+  // aims (and the node lands where the dot said it would).
+  const segment = segments[best.segIndex];
+  const at = (t: number) => {
+    const point = cubicAt(segment.p0, segment.c1, segment.c2, segment.p1, t);
+    return { t, point, distance: Math.hypot(point.x - target.x, point.y - target.y) };
+  };
+  const window = 1 / Math.max(1, steps);
+  let lo = Math.max(0, best.t - window);
+  let hi = Math.min(1, best.t + window);
+  for (let round = 0; round < 24; round += 1) {
+    const a = lo + (hi - lo) / 3;
+    const b = hi - (hi - lo) / 3;
+    if (at(a).distance <= at(b).distance) hi = b;
+    else lo = a;
+  }
+  const refined = at((lo + hi) / 2);
+  return refined.distance < best.distance
+    ? { segIndex: best.segIndex, t: refined.t, distance: refined.distance, point: refined.point }
+    : best;
+}
+
+/** `nearestSegmentOnCubics` for an anchor list — the common case. */
+export function nearestSegmentParam(
+  points: PathPoint[],
+  closed: boolean,
+  target: Pt,
+  steps = 24,
+): { segIndex: number; t: number; distance: number } | null {
+  const hit = nearestSegmentOnCubics(segmentCubics(points, closed), target, steps);
+  return hit ? { segIndex: hit.segIndex, t: hit.t, distance: hit.distance } : null;
 }
 
 /** Padding a path layer needs so its own stroke never clips at the box edge. */

@@ -157,6 +157,16 @@ afterEach(() => {
 // --- tests -------------------------------------------------------------------
 
 describe("card-maker Studio UI gate", () => {
+  it("shows business-list API failures as errors instead of claiming the account has no business", async () => {
+    listBusinessesMock.mockRejectedValue(new Error("دسترسی غیرمجاز است."));
+
+    render(<CardMakerPage />);
+
+    expect(await screen.findByText("دریافت کسب‌وکارها ناموفق بود")).toBeTruthy();
+    expect(screen.getByText("دسترسی غیرمجاز است.")).toBeTruthy();
+    expect(screen.queryByText("کسب‌وکاری یافت نشد")).toBeNull();
+  });
+
   it("refused business with a grandfathered layered card: entry stays disabled and the studio never opens", async () => {
     mockCard(
       cardPayload({
@@ -169,12 +179,12 @@ describe("card-maker Studio UI gate", () => {
     render(<CardMakerPage />);
 
     // The reason sentence is the signal that the server decision landed.
-    await waitFor(() => expect(screen.getByText(/عضویت در برنامه طراحان/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/فقط برای طراحان تأییدشده فعال است/)).toBeTruthy());
 
-    const toggle = screen.getByRole("button", { name: "ویرایشگر پیشرفته" }) as HTMLButtonElement;
+    const toggle = screen.getByRole("button", { name: "ویژهٔ طراحان تأییدشده" }) as HTMLButtonElement;
     expect(toggle.disabled).toBe(true);
     // An existing design must NOT flip the page into editor mode.
-    expect(screen.queryByRole("button", { name: "بازگشت به قالب‌ها" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "بازگشت به کارت‌ساز" })).toBeNull();
     expect(screen.queryByTestId("card-studio")).toBeNull();
     // Level A stays available.
     expect(screen.getByTestId("legacy-canvas")).toBeTruthy();
@@ -191,7 +201,7 @@ describe("card-maker Studio UI gate", () => {
     render(<CardMakerPage />);
 
     await waitFor(() => {
-      const toggle = screen.getByRole("button", { name: "ویرایشگر پیشرفته" }) as HTMLButtonElement;
+      const toggle = screen.getByRole("button", { name: "اشتراک لازم است" }) as HTMLButtonElement;
       expect(toggle.disabled).toBe(true);
     });
     expect(screen.queryByTestId("card-studio")).toBeNull();
@@ -207,13 +217,13 @@ describe("card-maker Studio UI gate", () => {
 
     render(<CardMakerPage />);
 
-    const toggle = await screen.findByRole("button", { name: "ویرایشگر پیشرفته" });
+    const toggle = await screen.findByRole("button", { name: "ورود به استودیو" });
     await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
 
     fireEvent.click(toggle);
 
     expect(await screen.findByTestId("card-studio")).toBeTruthy();
-    expect(screen.getByText(/استودیوی طراحی پیشرفته برای/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "استودیوی طراحی" })).toBeTruthy();
   });
 
   it("approved designer with an existing layered card: the studio auto-opens (authorized flow preserved)", async () => {

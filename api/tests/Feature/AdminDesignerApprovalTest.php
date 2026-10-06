@@ -119,6 +119,35 @@ class AdminDesignerApprovalTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $user->id, 'designer_status' => 'none']);
     }
 
+    public function test_generic_user_editor_cannot_grant_designer_role_before_approval(): void
+    {
+        [$user] = $this->candidate();
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/users/{$user->id}", ['roles' => ['user', 'designer']])
+            ->assertStatus(422);
+
+        $this->assertSame('none', $user->fresh()->designer_status);
+        $this->assertFalse($user->fresh()->hasRole('designer'));
+    }
+
+    public function test_generic_role_edits_preserve_designer_role_only_after_approval(): void
+    {
+        [$user] = $this->candidate();
+        $admin = $this->admin();
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/users/{$user->id}/designer-status", ['designer_status' => 'approved'])
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/users/{$user->id}", ['roles' => ['user']])
+            ->assertOk();
+
+        $this->assertTrue($user->fresh()->hasApprovedDesignerStatus());
+        $this->assertTrue($user->fresh()->hasRole('designer'));
+    }
+
     public function test_invalid_status_is_rejected(): void
     {
         [$user] = $this->candidate();

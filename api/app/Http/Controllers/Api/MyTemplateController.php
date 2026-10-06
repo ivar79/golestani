@@ -118,6 +118,8 @@ class MyTemplateController extends Controller
     public function destroy(Request $request, UserCardTemplate $template): JsonResponse
     {
         abort_unless((int) $template->user_id === (int) $request->user()?->id, 403, 'این قالب متعلق به شما نیست.');
+        $business = $this->entitledBusiness($request);
+        app(StudioAccess::class)->assert($request, $business, 'personal_template.delete');
         $template->delete();
 
         return response()->json(['deleted' => true]);
@@ -129,6 +131,7 @@ class MyTemplateController extends Controller
         $user = $request->user();
         abort_unless($user !== null && (int) $template->user_id === (int) $user->id, 403, 'این قالب متعلق به شما نیست.');
         $business = $this->entitledBusiness($request);
+        app(StudioAccess::class)->assert($request, $business, 'personal_template.apply');
 
         $document = app(\App\Services\TemplateService::class)->applyPersonal($template, [
             'name' => (string) $business->name,

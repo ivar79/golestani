@@ -243,6 +243,8 @@ authorize (entitlement/pivot/ownership) → deserialize → clone
 ### T.5 برنامه طراحان
 - `users.designer_status: none|pending|approved|rejected|suspended` — جدا از role و جدا از entitlement.
 - دو گیت مستقل برای submit به گالری: `designer_status=approved` ∧ `custom_templates` ∧ پرچم `designer_program_enabled` (SiteSetting با whitelist در `saveSetting`؛ کلید ناشناخته/غیر-boolean ⇒ 422). خاموش‌کردن پرچم وضعیت‌های قبلی را پاک نمی‌کند.
+- پلن‌های کسب‌وکار `card_editor=true` را برای ویرایش عادی حفظ می‌کنند، اما `designer_studio=false` و `custom_templates=false` دارند. سه پلن نمونهٔ طراح (`designer-starter`, `designer-pro`, `designer-studio`) به‌ترتیب سقف ۲۰/۵۰/۱۰۰ لایه و ۱/۳/۱۰ کارت دارند؛ این‌ها مقدار آغازین Seeder هستند و قیمت/محدودیت تجاری نهایی از پنل ادمین تنظیم می‌شود.
+- پلن دارای `designer_studio` فقط توسط حساب با `designer_status=approved` قابل خرید است؛ این شرط پیش از ثبت درخواست اشتراک یا آغاز پرداخت بررسی می‌شود. جریان و callback زرین‌پال همان مسیر موجود را نگه می‌دارند. مجوز استفاده همچنان جداگانه، سمت سرور و برای کسب‌وکار مالک همان اشتراک اعمال می‌شود.
 - انتساب قالب↔پلن در تب «قالب‌های کارت» ادمین با multi-select pivot روی `plan_id`؛ تغییر نام پلن انتساب‌ها را نمی‌شکند (تست اجرا شده).
 
 ### T.6 تست‌ها و وضعیت

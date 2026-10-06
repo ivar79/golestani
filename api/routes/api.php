@@ -61,7 +61,7 @@ Route::prefix('auth')->group(function (): void {
     });
 });
 
-Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function (): void {
+Route::middleware(['auth:sanctum', 'role:business_owner,designer,admin'])->group(function (): void {
     Route::get('/businesses/{business}/card', [BusinessCardController::class, 'show']);
     // Card writes share ONE per-user throttle bucket (card-write) so hopping
     // between the save and template-apply endpoints cannot reset the quota.
@@ -102,13 +102,13 @@ Route::get('/public/advertisements/{slot}', [AdvertisementController::class, 'pu
 // Online payments (ZarinPal). init is owner-scoped; callback is PUBLIC
 // because ZarinPal redirects the user's browser to it — its security rests on
 // authority uniqueness + server-side verification, never on the session.
-Route::middleware(['auth:sanctum', 'role:business_owner,user,admin'])->group(function (): void {
+Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin'])->group(function (): void {
     Route::post('/businesses/{business}/payments/init', [PaymentController::class, 'init'])->middleware('throttle:10,1');
     Route::get('/payments/status', [PaymentController::class, 'status']);
 });
 Route::get('/payments/callback', [PaymentController::class, 'callback'])->middleware('throttle:60,1');
 
-Route::middleware(['auth:sanctum', 'role:business_owner,admin'])->group(function (): void {
+Route::middleware(['auth:sanctum', 'role:business_owner,designer,admin'])->group(function (): void {
     Route::get('/businesses/{business}/subscriptions', [SubscriptionController::class, 'index']);
     Route::post('/businesses/{business}/subscriptions', [SubscriptionController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/businesses/{business}/showcases', [ShowcaseController::class, 'index']);
@@ -183,10 +183,10 @@ Route::get('/public/businesses/{slug}', [PublicBusinessController::class, 'show'
 Route::get('/public/businesses/{slug}/card', [PublicBusinessController::class, 'card']);
 Route::get('/public/businesses/{slug}/qr', [PublicBusinessController::class, 'qr']);
 Route::middleware('auth:sanctum')->post('/public/businesses/{business}/reports', [BusinessReportController::class, 'store']);
-// P1: 'user' may pass the gate to create their first business; the
-// business_owner role is assigned server-side in store(). All resource
-// access stays ownership-scoped via authorizeOwner()/own-relation queries.
-Route::middleware(['auth:sanctum', 'role:business_owner,user,admin', 'throttle:30,1'])->prefix('businesses')->group(function (): void {
+// Users and approved designers may create/manage their own business space;
+// the business_owner role is assigned server-side on first creation. Every
+// resource remains ownership-scoped through authorizeOwner()/own-relation queries.
+Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin', 'throttle:30,1'])->prefix('businesses')->group(function (): void {
     Route::get('/', [BusinessController::class, 'index']);
     Route::post('/', [BusinessController::class, 'store']);
     Route::get('/{business}', [BusinessController::class, 'show']);

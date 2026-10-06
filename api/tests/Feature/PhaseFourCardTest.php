@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\BusinessCard;
 use App\Models\Designer;
 use App\Models\Plan;
+use App\Models\Portfolio;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -291,10 +292,45 @@ class PhaseFourCardTest extends TestCase
         $this->assertFalse($user->fresh()->hasRole('designer'));
     }
 
+    public function test_designer_role_without_approved_status_cannot_use_designer_profile(): void
+    {
+        $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
+        $user->assignRole('designer');
+
+        $this->actingAs($user)->getJson('/api/designer/profile')->assertForbidden();
+        $this->assertDatabaseMissing('designers', ['user_id' => $user->id]);
+    }
+
+    public function test_designer_role_without_approved_status_cannot_mutate_portfolios(): void
+    {
+        $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
+        $user->assignRole('designer');
+        $designer = Designer::create([
+            'user_id' => $user->id,
+            'display_name' => 'طراح در انتظار',
+            'slug' => 'designer-pending-portfolio',
+            'referral_code' => 'DES-PEND01',
+            'status' => 'approved',
+        ]);
+        $portfolio = $designer->portfolios()->create([
+            'title' => 'نمونه',
+            'file_path' => 'portfolios/pending.pdf',
+            'mime_type' => 'application/pdf',
+            'file_size' => 100,
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($user)
+            ->deleteJson("/api/designer/portfolios/{$portfolio->id}")
+            ->assertForbidden();
+        $this->assertDatabaseHas('portfolios', ['id' => $portfolio->id]);
+    }
+
     public function test_designer_gets_profile_with_referral_code(): void
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('designer');
+        $user->forceFill(['designer_status' => 'approved'])->save();
 
         $response = $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
@@ -307,6 +343,7 @@ class PhaseFourCardTest extends TestCase
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('designer');
+        $user->forceFill(['designer_status' => 'approved'])->save();
 
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
@@ -417,6 +454,7 @@ class PhaseFourCardTest extends TestCase
         Storage::fake('public');
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('designer');
+        $user->forceFill(['designer_status' => 'approved'])->save();
 
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
@@ -442,8 +480,10 @@ class PhaseFourCardTest extends TestCase
         Storage::fake('public');
         $userA = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $userA->assignRole('designer');
+        $userA->forceFill(['designer_status' => 'approved'])->save();
         $userB = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $userB->assignRole('designer');
+        $userB->forceFill(['designer_status' => 'approved'])->save();
 
         $this->actingAs($userA)->getJson('/api/designer/profile')->assertOk();
         $portfolioId = $this->actingAs($userA)->postJson('/api/designer/portfolios', [
@@ -461,6 +501,7 @@ class PhaseFourCardTest extends TestCase
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('designer');
+        $user->forceFill(['designer_status' => 'approved'])->save();
         $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
 
         $this->actingAs($user)->postJson('/api/designer/portfolios', [
@@ -473,9 +514,13 @@ class PhaseFourCardTest extends TestCase
     {
         $user = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
         $user->assignRole('designer');
-        $this->actingAs($user)->getJson('/api/designer/profile')->assertOk();
-
-        $designer = Designer::where('user_id', $user->id)->first();
+        $designer = Designer::create([
+            'user_id' => $user->id,
+            'display_name' => 'طراح تست',
+            'slug' => 'designer-moderation-test',
+            'referral_code' => 'DES-MOD001',
+            'status' => 'pending',
+        ]);
 
         $admin = $this->admin();
         $this->actingAs($admin)->patchJson("/api/admin/designers/{$designer->id}/moderate", [

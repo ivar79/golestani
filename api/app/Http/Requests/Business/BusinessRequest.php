@@ -7,7 +7,7 @@ class BusinessRequest extends FormRequest
     public function authorize(): bool
     {
         $u = $this->user();
-        return (bool) ($u && $u->is_active && ($u->hasRole('business_owner') || $u->hasRole('admin') || $u->hasRole('user')));
+        return (bool) ($u && $u->is_active && ($u->hasRole('business_owner') || $u->hasRole('admin') || $u->hasRole('user') || $u->hasRole('designer')));
     }
     public function rules(): array
     {

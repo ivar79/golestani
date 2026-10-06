@@ -19,6 +19,7 @@ class DesignerController extends Controller
 {
     public function profile(Request $request): JsonResponse
     {
+        $this->authorizeApprovedDesigner($request);
         $designer = Designer::with('portfolios')->firstOrCreate(
             ['user_id' => $request->user()->id],
             [
@@ -48,6 +49,7 @@ class DesignerController extends Controller
 
     public function update(DesignerRequest $request): JsonResponse
     {
+        $this->authorizeApprovedDesigner($request);
         $designer = Designer::firstOrCreate(
             ['user_id' => $request->user()->id],
             [
@@ -95,6 +97,9 @@ class DesignerController extends Controller
 
     public function destroyPortfolio(Request $request, Portfolio $portfolio): JsonResponse
     {
+        if (! $request->user()?->hasRole('admin')) {
+            $this->authorizeApprovedDesigner($request);
+        }
         abort_unless($portfolio->designer?->user_id === $request->user()->id || $request->user()->hasRole('admin'), 403);
         $portfolio->delete();
 
@@ -170,6 +175,13 @@ class DesignerController extends Controller
 
     private function ownedDesigner(Request $request): Designer
     {
+        $this->authorizeApprovedDesigner($request);
+
         return Designer::where('user_id', $request->user()->id)->firstOrFail();
+    }
+
+    private function authorizeApprovedDesigner(Request $request): void
+    {
+        abort_unless($request->user()?->hasApprovedDesignerStatus(), 403, 'فقط طراح تأییدشده به این بخش دسترسی دارد.');
     }
 }

@@ -18,6 +18,9 @@ class PermissionsTest extends TestCase
     {
         $user = User::factory()->create(['phone' => $phone]);
         $user->assignRole($role);
+        if ($role === 'designer') {
+            $user->forceFill(['designer_status' => 'approved'])->save();
+        }
 
         return $user;
     }
@@ -206,12 +209,13 @@ class PermissionsTest extends TestCase
         $this->actingAs($designer)->getJson('/api/designer/profile')->assertOk();
     }
 
-    public function test_designer_cannot_access_business_panel(): void
+    public function test_designer_can_access_only_their_business_panel(): void
     {
-        // designer-only user must not pass the businesses gate.
+        // A designer role may reach the owner-scoped business panel, but has
+        // no businesses until one is explicitly owned by that account.
         $designer = $this->userWithRole('designer', '09130000011');
 
-        $this->actingAs($designer)->getJson('/api/businesses')->assertForbidden();
+        $this->actingAs($designer)->getJson('/api/businesses')->assertOk()->assertExactJson([]);
     }
 
     public function test_user_without_staff_role_has_no_staff_access(): void

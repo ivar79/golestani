@@ -14,14 +14,15 @@
  * slop would be unusable when zoomed out and sluggish when zoomed in.
  */
 
-import { Fragment, useRef } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { PathPoint } from "../domain/document";
 import type { PathLayer } from "../domain/document";
-import { pathD, nearestSegmentParam } from "../domain/path";
-import { curveBendHandlePos, bendFromPointer } from "../domain/curveLine";
+import { pathD, resolveLayerPathD } from "../domain/path";
+import { curveBendHandlePos } from "../domain/curveLine";
 
 import type { EditorEngine } from "../engine/EditorEngine";
+import { useAltHeld } from "./useAltHeld";
 
 /** Screen-pixel metrics (converted to design px by dividing by the zoom). */
 const ANCHOR_TARGET = 10;
@@ -62,16 +63,132 @@ function scaleFor(zoom: number): number {
   return 1 / Math.max(0.05, zoom);
 }
 
+/**
+ * The bend hit-areas read `useAltHeld()` to STEP OUT OF THE WAY: with Alt down
+ * the pointer must reach the layer underneath, so the very same press drags the
+ * whole layer (the contract printed in the node toolbar and the inspector).
+ */
+
+
+/**
+ * THE BEND GESTURE — insert a node exactly where the press landed on the drawn
+ * shape, then keep moving THAT node with the pointer.
+ *
+ * Shared by the point editor and the selected-layer dot so the two modes can
+ * never diverge, and deliberately ONE undo record: the insert goes through the
+ * transient channel (no history, no box re-origin under the pointer) and
+ * `commitPathEdit` records the whole press-move-release once — with the layer box
+ * re-derived at the very end.
+ */
+function startBendDrag(
+  engine: EditorEngine,
+  layer: PathLayer,
+  event: React.PointerEvent,
+  toBoardPoint: (event: { clientX: number; clientY: number }) => BoardPoint,
+  tolerance: number,
+): boolean {
+  const local = toLayerLocal(toBoardPoint(event), layer);
+  const started = engine.beginBend(layer.id, local, tolerance);
+  if (!started) return false;
+  // Pointer capture is a nicety: it throws when the pointer is not capturable
+  // (released early, or synthetic), and the gesture must survive that — the
+  // window listeners below are what actually drive the drag.
+  try {
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+  } catch {
+    /* not capturable: the move/up listeners still own the gesture */
+  }
+
+  // The node tracks the pointer EXACTLY: the gap between the pressed point and
+  // the projected node is constant, so the gesture cannot accumulate drift even
+  // though every move re-derives the position from the live snapshot.
+  const offsetX = started.point.x - local.x;
+  const offsetY = started.point.y - local.y;
+  const onMove = (move: PointerEvent) => {
+    const current = toLayerLocal(toBoardPoint(move), layer);
+    engine.transientMoveAnchor(layer.id, started.index, {
+      x: current.x + offsetX,
+      y: current.y + offsetY,
+    });
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    engine.commitPathEdit(layer.id);
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  return true;
+}
+
+/** Where a bend would land, for the hover dot. Null when the pointer is off the shape. */
+function bendGhostAt(
+  engine: EditorEngine,
+  layer: PathLayer,
+  event: { clientX: number; clientY: number },
+  toBoardPoint: (event: { clientX: number; clientY: number }) => BoardPoint,
+  tolerance: number,
+): BoardPoint | null {
+  const hit = engine.bendPointAt(layer.id, toLayerLocal(toBoardPoint(event), layer), tolerance);
+  return hit ? hit.point : null;
+}
+
+/**
+ * The dot's RESTING position, shown while the pointer is away from the shape.
+ * A legacy arc's apex (today's dot) or the middle of a two-point line — both are
+ * only a hint now: the real position is wherever the pointer grabs the line.
+ */
+function restingDot(layer: PathLayer): BoardPoint | null {
+  if (layer.points.length !== 2) return null;
+  const [from, to] = layer.points;
+  if (layer.bend !== undefined) {
+    return curveBendHandlePos({ x1: from.x, y1: from.y, x2: to.x, y2: to.y, bend: layer.bend });
+  }
+  return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+}
+
+/** The dot itself (dark puck + accent ring), shared by both overlays. */
+function BendDot({ at, zoom, ghost }: { at: BoardPoint; zoom: number; ghost: boolean }) {
+  return (
+    <>
+      {ghost ? (
+        <circle
+          cx={at.x}
+          cy={at.y}
+          r={10 / zoom}
+          fill="rgba(103,232,249,0.18)"
+          pointerEvents="none"
+        />
+      ) : null}
+      <circle
+        data-bend-dot=""
+        data-ghost={ghost ? "yes" : "no"}
+        cx={at.x}
+        cy={at.y}
+        r={6 / zoom}
+        fill="#07111d"
+        stroke={ghost ? "#a5f3fc" : "#67e8f9"}
+        strokeWidth={2 / zoom}
+        pointerEvents="none"
+      />
+    </>
+  );
+}
+
 /* ----------------------------- path point editor ----------------------------- */
 
 /**
  * PathEditOverlay — anchors and Bezier handles for the path being point-edited.
  *
- * Interaction (Figma/Illustrator-like):
- *   - drag an anchor            → move the point (its handles travel with it)
- *   - drag a handle             → shape the curve (mirrored by default)
- *   - Alt/Option + drag a handle→ break the mirror for that point
- *   - double-click ON the curve → insert an anchor there, losslessly
+ * Interaction (Figma bend tool + Illustrator curvature standard):
+ *   - drag an anchor             → move the point (its handles travel with it)
+ *   - drag a handle              → shape the curve (mirrored by default)
+ *   - Alt/Option + drag a handle → break the mirror for that point
+ *   - PRESS ON THE CURVE         → insert an anchor exactly there and curve that
+ *     spot: the node is created by a loss-less split (the drawing does not move)
+ *     and then follows the pointer, so "bend it here" is one gesture. The dot
+ *     under the pointer previews where the node will land, and Alt/Option keeps
+ *     the press for moving the whole layer instead.
  */
 type DragKind = "anchor" | "hIn" | "hOut";
 
@@ -214,7 +331,8 @@ export function PathEditOverlay({
   const scale = scaleFor(zoom);
   const anchorSize = ANCHOR_VISUAL * scale;
   const handleSize = HANDLE_VISUAL * scale;
-  const segDragRef = useRef<{ segIndex: number; startX: number; startY: number } | null>(null);
+  const [ghost, setGhost] = useState<BoardPoint | null>(null);
+  const altHeld = useAltHeld();
   const selectedIndexSet = new Set(selectedIndices);
   const hasRange =
     rangeStartIndex !== null &&
@@ -226,44 +344,28 @@ export function PathEditOverlay({
     ? layer.points.slice(Math.min(rangeStartIndex, selectedIndex), Math.max(rangeStartIndex, selectedIndex) + 1)
     : [];
 
-  const onDoubleClick = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    const local = toLayerLocal(toBoardPoint(event), layer);
-    const hit = nearestSegmentParam(layer.points, layer.closed, local);
-    if (!hit || hit.distance > CURVE_SLOP * scale) return;
-    engine.insertAnchorAt(layer.id, hit.segIndex, hit.t);
+  /** The dot the user is about to plant: WHERE a press would create a node. */
+  const onSegPointerMove = (event: React.PointerEvent<SVGPathElement>) => {
+    if (event.buttons) return; // a drag owns the gesture
+    setGhost(bendGhostAt(engine, layer, event, toBoardPoint, CURVE_SLOP / zoom));
   };
 
   const onSegPointerDown = (event: React.PointerEvent<SVGPathElement>) => {
     if (event.button !== 0 || event.detail >= 2) return;
+    // Alt/Option keeps the press for the LAYER: the hit stroke is already
+    // transparent while Alt is held, and a press that raced that state must not
+    // bend either.
+    if (event.altKey) return;
     event.stopPropagation();
     event.preventDefault();
-    const local = toLayerLocal(toBoardPoint(event), layer);
-    const hit = nearestSegmentParam(layer.points, layer.closed, local);
-    if (!hit || hit.distance > CURVE_SLOP * scale) return;
-    segDragRef.current = { segIndex: hit.segIndex, startX: local.x, startY: local.y };
     engine.beginTransient();
-    const target = event.currentTarget;
-    target.setPointerCapture?.(event.pointerId);
-
-    const onMove = (e: PointerEvent) => {
-      if (!segDragRef.current) return;
-      const board = toBoardPoint(e as unknown as { clientX: number; clientY: number });
-      const cur = toLayerLocal(board, layer);
-      const dx = cur.x - segDragRef.current.startX;
-      const dy = cur.y - segDragRef.current.startY;
-      segDragRef.current.startX = cur.x;
-      segDragRef.current.startY = cur.y;
-      engine.transientDragSegment(layer.id, segDragRef.current.segIndex, dx, dy);
-    };
-    const onUp = () => {
-      segDragRef.current = null;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      engine.commitPathEdit(layer.id);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    if (!startBendDrag(engine, layer, event, toBoardPoint, CURVE_SLOP / zoom)) {
+      // Nothing was touched: close the gesture so a LATER drag cannot commit a
+      // stale pre-state.
+      engine.commitTransient();
+      return;
+    }
+    setGhost(null);
   };
 
   return (
@@ -288,7 +390,6 @@ export function PathEditOverlay({
         transformOrigin: "center center",
         overflow: "visible",
       }}
-      onDoubleClick={onDoubleClick}
     >
       {/*
        * Segment hit targets are intentionally transparent but wide.
@@ -298,17 +399,22 @@ export function PathEditOverlay({
        * becomes the hit target, so the hit area stays predictable at any zoom.
        */}
       <path
-        d={pathD(layer.points, layer.closed)}
+        data-bend-hit=""
+        d={resolveLayerPathD(layer)}
         fill="none"
         stroke="rgba(0,0,0,0.001)"
-        strokeWidth={Math.max(10, 12 * scale)}
+        strokeWidth={Math.max(14, 16 * scale)}
         strokeLinecap="round"
         strokeLinejoin="round"
-        pointerEvents="stroke"
-        style={{ cursor: "grab" }}
+        pointerEvents={altHeld ? "none" : "stroke"}
+        style={{ cursor: "crosshair" }}
+        onPointerMove={onSegPointerMove}
+        onPointerLeave={() => setGhost(null)}
         onPointerDown={onSegPointerDown}
-        onDoubleClick={onDoubleClick}
       />
+
+      {/* The bend preview: the node a press would create, right under the pointer. */}
+      {ghost ? <BendDot at={ghost} zoom={zoom} ghost /> : null}
 
       {hasRange ? (
         <path
@@ -498,61 +604,49 @@ function handleSizeFor(scale: number): number {
   return HANDLE_VISUAL * scale;
 }
 
+/**
+ * BEND DOT OVERLAY — "grab the line anywhere and curve that spot", for the
+ * SELECTED layer (outside point-editing).
+ *
+ * The dot is no longer pinned to the middle of a two-point curve. While the
+ * pointer travels along the shape the layer actually DRAWS (a legacy circular
+ * arc included) the dot travels with it, and the press turns that exact spot
+ * into a real node which then follows the pointer: the bend appears wherever the
+ * user grabbed, and the arc model is preserved (losslessly) until that first
+ * structural edit — after which the anchors ARE the geometry.
+ *
+ * Alt/Option turns the same press into a LAYER MOVE by taking the hit stroke out
+ * of the pointer's way (the layer's own hit area is right underneath).
+ */
 export function ArcBendHandleOverlay({
   engine,
   layer,
   zoom,
+  toBoardPoint,
 }: {
   engine: EditorEngine;
   layer: PathLayer;
   zoom: number;
+  toBoardPoint: (event: { clientX: number; clientY: number }) => BoardPoint;
 }) {
-  if (layer.points.length !== 2 || (layer.curveProfile && layer.curveProfile !== "arc")) return null;
-  // `bend` is the canonical model (legacy `curvature` is normalized onto it at
-  // parse time), so the handle sits on the arc the resolver actually draws.
-  const lSpec = {
-    x1: layer.points[0].x,
-    y1: layer.points[0].y,
-    x2: layer.points[1].x,
-    y2: layer.points[1].y,
-    bend: layer.bend ?? 0,
-  };
-  const h = curveBendHandlePos(lSpec);
-  const isTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
-  const HIT = (isTouch ? 22 : 12) / zoom;
+  const [ghost, setGhost] = useState<BoardPoint | null>(null);
+  const altHeld = useAltHeld();
+  const scale = scaleFor(zoom);
+  const dot = ghost ?? restingDot(layer);
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const target = e.currentTarget as Element;
-    target.setPointerCapture(e.pointerId);
-
-    const onPointerMove = (me: PointerEvent) => {
-      const stage = target.closest("[data-stage-inner]") as HTMLElement | null;
-      if (!stage) return;
-      const rect = stage.getBoundingClientRect();
-      const pt = {
-        x: (me.clientX - rect.left) / zoom,
-        y: (me.clientY - rect.top) / zoom,
-      };
-      const localPt = toLayerLocal(pt, layer);
-      const newBend = bendFromPointer(lSpec, localPt, zoom);
-      engine.transientPatch(layer.id, { bend: newBend });
-    };
-
-    const onPointerUp = (ue: PointerEvent) => {
-      target.releasePointerCapture(ue.pointerId);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      engine.commitTransient();
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
+  const onPointerDown = (event: React.PointerEvent<SVGPathElement>) => {
+    if (event.button !== 0 || event.detail >= 2) return;
+    if (event.altKey) return;
+    event.stopPropagation();
+    event.preventDefault();
+    setGhost(null);
+    engine.beginTransient();
+    if (!startBendDrag(engine, layer, event, toBoardPoint, CURVE_SLOP / zoom)) engine.commitTransient();
   };
 
   return (
     <svg
+      data-bend-overlay=""
       className="pointer-events-none absolute left-0 top-0 z-[1600] overflow-visible"
       style={{
         left: layer.x,
@@ -565,23 +659,35 @@ export function ArcBendHandleOverlay({
       viewBox={`0 0 ${layer.width} ${layer.height}`}
     >
       <g className="handles-overlay pointer-events-auto">
-        <circle
-          cx={h.x}
-          cy={h.y}
-          r={HIT}
-          fill="transparent"
-          style={{ cursor: "grab" }}
+        {/* The wide invisible stroke is the hover + press target: without it the
+            dot could not follow the pointer along the line, and the line itself
+            would stay ungrabbable at any zoom. It sits on TOP of the layer, but
+            stays narrow — the rest of the box still moves the layer. */}
+        <path
+          data-bend-hit=""
+          d={resolveLayerPathD(layer)}
+          fill="none"
+          stroke="rgba(0,0,0,0.001)"
+          strokeWidth={Math.max(14, 16 * scale)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pointerEvents={altHeld ? "none" : "stroke"}
+          style={{ cursor: "crosshair" }}
+          onPointerMove={(event) => {
+            if (event.buttons) return; // a drag owns the gesture
+            setGhost(bendGhostAt(engine, layer, event, toBoardPoint, CURVE_SLOP / zoom));
+          }}
+          onPointerLeave={() => setGhost(null)}
           onPointerDown={onPointerDown}
+          onDoubleClick={(event) => {
+            // This stroke swallows the double-click the layer's own hit area uses
+            // to enter point-editing, so it forwards it: from the line, the way
+            // into the node editor must keep working.
+            event.stopPropagation();
+            engine.setPathEditing(layer.id);
+          }}
         />
-        <circle
-          cx={h.x}
-          cy={h.y}
-          r={6 / zoom}
-          fill="#07111d"
-          stroke="#67e8f9"
-          strokeWidth={2 / zoom}
-          pointerEvents="none"
-        />
+        {dot ? <BendDot at={dot} zoom={zoom} ghost={Boolean(ghost)} /> : null}
       </g>
     </svg>
   );

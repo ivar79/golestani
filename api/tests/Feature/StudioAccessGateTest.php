@@ -156,7 +156,7 @@ class StudioAccessGateTest extends TestCase
 
     public function test_capability_without_designer_approval_is_blocked(): void
     {
-        $owner = $this->user(['business_owner']); // designer_status = none
+        $owner = $this->user(['business_owner', 'designer']); // role alone is not approval
         $business = $this->business($owner, ['card_editor' => true, 'designer_studio' => true]);
         $this->enforce();
 
@@ -225,9 +225,8 @@ class StudioAccessGateTest extends TestCase
 
     public function test_admin_bypass_is_capability_scoped_and_audited(): void
     {
-        $owner = $this->user(['business_owner']);
-        $business = $this->business($owner, ['card_editor' => true]);
-        $admin = $this->user(['admin']);
+        $admin = $this->user(['admin', 'business_owner']);
+        $business = $this->business($admin, ['card_editor' => true]);
         $this->enforce();
 
         $this->actingAs($admin)
@@ -253,9 +252,8 @@ class StudioAccessGateTest extends TestCase
 
     public function test_admin_bypass_does_not_bypass_the_template_validator(): void
     {
-        $owner = $this->user(['business_owner']);
-        $business = $this->business($owner, ['card_editor' => true]);
-        $admin = $this->user(['admin']);
+        $admin = $this->user(['admin', 'business_owner']);
+        $business = $this->business($admin, ['card_editor' => true]);
         $this->enforce();
 
         // Structurally invalid document: the bypass never touches validation.
@@ -265,6 +263,27 @@ class StudioAccessGateTest extends TestCase
                 'design_json' => ['version' => 99, 'layers' => 'garbage'],
             ])
             ->assertStatus(422);
+    }
+
+    public function test_admin_studio_bypass_does_not_bypass_business_ownership(): void
+    {
+        $admin = $this->user(['admin', 'business_owner']);
+        $ownedBusiness = $this->business($admin, ['card_editor' => true]);
+        $otherOwner = $this->user(['business_owner']);
+        $otherBusiness = $this->business($otherOwner, ['card_editor' => true], 'other');
+        $this->enforce();
+
+        $this->saveCard($admin, $ownedBusiness, ['design_json' => $this->design()])
+            ->assertOk()
+            ->assertJsonPath('studio.bypass', true);
+
+        $this->saveCard($admin, $otherBusiness, ['design_json' => $this->design()])
+            ->assertStatus(403);
+        $this->actingAs($admin)
+            ->getJson("/api/businesses/{$otherBusiness->id}/card")
+            ->assertOk()
+            ->assertJsonPath('studio.allowed', false)
+            ->assertJsonPath('studio.reason', 'not_owner');
     }
 
     // ------------------------------------------------------------------

@@ -91,6 +91,12 @@ describe("studio UI gate mirror", () => {
     expect(canOpenStudio(decision({ allowed: false, reason: "not_approved", designer_status: "suspended" }))).toBe(false);
   });
 
+  it("an admin without business authorization stays blocked", () => {
+    const s = decision({ allowed: false, reason: "not_owner", bypass: false });
+    expect(canOpenStudio(s)).toBe(false);
+    expect(describeStudioStatus(s)).toContain("اجازه");
+  });
+
   it("approved designer on the SAME business entitlement opens the studio", () => {
     expect(canOpenStudio(decision({}))).toBe(true);
     expect(describeStudioStatus(decision({}))).toBeNull();
@@ -107,9 +113,9 @@ describe("studio UI gate mirror", () => {
     expect(canOpenStudio(s)).toBe(true);
   });
 
-  it("a missing decision never locks (server still authoritative)", () => {
-    expect(canOpenStudio(null)).toBe(true);
-    expect(canOpenStudio(undefined)).toBe(true);
+  it("a missing decision fails closed while authorization is unresolved", () => {
+    expect(canOpenStudio(null)).toBe(false);
+    expect(canOpenStudio(undefined)).toBe(false);
     expect(describeStudioStatus(null)).toBeNull();
   });
 });

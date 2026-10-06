@@ -259,10 +259,14 @@ export function describeStudioErrors(errors: Record<string, string> | null | und
  * Frontend mirror of the server studio decision (UX only — the server
  * re-authorizes every Level B write): the sentence shown when the full
  * authoring workspace must NOT open for this business, or null when it may.
- * A missing decision (older payload) never blocks.
+ * A missing decision is not authorization; keep the Studio closed until the
+ * server has explicitly allowed it.
  */
 export function describeStudioStatus(status: StudioStatus | null | undefined): string | null {
   if (!status || status.allowed) return null;
+  if (status.reason === "not_owner") {
+    return "شما اجازهٔ استفاده از استودیوی طراحی برای این کسب‌وکار را ندارید.";
+  }
   if (status.reason === "not_approved") {
     return "ویرایش و ذخیرهٔ طرح لایه‌ای فقط برای طراحان تأییدشده فعال است؛ برای عضویت در برنامه طراحان درخواست دهید.";
   }
@@ -275,7 +279,7 @@ export function describeStudioStatus(status: StudioStatus | null | undefined): s
  * as an audited bypass and the server remains authoritative for every write.
  */
 export function canOpenStudio(status: StudioStatus | null | undefined): boolean {
-  return !status || status.allowed === true;
+  return status?.allowed === true;
 }
 
 /**

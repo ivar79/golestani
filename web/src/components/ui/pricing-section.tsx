@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/api";
 import { getOwnedBusinesses, type Phase2Business } from "@/lib/phase2";
-import { getPlansPricing, type Plan } from "@/lib/subscriptions";
+import { getPlansPricing, splitPlansByStudio, type Plan } from "@/lib/subscriptions";
 import { initPayment } from "@/lib/payments";
 import { planFeatureLines, type PublicPlansResponse } from "@/lib/entitlements";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
@@ -120,7 +120,8 @@ export default function PricingSection({ content }: { content: PricingContent })
   // is no longer used for plan cards.
   void content.plans;
   const displayedPlans = plans.filter((plan) => plan.is_active);
-  const currentPlan = displayedPlans.find((plan) => (isCorporate ? plan.name.toLowerCase().includes("سازمانی") || plan.name.toLowerCase().includes("corporate") : !plan.name.toLowerCase().includes("سازمانی") && !plan.name.toLowerCase().includes("corporate"))) ?? displayedPlans[0];
+  const { businessPlans, designerPlans } = splitPlansByStudio(displayedPlans);
+  const currentPlan = businessPlans.find((plan) => (isCorporate ? plan.name.toLowerCase().includes("سازمانی") || plan.name.toLowerCase().includes("corporate") : !plan.name.toLowerCase().includes("سازمانی") && !plan.name.toLowerCase().includes("corporate"))) ?? businessPlans[0];
   const MotionDiv = reducedMotion ? "div" : motion.div;
 
   async function openReceipt(plan: Plan) {
@@ -142,6 +143,38 @@ export default function PricingSection({ content }: { content: PricingContent })
     window.location.assign(url);
   }
 
+  function renderPlanCard(plan: Plan, index: number, selected = false) {
+    const featured = Boolean(plan.is_featured);
+    return (
+      <MotionDiv
+        key={plan.id}
+        variants={fadeUp}
+        custom={index + 1}
+        initial="hidden"
+        animate="visible"
+        className={`flex flex-col rounded-3xl border p-6 transition-transform hover:-translate-y-1 ${featured ? "border-emerald-400/60 bg-emerald-400/[0.06] shadow-lg shadow-emerald-950/20" : selected ? "border-emerald-400/50 bg-white/[0.04]" : "border-white/10 bg-white/[0.04]"}`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-black text-white">{plan.name}</h2>
+              {(selected || featured) && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${featured ? "bg-emerald-400 text-slate-950" : "border border-emerald-400/40 bg-night text-emerald-200"}`}>{featured ? "پیشنهاد ویژه" : "پلن فعلی"}</span>}
+            </div>
+            <p className="mt-2 text-sm text-slate-400">{plan.description || `اعتبار ${plan.duration_days} روزه`}</p>
+          </div>
+          <CreditCard className="h-6 w-6 shrink-0 text-emerald-300" />
+        </div>
+        <div className="mt-5 text-2xl font-black text-white sm:text-3xl">{toman(plan.price)}</div>
+        <ul className="mt-5 flex-1 space-y-3 text-sm text-slate-300">
+          {planFeatureLines(plan.features, pricing?.labels ?? {}).filter((line) => line.state !== "off").map((line) => (
+            <li key={line.key} className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-emerald-300" />{line.label}</li>
+          ))}
+        </ul>
+        <button type="button" onClick={() => void openReceipt(plan)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300"><CreditCard className="h-4 w-4" />{content.ctaLabel}</button>
+      </MotionDiv>
+    );
+  }
+
   return (
     <div className="relative min-h-screen bg-night px-4 pb-20 pt-28 text-surface sm:px-8">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(16,185,129,0.14),transparent_28%),radial-gradient(circle_at_85%_35%,rgba(34,211,238,0.10),transparent_30%)]" />
@@ -149,12 +182,9 @@ export default function PricingSection({ content }: { content: PricingContent })
         <div className="mx-auto max-w-3xl text-center"><MotionDiv variants={fadeUp} custom={0} initial="hidden" animate="visible" className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-300"><Zap className="h-4 w-4" />{content.eyebrow}</MotionDiv><h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl"><VerticalCutReveal splitBy="words" staggerDuration={0.12} staggerFrom="first" containerClassName="justify-center">{content.title}</VerticalCutReveal></h1><p className="mt-5 text-base leading-8 text-slate-400 sm:text-lg">{content.subtitle}</p></div>
         {plansError && <div role="alert" className="mx-auto mt-8 max-w-2xl rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-center text-sm text-rose-200">{plansError}<button type="button" onClick={() => window.location.reload()} className="ms-2 font-bold underline">تلاش دوباره</button></div>}
         {success && <div role="status" className="mx-auto mt-8 max-w-2xl rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-center text-sm text-emerald-200">{success}</div>}
-        {/* Free tier + paid plans — ONE comparison grid so all three cards sit
-            side by side on desktop (sm:2 cols, lg:3 cols) and stack on mobile.
-            The free card mirrors the paid-card structure (title → price →
-            features → CTA) so rows align; badges are inline in the header
-            (no absolute positioning → no overlap, RTL-safe). */}
-        <div data-pricing-grid className={`mx-auto mt-12 grid max-w-6xl gap-4 ${pricing ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2"}`}>
+        <h2 className="mx-auto mt-12 max-w-6xl text-xl font-black text-white">پلن‌های کسب‌وکار</h2>
+        <p className="mx-auto mt-2 max-w-6xl text-sm leading-7 text-slate-400">این پلن‌ها امکانات عادی کارت ویزیت را ارائه می‌کنند و شامل استودیوی حرفه‌ای طراحان نیستند.</p>
+        <div data-pricing-grid className={`mx-auto mt-5 grid max-w-6xl gap-4 ${pricing ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2"}`}>
           {plansLoading ? (
             <div className="col-span-full flex items-center justify-center gap-3 py-16 text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin text-emerald-300" />در حال دریافت پلن‌ها...</div>
           ) : (
@@ -185,38 +215,21 @@ export default function PricingSection({ content }: { content: PricingContent })
                   </button>
                 </div>
               )}
-              {displayedPlans.length === 0 ? <div className="col-span-full rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-slate-400">در حال حاضر پلن فعالی برای نمایش وجود ندارد.</div> : displayedPlans.map((plan, index) => {
-                const selected = currentPlan?.id === plan.id;
-                const featured = Boolean(plan.is_featured);
-                // In the 2-col middle range the featured card spans the full row
-                // (deliberate emphasis, not a dangling fragment); from lg up it is
-                // a normal equal column in the 3-card row.
-                const spanClass = pricing && featured ? "sm:col-span-2 lg:col-span-1" : "";
-                return          <MotionDiv key={plan.id} variants={fadeUp} custom={index + 1} initial="hidden" animate="visible" className={`flex flex-col rounded-3xl border p-6 transition-transform hover:-translate-y-1 ${spanClass} ${featured ? "border-emerald-400/60 bg-emerald-400/[0.06] shadow-lg shadow-emerald-950/20" : selected ? "border-emerald-400/50 bg-white/[0.04]" : "border-white/10 bg-white/[0.04]"}`}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-xl font-black text-white">{plan.name}</h2>
-                        {(selected || featured) && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${featured ? "bg-emerald-400 text-slate-950" : "border border-emerald-400/40 bg-night text-emerald-200"}`}>{featured ? "پیشنهاد ویژه" : "پلن فعلی"}</span>}
-                      </div>
-                      <p className="mt-2 text-sm text-slate-400">{plan.description || `اعتبار ${plan.duration_days} روزه`}</p>
-                    </div>
-                    <CreditCard className="h-6 w-6 shrink-0 text-emerald-300" />
-                  </div>
-                  <div className="mt-5 text-2xl font-black text-white sm:text-3xl">{toman(plan.price)}</div>
-                  {/* Feature lines come from the SERVER catalog labels — zero hardcoded feature names.
-                      flex-1 pushes the CTA to the card bottom so CTAs of the same row align. */}
-                  <ul className="mt-5 flex-1 space-y-3 text-sm text-slate-300">
-                    {planFeatureLines(plan.features, pricing?.labels ?? {}).filter((line) => line.state !== "off").map((line) => (
-                      <li key={line.key} className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-emerald-300" />{line.label}</li>
-                    ))}
-                  </ul>
-                  <button type="button" onClick={() => void openReceipt(plan)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-emerald-300"><CreditCard className="h-4 w-4" />{content.ctaLabel}</button>
-                </MotionDiv>;
-              })}
+              {businessPlans.length === 0 ? <div className="col-span-full rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-slate-400">در حال حاضر پلن کسب‌وکار فعالی برای نمایش وجود ندارد.</div> : businessPlans.map((plan, index) => renderPlanCard(plan, index, currentPlan?.id === plan.id))}
             </>
           )}
         </div>
+        {designerPlans.length > 0 && (
+          <section aria-labelledby="designer-plans-heading" className="mx-auto mt-16 max-w-6xl">
+            <h2 id="designer-plans-heading" className="text-xl font-black text-white">پلن‌های استودیوی طراحان</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">
+              این پلن‌ها فقط برای حساب‌های طراحِ تأییدشده قابل خرید هستند. دسترسی استودیو علاوه بر تأیید طراح، به اشتراک همین کسب‌وکار وابسته است.
+            </p>
+            <div data-designer-pricing-grid className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {designerPlans.map((plan, index) => renderPlanCard(plan, index))}
+            </div>
+          </section>
+        )}
         <div className="mx-auto mt-12 max-w-6xl rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-7"><h3 className="text-lg font-bold text-white">{content.featuresTitle}</h3><div className="mt-4 grid gap-3 sm:grid-cols-2">{content.features.map((feature) => <div key={feature} className="flex items-center gap-2 text-sm text-slate-400"><CheckCheck className="h-4 w-4 text-emerald-300" />{feature}</div>)}</div><div className="mt-6 grid gap-4 sm:grid-cols-2"><div><p className="mb-2 text-xs text-slate-500">{content.updatesTitle}</p><PricingSwitch first={content.updatesLabel1} second={content.updatesLabel2} value={isForever} onChange={setIsForever} /></div><div><p className="mb-2 text-xs text-slate-500">{content.licenseTitle}</p><PricingSwitch first={content.licenseLabel1} second={content.licenseLabel2} value={isCorporate} onChange={setIsCorporate} /></div></div></div>
       </div>
       {modalPlan && <ReceiptModal plan={modalPlan} businesses={businesses} selectedBusiness={selectedBusiness} onBusinessChange={setSelectedBusiness} onClose={() => setModalPlan(null)} onRedirecting={redirectToGateway} />}

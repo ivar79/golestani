@@ -131,7 +131,7 @@ jobs:
           set -euo pipefail
           docker build --file api/Dockerfile --tag "$IMAGE" api
 
-      - name: Read-only preflight and seed
+      - name: Read-only preflight and database seed
         env:
           DB_URL: ${{ secrets.NEON_STAGING_DATABASE_URL }}
         run: |
@@ -264,6 +264,7 @@ jobs:
             "$IMAGE" php -r "$PREFLIGHT"
 
           echo "WARNING: This operation modifies staging roles, permissions, permission_role, and site_settings."
+          echo "WARNING: DatabaseSeeder includes EditorPlanSeeder; missing example plans are added without overwriting existing admin-managed plan settings."
           echo "WARNING: It does not create an admin user. It does not run migrations - the schema freshness guard above requires staging to already be migrated to main."
           docker run --rm \
             --env APP_ENV=staging \

@@ -383,9 +383,14 @@ return response()->json(Article::create($data), 201);
         ]);
         $roles = $request->input('roles');
         unset($data['roles']);
-        $user->update($data);
         if (is_array($roles)) {
             $roleNames = array_values(array_unique(array_map('strval', $roles)));
+            if (in_array('designer', $roleNames, true) && ! $user->hasApprovedDesignerStatus()) {
+                abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
+            }
+            if ($user->hasApprovedDesignerStatus() && ! in_array('designer', $roleNames, true)) {
+                $roleNames[] = 'designer';
+            }
             $roleIds = Role::whereIn('name', $roleNames)->pluck('id', 'name');
             abort_if($roleIds->count() !== count($roleNames), 422, 'یکی از نقش‌های انتخاب‌شده معتبر نیست.');
             if ($user->is($request->user()) && ! in_array('admin', $roleNames, true)) {
@@ -396,6 +401,7 @@ return response()->json(Article::create($data), 201);
             }
             $user->roles()->sync($roleIds->values());
         }
+        $user->update($data);
 
         // Admin mutations are audited (role/status changes were previously
         // invisible in the audit trail).

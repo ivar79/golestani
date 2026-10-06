@@ -23,6 +23,7 @@ import {
   Smartphone,
   Tablet,
   Monitor,
+  Layers,
   Save,
   X,
   Lock,
@@ -127,14 +128,14 @@ const MAX_PRINT_FILE_BYTES = 10 * 1024 * 1024; // matches backend max:10240 (KB)
 const ALLOWED_PRINT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
 const TEMPLATE_OPTIONS: { key: CardTemplate; label: string; desc: string; swatch: string }[] = [
-  { key: "classic", label: "مینیمال حرفه‌ای", desc: "روشن، تایپوگرافی قوی، رسمی", swatch: "bg-[#f6f8fb] border-[#dbe4f0]" },
+  { key: "classic", label: "مینیمال حرفه‌ای", desc: "روشن و رسمی، با تمرکز بر خوانایی", swatch: "bg-[#f6f8fb] border-[#dbe4f0]" },
   { key: "midnight", label: "گرادیان مدرن", desc: "تیره با درخشش رنگ برند", swatch: "bg-gradient-to-br from-[#081528] to-[#153a6b]" },
-  { key: "emerald", label: "اجراایی پرمیوم", desc: "قاب رسمی، کنتراست بالا", swatch: "bg-gradient-to-br from-[#0a1a2e] to-[#0d2342]" },
+  { key: "emerald", label: "زمردی رسمی", desc: "رنگ‌بندی عمیق با کنتراست بالا", swatch: "bg-gradient-to-br from-[#0a1a2e] to-[#0d2342]" },
   { key: "local", label: "کسب‌وکار محلی", desc: "آدرس و تماس در مرکز توجه", swatch: "bg-white border-[#dbe4f0]" },
-  { key: "creative", label: "خلاقانه", desc: "بلوک‌های مورب رنگی، جسورانه", swatch: "bg-gradient-to-bl from-[#0ea5e9] to-[#081528]" },
+  { key: "creative", label: "خلاقانه", desc: "ترکیب رنگی برجسته و امروزی", swatch: "bg-gradient-to-bl from-[#0ea5e9] to-[#081528]" },
 ];
 
-const FONT_LABELS: Record<CardFontFamily, string> = { sans: "مدرن Sans", vazir: "وزیرمتن", serif: "رسمی Serif" };
+const FONT_LABELS: Record<CardFontFamily, string> = { sans: "سن‌سریف", vazir: "وزیرمتن", serif: "سریف" };
 
 const THEME_OPTIONS: { key: CardTheme; label: string; colorClass: string }[] = [
   { key: "navy", label: "سرمه‌ای", colorClass: "bg-[#0d2342]" },
@@ -161,6 +162,9 @@ export default function CardMakerPage() {
   const [artboard, setArtboard] = useState<{ width: number; height: number } | null>(null);
 
   const [businesses, setBusinesses] = useState<Business[] | null>(null);
+  const [businessesLoading, setBusinessesLoading] = useState(true);
+  const [businessesError, setBusinessesError] = useState<string | null>(null);
+  const [businessesLoadAttempt, setBusinessesLoadAttempt] = useState(0);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [template, setTemplate] = useState<CardTemplate>("classic");
   const [theme, setTheme] = useState<CardTheme>("navy");
@@ -215,21 +219,35 @@ export default function CardMakerPage() {
   useEffect(() => {
     if (!token) return;
     let active = true;
+    let settled = false;
+    const loadingTimer = window.setTimeout(() => {
+      if (!active || settled) return;
+      setBusinessesLoading(true);
+      setBusinessesError(null);
+    }, 0);
     listBusinesses()
       .then((items) => {
         if (!active) return;
         setBusinesses(items);
-        if (items.length > 0) setSelectedBusiness(items[0]);
+        const requestedBusinessId = Number(new URLSearchParams(window.location.search).get("business_id"));
+        const requestedBusiness = items.find((item) => item.id === requestedBusinessId);
+        if (items.length > 0) setSelectedBusiness(requestedBusiness ?? items[0]);
       })
       .catch((err) => {
         if (!active) return;
-        setBusinesses([]);
-        setMessage({ text: extractApiError(err), error: true });
+        setBusinesses(null);
+        setBusinessesError(extractApiError(err));
+      })
+      .finally(() => {
+        settled = true;
+        window.clearTimeout(loadingTimer);
+        if (active) setBusinessesLoading(false);
       });
     return () => {
       active = false;
+      window.clearTimeout(loadingTimer);
     };
-  }, [token]);
+  }, [token, businessesLoadAttempt]);
 
   // Load card settings for selected business
   useEffect(() => {
@@ -582,6 +600,41 @@ export default function CardMakerPage() {
     );
   }
 
+  if (businessesLoading) {
+    return (
+      <main dir="rtl" className="min-h-screen bg-[#050B14] pt-28 px-4 text-white">
+        <AppTaskbar />
+        <div className="mx-auto max-w-lg rounded-3xl border border-white/10 bg-[#0c1626]/80 p-8 text-center text-sm text-slate-300">
+          در حال دریافت کسب‌وکارهای حساب…
+        </div>
+      </main>
+    );
+  }
+
+  if (businessesError) {
+    return (
+      <main dir="rtl" className="min-h-screen bg-[#050B14] pt-28 px-4 text-white">
+        <AppTaskbar />
+        <div className="mx-auto max-w-lg rounded-3xl border border-red-500/20 bg-[#0c1626]/80 p-8 text-center backdrop-blur-xl">
+          <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
+          <h2 className="mt-4 text-xl font-bold">دریافت کسب‌وکارها ناموفق بود</h2>
+          <p className="mt-2 text-sm text-slate-400">{businessesError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setBusinessesError(null);
+              setBusinessesLoading(true);
+              setBusinessesLoadAttempt((attempt) => attempt + 1);
+            }}
+            className="mt-6 rounded-xl bg-secondary px-6 py-3 font-bold text-slate-950 transition hover:bg-secondary-hover"
+          >
+            تلاش دوباره
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   if (businesses && businesses.length === 0) {
     return (
       <main dir="rtl" className="min-h-screen bg-[#050B14] pt-28 px-4 text-white">
@@ -610,7 +663,6 @@ export default function CardMakerPage() {
    * non-approved designers / businesses without the capability — and lets
    * admins through with an audited bypass. `null` (older payload) never locks.
    */
-  const studioNeedsApproval = studioAccess?.reason === "not_approved";
   /** Reason-specific sentence, or null when the studio is usable. */
   const studioBlockReason = describeStudioStatus(studioAccess);
   // A refused business must NOT expose the advanced authoring workspace at
@@ -621,8 +673,8 @@ export default function CardMakerPage() {
   const studioBlocked = !canOpenStudio(studioAccess);
   const editorToggleDisabled = !editorAllowed || !selectedBusiness || studioBlocked;
   const editorToggleTitle = !editorAllowed
-    ? "ویرایشگر پیشرفته در پلن فعلی فعال نیست"
-    : studioBlockReason ?? "ویرایشگر پیشرفته لایه‌ای";
+    ? "قابلیت ویرایش لایه‌ای در اشتراک این کسب‌وکار فعال نیست"
+    : studioBlockReason ?? "ورود به استودیوی طراحی";
 
   /**
    * True exactly when the layered studio is the page's whole job. The studio
@@ -675,8 +727,12 @@ export default function CardMakerPage() {
         {studioOpen ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div className="flex min-w-0 items-center gap-3">
-              <h1 className="truncate text-base font-black text-white">کارت ویزیت‌ساز دیجیتال و چاپی</h1>
-              <span className="hidden text-xs text-slate-500 sm:inline">— استودیوی طراحی پیشرفته</span>
+              <h1 className="truncate text-base font-black text-white">استودیوی طراحی</h1>
+              {selectedBusiness && (
+                <span className="hidden max-w-56 truncate rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-300 sm:inline">
+                  {selectedBusiness.name}
+                </span>
+              )}
             </div>
             {businessPicker}
           </div>
@@ -684,11 +740,11 @@ export default function CardMakerPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-6">
           <div>
             <span className="rounded-md bg-cyan-500/10 px-2.5 py-1 text-xs font-bold text-cyan-400 border border-cyan-500/20">
-              فاز ۴ — کارت ویزیت‌ساز هوشمند
+              طراحی و مدیریت کارت
             </span>
             <h1 className="mt-2 text-2xl sm:text-3xl font-black text-white">کارت ویزیت‌ساز دیجیتال و چاپی</h1>
             <p className="mt-1 text-sm text-slate-400">
-              پنج قالب حرفه‌ای، پیش‌نمایش زنده و خروجی باکیفیت — به‌همراه نگهداری امن فایل طرح چاپی.
+              کارت کسب‌وکارتان را ویرایش، پیش‌نمایش و ذخیره کنید. ابزار طراحی حرفه‌ای برای طراحان تأییدشده در دسترس است.
             </p>
           </div>
 
@@ -747,18 +803,23 @@ export default function CardMakerPage() {
           <div className="mt-4 w-full">
             <div className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-3 sm:p-4 backdrop-blur-xl">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-                <div className="flex items-center gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => setEditorMode(false)}
-                    className="flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition shadow-sm"
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-white/20 hover:bg-white/10"
                   >
-                    ← بازگشت به قالب‌های ساده
+                  بازگشت به کارت‌ساز
                   </button>
-                  <span className="text-xs text-slate-400">
-                    استودیوی طراحی پیشرفته برای: <strong className="text-white">{selectedBusiness.name}</strong>
+                <span className="inline-flex min-w-0 items-center gap-2 text-xs text-slate-400">
+                  <span className="shrink-0 rounded-md border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 font-semibold text-cyan-200">
+                    استودیوی طراحی
                   </span>
-                </div>
+                  <span className="max-w-48 truncate font-medium text-white sm:max-w-72">
+                    {selectedBusiness.name}
+                  </span>
+                </span>
+              </div>
 
                 <div className="flex items-center gap-2">
                   <CardExportMenu
@@ -804,7 +865,7 @@ export default function CardMakerPage() {
             {/* ============ Controls ============ */}
             <div className="order-2 min-w-0 space-y-6 lg:order-1">
             <form onSubmit={handleSaveSettings} className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-6 backdrop-blur-xl space-y-5">
-              <h2 className="text-lg font-bold text-white border-b border-white/10 pb-3">۱. انتخاب قالب</h2>
+              <h2 className="text-lg font-bold text-white border-b border-white/10 pb-3">انتخاب قالب کارت</h2>
 
               {/* Template Picker — entitlement-aware. Locked templates stay
                   visible (discoverable) with lock overlay + upgrade CTA; the
@@ -848,7 +909,7 @@ export default function CardMakerPage() {
                 })}
               </div>
 
-              <h2 className="pt-2 text-lg font-bold text-white border-b border-white/10 pb-3">۲. شخصی‌سازی</h2>
+              <h2 className="pt-2 text-lg font-bold text-white border-b border-white/10 pb-3">تنظیمات ظاهری</h2>
 
               {/* Theme — premium palettes are visible but marked + disabled. */}
               <div>
@@ -1037,22 +1098,6 @@ export default function CardMakerPage() {
                   <p className="text-xs text-slate-400">QR اختصاصی متصل به صفحه کسب‌وکار شما</p>
                 </div>
 
-                {/* PHASE 4: layered editor toggle (entitlement-gated server-side too) */}
-                <button
-                  type="button"
-                  onClick={() => setEditorMode((v) => !v)}
-                  disabled={editorToggleDisabled}
-                  title={editorToggleTitle}
-                  aria-pressed={editorMode}
-                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
-                    editorMode
-                      ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-200"
-                      : "border-white/10 bg-white/5 text-slate-300 hover:text-white disabled:opacity-40"
-                  }`}
-                >
-                  {editorMode ? "بازگشت به قالب‌ها" : "ویرایشگر پیشرفته"}
-                </button>
-
                 {/* Device sizes + zoom */}
                 <div className="flex items-center gap-2">
                   <div className="flex rounded-xl border border-white/10 bg-white/5 p-1">
@@ -1098,24 +1143,53 @@ export default function CardMakerPage() {
                 </div>
               </div>
 
-              {/* Server studio decision — visible Level A state so a blocked
-                  business sees the real reason instead of a dead button. */}
-              {studioBlockReason && (
-                <div className="mt-4 flex w-full items-start justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-3">
-                  <p className="flex items-center gap-1.5 text-[11px] leading-5 text-amber-200">
-                    <Lock className="h-3.5 w-3.5 shrink-0" />
-                    {studioBlockReason}
-                  </p>
-                  {!studioNeedsApproval && (
+              <section className="mt-4 w-full rounded-2xl border border-cyan-400/20 bg-gradient-to-l from-cyan-500/[0.08] to-transparent p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                      <Layers className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold text-white">استودیوی طراحی حرفه‌ای</h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-400">
+                        ویرایش لایه‌ای، ابزارهای دقیق طراحی و مدیریت عناصر کارت برای این کسب‌وکار.
+                      </p>
+                      {studioBlockReason && (
+                        <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-amber-200">
+                          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {studioBlockReason}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditorMode(true)}
+                    disabled={editorToggleDisabled}
+                    title={editorToggleTitle}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                  >
+                    {editorToggleDisabled && <Lock className="h-3.5 w-3.5" />}
+                    {studioBlocked
+                      ? studioAccess?.reason === "not_approved"
+                        ? "ویژهٔ طراحان تأییدشده"
+                        : studioAccess?.reason === "no_capability"
+                          ? "اشتراک لازم است"
+                          : "دسترسی فعال نیست"
+                      : !editorAllowed
+                        ? "اشتراک لازم است"
+                        : "ورود به استودیو"}
+                  </button>
+                  {(!editorAllowed || studioAccess?.reason === "no_capability") && (
                     <Link
                       href="/pricing"
-                      className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-bold text-amber-300 hover:bg-amber-400/20"
+                      className="inline-flex shrink-0 items-center justify-center gap-1 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:text-white"
                     >
-                      ارتقا
+                      مشاهدهٔ پلن‌ها <ArrowUpRight className="h-3.5 w-3.5" />
                     </Link>
                   )}
                 </div>
-              )}
+              </section>
 
               {/* Scaled preview stage — two render paths (plan decision):
                   editorMode + design_json → layered studio; otherwise the

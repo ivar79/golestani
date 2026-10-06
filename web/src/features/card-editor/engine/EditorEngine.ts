@@ -30,6 +30,7 @@ import {
   insertAnchor,
   moveAnchor,
   moveHandle,
+  nearestSegmentOnCubics,
   nearestSegmentParam,
   normalizePathLayer,
   pathD,
@@ -87,7 +88,14 @@ import {
   booleanContours,
   type BooleanOp,
 } from "../domain/geometry/booleanOps";
-import { toWorldSubPaths, type Pt as GeoPt, type SubPath } from "../domain/geometry/canonical";
+import {
+  resolvePathGeometry,
+  singleContourAnchors,
+  toWorldSubPaths,
+  type CubicSegment,
+  type Pt as GeoPt,
+  type SubPath,
+} from "../domain/geometry/canonical";
 import {
   buildSnapIndex,
   equalSpacingGuides,
@@ -740,13 +748,40 @@ export class EditorEngine {
   }
 
   /** Reflect an editable path across an arbitrary artboard-space axis line. */
+  /**
+   * Can this path be mirrored as ONE contour?
+   *
+   * Ordinary anchors: yes. A legacy `bend` arc or a `rawD` contour that shadows
+   * the anchors (the seeded paths): yes, because the copy is built from the
+   * anchors read off the DRAWN geometry. A multi-contour shape (an ornament) is
+   * refused — mirroring it as one anchor list would mangle it. This is the exact
+   * question behind the mirror button's disabled state, so it is answered here
+   * instead of being guessed in the UI.
+   */
+  canMirrorPathAcrossAxis(layerId: string): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer) return false;
+    if (layer.rawD === undefined && layer.bend === undefined) return layer.points.length >= 2;
+    const geometry = singleContourAnchors(layer);
+    return Boolean(geometry && geometry.points.length >= 2);
+  }
+
   duplicateMirroredPathAcrossAxis(
     layerId: string,
     axisStart: { x: number; y: number },
     axisEnd: { x: number; y: number },
   ): string | null {
     const source = this.editablePath(layerId);
-    if (!source || source.points.length < 2 || source.rawD || source.bend !== undefined) return null;
+    if (!source) return null;
+    // ONE rule: mirror the geometry the layer DRAWS. For an ordinary anchor path
+    // that is its own anchor list; for a legacy arc or a `rawD` shape it is the
+    // anchors read off the drawn cubics, so the SOURCE keeps its frozen/parametric
+    // form untouched and the copy comes out as an ordinary editable path.
+    const anchors =
+      source.rawD === undefined && source.bend === undefined
+        ? source.points
+        : singleContourAnchors(source)?.points ?? null;
+    if (!anchors || anchors.length < 2) return null;
     const axisX = axisEnd.x - axisStart.x;
     const axisY = axisEnd.y - axisStart.y;
     const axisLengthSquared = axisX * axisX + axisY * axisY;
@@ -766,7 +801,7 @@ export class EditorEngine {
       const nearestY = axisStart.y + projection * axisY;
       return { x: nearestX * 2 - worldX, y: nearestY * 2 - worldY };
     };
-    const points = source.points.map((point) => {
+    const points = anchors.map((point) => {
       const anchor = reflect(point);
       const handleIn = point.hIn ? reflect(point.hIn) : null;
       const handleOut = point.hOut ? reflect(point.hOut) : null;
@@ -2206,6 +2241,205 @@ export class EditorEngine {
     this.emit({ doc: { ...this.state.doc, layers } });
   }
 
+  /* ------------------------------ bend anywhere ------------------------------ */
+
+  /**
+   * Freeze a LEGACY two-point sagitta arc (`bend`) into plain editable anchors.
+   *
+   * A bent line DRAWS a circle through its two anchors, so its anchor list sits
+   * on the chord while the user sees the arc: the node overlay showed nodes in
+   * mid-air and every press on the visible curve missed the geometry (the bent
+   * line could not be curved anywhere except at its apex). This reads the
+   * anchors off the DRAWN cubics, so the box, the hit tests and the node editor
+   * all agree with the canvas, and the drawing does not move (a cubic
+   * approximates the circular arc to a fraction of a pixel). One history record.
+   */
+  freezeBendArc(layerId: string): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer || layer.points.length !== 2 || layer.bend === undefined) return false;
+    return this.freezeDrawnGeometry(layerId);
+  }
+
+  /**
+   * Freeze whatever spelling of geometry SHADOWS the anchors into real anchors.
+   *
+   * Two cases, one rule ("the anchors are read off the drawn cubics"):
+   *   - a legacy two-point sagitta arc (a circle through its two anchors), and
+   *   - a `rawD` contour that outranks `points` in the resolver — the seeded and
+   *     imported paths, where the anchor list the inspector shows is NOT the
+   *     line the user sees.
+   *
+   * Refused for a multi-contour `rawD`: it cannot become one anchor list without
+   * losing geometry, so it stays the frozen shape it is. One history record, and
+   * the drawing does not move.
+   */
+  freezeDrawnGeometry(layerId: string): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer) return false;
+    if (layer.bend === undefined && layer.rawD === undefined) return false;
+    const geometry = singleContourAnchors(layer);
+    if (!geometry || geometry.points.length < 2) return false;
+    this.applyPathPoints(layer, geometry.points);
+    return true;
+  }
+
+  /**
+   * WHERE a bend would land: the nearest point on the shape the layer DRAWS.
+   *
+   * The canvas uses it for the hover dot, so the dot and the press agree by
+   * construction (one hit test, one geometry) — including on a legacy arc, where
+   * the only honest answer is a point on the arc rather than on the chord.
+   */
+  bendPointAt(
+    layerId: string,
+    localPoint: { x: number; y: number },
+    tolerance = SNAP_TOLERANCE_DEFAULT,
+  ): { point: { x: number; y: number }; distance: number } | null {
+    const layer = this.editablePath(layerId);
+    if (!layer) return null;
+    const hit = nearestSegmentOnCubics(this.bendSegmentsOf(layer), localPoint);
+    if (!hit || hit.distance > tolerance) return null;
+    return { point: hit.point, distance: hit.distance };
+  }
+
+  /**
+   * The layer's DRAWN geometry as cubic segments, cached per layer version.
+   *
+   * The hover dot runs on EVERY pointermove, and resolving a path means writing
+   * its `d` string and parsing it back — real work per frame for a freehand
+   * stroke with a few hundred anchors. The engine replaces the layer object on
+   * every patch (and the points array with it), so object identity is a sound
+   * cache key: there is no invalidation logic to get wrong.
+   */
+  private bendGeometry = new WeakMap<
+    PathLayer,
+    {
+      points: PathPoint[];
+      rawD: string | undefined;
+      bend: number | undefined;
+      closed: boolean;
+      segments: CubicSegment[];
+    }
+  >();
+
+  private bendSegmentsOf(layer: PathLayer): CubicSegment[] {
+    const cached = this.bendGeometry.get(layer);
+    if (
+      cached &&
+      cached.points === layer.points &&
+      cached.rawD === layer.rawD &&
+      cached.bend === layer.bend &&
+      cached.closed === layer.closed
+    ) {
+      return cached.segments;
+    }
+    const segments = resolvePathGeometry(layer).flatMap((sub) => sub.segments);
+    this.bendGeometry.set(layer, {
+      points: layer.points,
+      rawD: layer.rawD,
+      bend: layer.bend,
+      closed: layer.closed,
+      segments,
+    });
+    return segments;
+  }
+
+  /**
+   * START A BEND — the one entry point behind "grab the line anywhere and curve
+   * that spot".
+   *
+   * It (a) turns the layer into a shape whose anchors ARE its geometry if it was
+   * not one already (legacy arc / parametric spec), (b) finds the spot on the
+   * DRAWN shape closest to the pointer, and (c) inserts a node there with a
+   * loss-less de Casteljau split. The node is returned so the caller can keep
+   * dragging it: the whole press-move-release is ONE undo record, committed by
+   * `commitPathEdit` (which also re-origins the layer box once, at the end).
+   */
+  beginBend(
+    layerId: string,
+    localPoint: { x: number; y: number },
+    tolerance = SNAP_TOLERANCE_DEFAULT,
+  ): { index: number; point: { x: number; y: number } } | null {
+    const layer = this.editablePath(layerId);
+    if (!layer) return null;
+    const prepared = this.bendReadyLayer(layer);
+    // `null` = the drawing cannot be described by anchors at all (a multi-contour
+    // ornament): there is no honest place to put the node, so nothing happens.
+    if (!prepared) return null;
+    // HIT TEST FIRST, PATCH SECOND. Freezing a legacy arc / `rawD` shape is a real
+    // document change, and a press that misses the line must leave the document
+    // exactly as it was — not convert the layer and then bail out.
+    const hit = nearestSegmentOnCubics(this.bendSegmentsOf(prepared.layer), localPoint);
+    if (!hit || hit.distance > tolerance) return null;
+    if (prepared.patch) this.transientPatch(layerId, prepared.patch);
+    const index = this.transientInsertAnchor(layerId, hit.segIndex, hit.t);
+    if (index === null) return null;
+    return { index, point: hit.point };
+  }
+
+  /**
+   * INSERT A NODE MID-GESTURE, without history and without re-origining the box.
+   *
+   * The press that starts a bend creates the node AND keeps dragging it, so the
+   * split must not go through `updateLayer` (which pushes a record and moves the
+   * layer origin under the pointer). Returns the new node's index, or null when
+   * the segment cannot take an anchor.
+   */
+  transientInsertAnchor(layerId: string, segIndex: number, t: number): number | null {
+    const layer = this.editablePath(layerId);
+    if (!layer) return null;
+    const points = insertAnchor(layer.points, layer.closed, segIndex, t);
+    if (points === layer.points) return null;
+    const index = Math.min(segIndex + 1, points.length - 1);
+    this.transientPatch(layerId, {
+      points,
+      ...this.freezeCurveSpec(layer),
+      ...this.freezeBendModel(layer),
+    } as Partial<CardLayer>);
+    this.emit({ selectedAnchor: { layerId, index }, anchorSelection: [{ layerId, index }] });
+    return index;
+  }
+
+  /** Drop a stale legacy arc model: the anchors are the geometry now. */
+  private freezeBendModel(layer: PathLayer): Partial<CardLayer> {
+    if (layer.bend === undefined && layer.curvature === undefined && layer.rawD === undefined) return {};
+    return { bend: undefined, curvature: undefined, rawD: undefined, pathMode: "pen" };
+  }
+
+  /**
+   * The layer as the BEND gesture needs it: anchors that ARE the geometry, or
+   * `null` when the drawing cannot be expressed as one anchor contour.
+   *
+   * It returns the layer WITHOUT patching (the caller applies `patch` only once a
+   * hit is confirmed) and every patch is transient on purpose — a gesture must
+   * never re-origin the box or leave two undo records behind (the caller commits
+   * once).
+   */
+  private bendReadyLayer(layer: PathLayer): { layer: PathLayer; patch: Partial<CardLayer> | null } | null {
+    let next = layer;
+    let patch: Partial<CardLayer> | null = null;
+    const shadowsAnchors = (layer.points.length === 2 && layer.bend !== undefined) || layer.rawD !== undefined;
+    if (shadowsAnchors) {
+      const geometry = singleContourAnchors(layer);
+      if (!geometry || geometry.points.length < 2) return null;
+      patch = { ...(patch ?? {}), ...this.freezeBendModel(layer), points: geometry.points, closed: geometry.closed };
+      next = {
+        ...layer,
+        points: geometry.points,
+        closed: geometry.closed,
+        bend: undefined,
+        curvature: undefined,
+        rawD: undefined,
+        pathMode: "pen",
+      } as PathLayer;
+    }
+    if (next.curve) {
+      patch = { ...(patch ?? {}), ...this.freezeCurveSpec(next) };
+      next = { ...next, curve: undefined, curveProfile: undefined, pathMode: "pen" } as PathLayer;
+    }
+    return { layer: next, patch };
+  }
+
   /* ---------------------------- pen path surgery (§5) ---------------------------- */
 
   /** Reverse a path's direction. Handles travel with their anchors. */
@@ -2685,6 +2919,12 @@ export class EditorEngine {
     }
     const layer = this.editablePath(layerId);
     if (!layer) return;
+    // NOTE: entering the mode does NOT convert a legacy two-point arc. Looking at
+    // the nodes must never destroy the parametric description of the line (the
+    // arc slider has to survive a mere click-through), so the conversion happens
+    // on the first STRUCTURAL edit instead: `beginBend` freezes it before
+    // inserting, and `applyPathPoints` drops it for every other node edit. The
+    // two anchors it does show are honest — they are the drawn arc's endpoints.
     const first = { layerId, index: 0 };
     this.emit({
       editingPathId: layerId,
@@ -2991,8 +3231,18 @@ export class EditorEngine {
     // anchors become the source of truth. Keeping the old curve spec alive
     // would make the next parameter edit silently regenerate the user's manual
     // geometry, which is not acceptable in a vector editor.
-    const source = layer.curve
-      ? ({ ...layer, ...this.freezeCurveSpec(layer), points } as PathLayer)
+    //
+    // The same rule covers the two other spellings of geometry that SHADOW the
+    // anchors in the resolver: a legacy `bend` arc is drawn as a circle (a node
+    // edit that left `bend` alive would be invisible — and the box would hug the
+    // chord), and `rawD` outranks `points`. Anchors are the geometry now.
+    const dropsModel =
+      layer.curve !== undefined ||
+      layer.bend !== undefined ||
+      layer.curvature !== undefined ||
+      layer.rawD !== undefined;
+    const source = dropsModel
+      ? ({ ...layer, ...this.freezeCurveSpec(layer), ...this.freezeBendModel(layer), points } as PathLayer)
       : ({ ...layer, points } as PathLayer);
     const normalized = normalizePathLayer(source, pathPadding(layer.strokeWidth));
     this.updateLayer(layer.id, {
@@ -3003,7 +3253,7 @@ export class EditorEngine {
       height: normalized.height,
       curve: undefined,
       curveProfile: undefined,
-      ...(layer.curve ? { pathMode: "pen" } : {}),
+      ...(dropsModel ? { bend: undefined, curvature: undefined, rawD: undefined, pathMode: "pen" } : {}),
     } as Partial<CardLayer>);
   }
 

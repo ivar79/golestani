@@ -30,7 +30,7 @@ class BusinessController extends Controller
         $b = DB::transaction(function () use ($r) {
             // Serialize first-business role assignment for a given user.
             $user = $r->user()->newQuery()->lockForUpdate()->findOrFail($r->user()->id);
-            if ($user->hasRole('user') && !$user->hasRole('business_owner')) $user->assignRole('business_owner');
+            if (!$user->hasRole('admin') && !$user->hasRole('business_owner')) $user->assignRole('business_owner');
             $data = $r->validated();
             $this->resolveDesignerAttribution($data);
             $data['slug'] = (Str::slug($data['name']) ?: 'business').'-'.Str::lower((string) Str::ulid());

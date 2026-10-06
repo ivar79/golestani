@@ -302,7 +302,20 @@ function ImageVisual({ layer }: { layer: ImageLayer }) {
  * raw HTML injection. A draft (not-yet-approved) business has no public QR, so
  * the placeholder is the honest state rather than a broken image.
  */
-const QrVisual = memo(function QrVisual({ payload, light }: { payload: string; light: string }) {
+const QrVisual = memo(function QrVisual({ payload, light }: {
+  payload: string;
+  light: string;
+  /**
+   * Owner-session asset revision (from `useQrAssets`). It is read while
+   * rendering — `qrSrcFor` consults a MODULE-level registry, not props — so
+   * React's default shallow prop comparison is the only thing that can tell
+   * this memoized component that the registry changed underneath it. Without a
+   * prop that actually moves, the layer keeps rendering the fallback
+   * `/api/qr/{slug}` forever and a draft business shows an empty QR box.
+   * Declared in the type only (never destructured) — it carries no value here.
+   */
+  qrRevision?: number;
+}) {
   // WHICH source failed — not a boolean. A QR that failed before its
   // authenticated asset arrived (draft business) is retried automatically the
   // moment the source changes, with no state-adjusting effect.
@@ -425,14 +438,20 @@ function PathVisual({ layer }: { layer: PathLayer }) {
 }
 
 /** Per-layer visual dispatch. Unknown kinds render nothing (forward-compatible). */
-export function LayerVisual({ layer }: { layer: CardLayer }) {
+export function LayerVisual({ layer, qrRevision }: { layer: CardLayer; qrRevision?: number }) {
   switch (layer.kind) {
     case "text":
       return <TextVisual layer={layer} />;
     case "image":
       return <ImageVisual layer={layer} />;
     case "qr":
-      return <QrVisual payload={(layer as QrLayer).payload} light={(layer as QrLayer).light} />;
+      return (
+        <QrVisual
+          payload={(layer as QrLayer).payload}
+          light={(layer as QrLayer).light}
+          qrRevision={qrRevision}
+        />
+      );
     case "badge":
       return <BadgeVisual layer={layer} />;
     case "shape":
@@ -505,10 +524,18 @@ function RegionPaintVisual({ doc }: { doc: CardDocument }) {
  * The shared layer projection: frame + visual in one place. Every consumer of
  * the document (stage, export, public card) renders layers through this.
  */
-export function LayerBox({ layer, z }: { layer: CardLayer; z: number }) {
+export function LayerBox({
+  layer,
+  z,
+  qrRevision,
+}: {
+  layer: CardLayer;
+  z: number;
+  qrRevision?: number;
+}) {
   return (
     <div style={layerStyle(layer, z)}>
-      <LayerVisual layer={layer} />
+      <LayerVisual layer={layer} qrRevision={qrRevision} />
     </div>
   );
 }
@@ -520,9 +547,11 @@ export function LayerBox({ layer, z }: { layer: CardLayer; z: number }) {
 export function LayeredCard({
   doc,
   scale = 1,
+  qrRevision,
 }: {
   doc: CardDocument;
   scale?: number;
+  qrRevision?: number;
 }) {
   return (
     <div
@@ -538,7 +567,7 @@ export function LayeredCard({
     >
       <RegionPaintVisual doc={doc} />
       {doc.layers.map((layer, index) => (
-        <LayerBox key={layer.id} layer={layer} z={layerZ(index)} />
+        <LayerBox key={layer.id} layer={layer} z={layerZ(index)} qrRevision={qrRevision} />
       ))}
     </div>
   );

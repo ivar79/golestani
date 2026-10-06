@@ -14,7 +14,7 @@
  * Pure: no DOM, no React.
  */
 
-import { resolveLayerPathD } from "../path";
+import { nearestSegmentOnCubics, resolveLayerPathD, type PathPoint } from "../path";
 import { parsePathData, type CubicSegment, type Pt, type SubPath } from "./pathData";
 
 export type { CubicSegment, Pt, SubPath } from "./pathData";
@@ -54,6 +54,95 @@ export function offsetSubPaths(subpaths: SubPath[], dx: number, dy: number): Sub
 /** Artboard-space subpaths — what region/face detection works on. */
 export function toWorldSubPaths(layer: PathGeometrySource): SubPath[] {
   return offsetSubPaths(resolvePathGeometry(layer), layer.x ?? 0, layer.y ?? 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Geometry → editable anchors                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Turn parsed subpaths back into an editable anchor list — the INVERSE of
+ * `resolveLayerPathD` + `parsePathData`.
+ *
+ * This is what makes a geometry that is NOT an anchor list editable without
+ * moving it: a legacy two-point `bend` arc draws a CIRCLE through its two
+ * anchors, so its anchor list sits on the chord while the user sees the arc.
+ * Reading the anchors off the drawn cubics makes the canvas, the hit tests and
+ * the node editor agree, and the drawing is preserved (a cubic approximates the
+ * circular arc to a small fraction of a pixel).
+ *
+ * Only the FIRST subpath carrying segments is converted: an editable path layer
+ * is one contour, and a multi-contour `rawD` is deliberately left as the frozen
+ * shape it is instead of being silently split into separate paths.
+ *
+ * Handles that sit exactly ON their anchor are dropped (`null`) so a straight
+ * edge stays a corner in the node overlay's "smooth vs corner" reading.
+ */
+export function anchorsFromSubPaths(subpaths: SubPath[]): { points: PathPoint[]; closed: boolean } {
+  const sub = subpaths.find((item) => item.segments.length > 0);
+  if (!sub) return { points: [], closed: false };
+  const closed = sub.closed && sub.segments.length > 1;
+  const same = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6;
+  const handle = (anchor: Pt, control: Pt): Pt | null => (same(anchor, control) ? null : { ...control });
+
+  const points: PathPoint[] = [];
+  sub.segments.forEach((segment, index) => {
+    if (index === 0) {
+      points.push({ x: segment.p0.x, y: segment.p0.y, hIn: null, hOut: handle(segment.p0, segment.c1) });
+    }
+    // A closed contour's last cubic ends on the FIRST anchor: it must not be
+    // pushed twice (the wrap-around handle is attached in the pass below).
+    if (closed && index === sub.segments.length - 1) return;
+    points.push({ x: segment.p1.x, y: segment.p1.y, hIn: handle(segment.p1, segment.c2), hOut: null });
+  });
+
+  // `hOut` of every anchor is the c1 of the cubic that LEAVES it.
+  points.forEach((point, index) => {
+    const segment = sub.segments[index];
+    if (segment) point.hOut = handle(point, segment.c1);
+  });
+  if (closed && points.length > 1) {
+    const wrap = sub.segments[sub.segments.length - 1];
+    points[0].hIn = handle(points[0], wrap.c2);
+  }
+  return { points, closed };
+}
+
+/** The anchor geometry a layer's DRAWING actually corresponds to (arc/rawD aware). */
+export function layerAnchorsFromGeometry(layer: PathGeometrySource): { points: PathPoint[]; closed: boolean } {
+  return anchorsFromSubPaths(resolvePathGeometry(layer));
+}
+
+/**
+ * The same conversion, but ONLY when the drawing is a single contour.
+ *
+ * That is the sound precondition for "make the anchors describe what is drawn":
+ * a multi-contour `rawD` (an ornament, a boolean result) cannot become ONE anchor
+ * list without losing geometry, so callers must leave it as the frozen shape it
+ * is. Returns null when the drawing is not representable as one contour.
+ */
+export function singleContourAnchors(layer: PathGeometrySource): { points: PathPoint[]; closed: boolean } | null {
+  const subpaths = resolvePathGeometry(layer).filter((sub) => sub.segments.length > 0);
+  if (subpaths.length !== 1) return null;
+  return anchorsFromSubPaths(subpaths);
+}
+
+/**
+ * Nearest point ON the shape a layer actually DRAWS (arc / `rawD` / anchors).
+ *
+ * `segIndex`/`t` index the flattened segment list, in exactly the order
+ * `anchorsFromSubPaths` reconstructs it — so "grab the line here and make it a
+ * node here" is one hit test, and the node lands under the pointer instead of on
+ * the chord between two anchors.
+ */
+export function nearestPointOnLayerPath(
+  layer: PathGeometrySource,
+  target: Pt,
+  steps = 24,
+): { segIndex: number; t: number; distance: number; point: Pt } | null {
+  const segments = resolvePathGeometry(layer).flatMap((sub) => sub.segments);
+  if (segments.length === 0) return null;
+  return nearestSegmentOnCubics(segments, target, steps);
 }
 
 /* ------------------------------------------------------------------ */

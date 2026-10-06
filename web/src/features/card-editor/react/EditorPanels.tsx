@@ -17,7 +17,9 @@
  * (dark) color — each maps to the field its renderer actually reads.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { RefObject } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -299,8 +301,45 @@ export function Toolbox({
   const state = useCardEditor(engine);
   const entitlements = useEntitlements();
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const shapeTriggerRef = useRef<HTMLButtonElement>(null);
+  const curveTriggerRef = useRef<HTMLButtonElement>(null);
+  const pickerPanelRef = useRef<HTMLDivElement>(null);
   const [showShapePicker, setShowShapePicker] = useState(false);
   const [showCurvePicker, setShowCurvePicker] = useState(false);
+  type PickerPos = { left: number; top: number };
+  const [shapePickerPos, setShapePickerPos] = useState<PickerPos | null>(null);
+  const [curvePickerPos, setCurvePickerPos] = useState<PickerPos | null>(null);
+  const PICKER_W = 290;
+  const CURVE_PICKER_W = 300;
+  /** Assumed max height for viewport clamping; real content is shorter. */
+  const PICKER_H = 300;
+  function placePicker(anchorEl: HTMLElement | null, width: number): PickerPos | null {
+    if (!anchorEl || !toolbarRef.current) return null;
+    const { innerWidth: vw, innerHeight: vh } = window;
+    const gap = 8;
+    const w = Math.min(width, vw - gap * 2);
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const anchorRect = anchorEl.getBoundingClientRect();
+    // Desktop renders the toolbar as a tall narrow column; mobile as a short
+    // wide strip. Anchor on the toolbar (not the button so a wide button still
+    // triggers the L-shape placement) to match the original md/top-full intent.
+    const vertical = toolbarRect.height > toolbarRect.width;
+    let left: number;
+    let top: number;
+    if (vertical) {
+      // Float the panel just LEFT of the toolbar, top-aligned with the trigger.
+      left = anchorRect.right - w - gap;
+      top = anchorRect.top;
+    } else {
+      // Mobile: panel sits below the toolbar, left-aligned with the trigger.
+      left = anchorRect.left;
+      top = anchorRect.bottom + gap;
+    }
+    left = Math.round(Math.min(Math.max(gap, left), vw - w - gap));
+    const clampedTop = Math.min(Math.max(gap, top), vh - PICKER_H - gap);
+    return { left, top: Math.round(clampedTop) };
+  }
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -318,6 +357,7 @@ export function Toolbox({
       if (addBlocked || !layerKindAllowed(entitlements.capabilities, "shape")) return;
       setShowCurvePicker(false);
       setShowShapePicker((v) => !v);
+      if (!showShapePicker) setShapePickerPos(placePicker(shapeTriggerRef.current, PICKER_W));
       return;
     }
     setShowShapePicker(false);
@@ -325,6 +365,7 @@ export function Toolbox({
       if (addBlocked || !layerKindAllowed(entitlements.capabilities, "path")) return;
       setShowShapePicker(false);
       setShowCurvePicker((v) => !v);
+      if (!showCurvePicker) setCurvePickerPos(placePicker(curveTriggerRef.current, CURVE_PICKER_W));
       return;
     }
     // Both DRAWING tools create a `path` layer, so both answer to the same
@@ -372,6 +413,23 @@ export function Toolbox({
     }
   }
 
+  // The pickers escape the toolbar's overflow via a portal on document.body.
+  // Dismiss them on an outside click / Escape so they never pin over the canvas.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (pickerPanelRef.current?.contains(target)) return;
+      if (toolbarRef.current?.contains(target)) return;
+      setShowShapePicker(false);
+      setShowCurvePicker(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setShowShapePicker(false); setShowCurvePicker(false); } };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keyup", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keyup", onKey); };
+  }, []);
+
   const primaryTools: ToolboxEntry[] = ["pointer", "text", "shape", "curved_line", "pen", "path"];
   const addTools: ToolboxEntry[] = ["image", "qr", "badge"];
 
@@ -400,6 +458,7 @@ export function Toolbox({
       <button
         key={kind}
         type="button"
+        ref={kind === "shape" ? shapeTriggerRef as RefObject<HTMLButtonElement> : kind === "curved_line" ? curveTriggerRef as RefObject<HTMLButtonElement> : undefined}
         onClick={() => activate(kind)}
         disabled={disabled}
         title={item.label}
@@ -428,6 +487,7 @@ export function Toolbox({
       className="relative z-[5000] flex w-full shrink-0 flex-row items-stretch gap-1 overflow-x-auto overflow-y-hidden rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)] md:h-full md:w-auto md:flex-col md:overflow-x-hidden md:overflow-y-auto"
       role="toolbar"
       aria-label="ابزارهای استودیو"
+      ref={toolbarRef}
     >
       <h3 className="hidden px-1 pb-1 text-right text-[11px] font-bold tracking-tight text-slate-300 md:block">ابزار کار</h3>
 
@@ -437,9 +497,15 @@ export function Toolbox({
       <h3 className="hidden px-1 pb-1 text-right text-[11px] font-bold tracking-tight text-slate-300 md:block">افزودن محتوا</h3>
       {addTools.map((kind) => renderToolButton(kind))}
 
-      {showShapePicker && (
-        <div className="absolute left-0 top-full z-[10000] mt-2 w-[290px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:left-auto md:right-full md:top-0 md:mt-0 md:mr-2">
-          <div className="mb-2 flex items-center justify-between">
+      {showShapePicker && shapePickerPos
+        ? createPortal(
+            <div
+              data-shape-picker
+              ref={pickerPanelRef}
+              className="fixed z-[10000] w-[290px] rounded-xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
+              style={{ left: shapePickerPos.left, top: shapePickerPos.top }}
+            >
+              <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-bold text-white">اشکال</span>
             <button type="button" onClick={() => setShowShapePicker(false)} className="text-[10px] text-slate-500 hover:text-white">بستن</button>
           </div>
@@ -465,10 +531,18 @@ export function Toolbox({
             ))}
           </div>
         </div>
-      )}
+        , document.body,
+        )
+        : null}
 
-      {showCurvePicker && (
-        <div className="absolute left-0 top-full z-[10000] mt-2 w-[300px] rounded-2xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:left-auto md:right-full md:top-[94px] md:mt-0 md:mr-2">
+      {showCurvePicker && curvePickerPos
+        ? createPortal(
+            <div
+              data-curve-picker
+              ref={pickerPanelRef}
+              className="fixed z-[10000] w-[300px] rounded-xl border border-white/10 bg-[#0b121e]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
+              style={{ left: curvePickerPos.left, top: curvePickerPos.top }}
+            >
           <div className="mb-1 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] font-bold text-white">
               <Spline className="h-3.5 w-3.5 text-cyan-300" />
@@ -501,7 +575,9 @@ export function Toolbox({
             ))}
           </div>
         </div>
-      )}
+        , document.body,
+        )
+        : null}
 
       {addBlocked ? (
         <span className="mt-1 text-center text-[8px] leading-3 text-amber-300">سقف لایه پر است</span>

@@ -25,14 +25,6 @@ class PrivateAssetController extends Controller
             ['personal', 'submission'],
             (int) $request->user()?->id
         );
-
-        // Admin may inspect anything.
-        if ($asset === null && $request->user()?->hasRole('admin')) {
-            $asset = \App\Models\TemplateAsset::query()
-                ->where('path', $path)
-                ->whereIn('scope', ['personal', 'submission'])
-                ->first();
-        }
         abort_if($asset === null, 404, 'فایل یافت نشد.');
 
         $disk = Storage::disk(TemplateAssetService::DISK);

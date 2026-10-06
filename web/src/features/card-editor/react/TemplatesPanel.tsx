@@ -218,10 +218,10 @@ export function TemplatesPanel({
         <div>
           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
             <Sparkles className="h-4 w-4 text-cyan-400" />
-            <span>گالری قالب‌های آماده و شاهکارهای هنری</span>
+            <span>قالب‌های آماده</span>
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
-            هر قالب یک سند لایه‌ای قابل ویرایش است؛ اعمال آن از سرور، شناسه لایه‌ها را نو می‌سازد.
+            یک قالب را انتخاب کنید و آن را متناسب با هویت کسب‌وکار ویرایش کنید.
           </p>
         </div>
       </div>
@@ -257,15 +257,15 @@ export function TemplatesPanel({
               className="flex items-center gap-1 rounded-lg border border-violet-400/40 bg-violet-500/15 px-2.5 py-1.5 text-[11px] font-bold text-violet-300 hover:bg-violet-500/25 disabled:opacity-50"
             >
               <Upload className="h-3 w-3" />
-              <span>ذخیره طرح فعلی به قالب‌های من</span>
+              <span>ذخیره در قالب‌های شخصی</span>
             </button>
             {designerStatus === "approved" ? (
               <span className="rounded-lg bg-sky-500/15 px-2.5 py-1.5 text-[11px] font-bold text-sky-300">
-                طراح تأییدشده — ثبت قالب به گالری از داشبورد طراح
+                برای ثبت قالب در گالری عمومی، به پنل طراح بروید.
               </span>
             ) : designerStatus === "pending" ? (
               <span className="rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11px] font-bold text-amber-300">
-                درخواست طراح در انتظار تأیید
+                درخواست همکاری در انتظار بررسی است.
               </span>
             ) : (
               <button

@@ -255,10 +255,10 @@ export function CardStudio({
             <Redo2 className="h-4 w-4" />
           </button>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-300 font-medium mr-1">
-            <span className="font-semibold tracking-tight text-white">InkArt Studio</span>
-            <span className="h-1 w-1 rounded-full bg-emerald-400/80" />
-            <span className="text-[10px] text-slate-500">Card Designer</span>
+          <div className="mr-1 flex items-center gap-2 text-xs font-medium text-slate-300">
+            <span className="font-bold tracking-tight text-white">استودیوی طراحی اینکارت</span>
+            <span className="hidden h-1 w-1 rounded-full bg-emerald-400/80 sm:block" />
+            <span className="hidden text-[10px] text-slate-500 sm:block">طراحی کارت ویزیت</span>
           </div>
         </div>
 

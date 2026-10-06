@@ -639,6 +639,10 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
               کمان پایین ‿
             </button>
           </div>
+          <p className="text-[9px] leading-4 text-cyan-200/70">
+            برای منحنی‌کردن هر نقطه از خط، روی همان نقطه از خط بکشید؛ آن نقطه به یک گرهٔ واقعی تبدیل
+            می‌شود و از آن به بعد آزادانه جابه‌جا و منحنی می‌شود (Alt+کشیدن = جابه‌جایی کل لایه).
+          </p>
         </div>
       )}
 
@@ -650,7 +654,13 @@ export function PathInspectorSection({ engine, layer }: { engine: EditorEngine; 
             if (editing) {
               engine.setPathEditing(null);
             } else {
+              // An EXPLICIT "edit the nodes" request converts the parametric
+              // descriptions into the anchors the user is about to drag: the
+              // curve profile, and a legacy two-point arc, both draw geometry
+              // that is not the anchor list. The conversion is loss-less and one
+              // undo step, and it is what puts every node ON the drawn shape.
               if (layer.curve) engine.convertCurveToPath(layer.id);
+              if (layer.bend !== undefined && layer.points.length === 2) engine.freezeBendArc(layer.id);
               engine.setPathEditing(layer.id);
             }
           }}

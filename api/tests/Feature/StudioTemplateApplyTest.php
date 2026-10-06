@@ -226,8 +226,11 @@ class StudioTemplateApplyTest extends TestCase
 
         // Admin (acting for a business they own) → still 403: the admin
         // bypass covers the CAPABILITY gate, never template ownership.
-        $admin = $this->user(['admin']);
-        [, $adminBusiness] = $this->approvedDesignerBusiness(['custom_templates' => true], 'apply-admin');
+        $admin = $this->user(['admin', 'business_owner']);
+        $adminBusiness = $this->business($admin, [
+            'card_editor' => true,
+            'custom_templates' => true,
+        ], 'apply-admin');
         $this->apply($admin, $adminBusiness, ['source' => 'personal', 'template_id' => $template->id])
             ->assertStatus(403)
             ->assertJsonPath('message', 'این قالب متعلق به شما نیست.');
@@ -298,12 +301,16 @@ class StudioTemplateApplyTest extends TestCase
 
     public function test_admin_apply_acts_as_self_with_an_audited_bypass(): void
     {
-        [, $business] = $this->approvedDesignerBusiness([], 'apply-own');
-        $admin = $this->user(['admin']);
+        $admin = $this->user(['admin', 'business_owner']);
+        $business = $this->business($admin, [
+            'card_editor' => true,
+            'designer_studio' => true,
+            'card_templates' => [self::CATALOG_ID],
+        ], 'apply-admin-owned');
+        [, $unrelatedBusiness] = $this->approvedDesignerBusiness([], 'apply-unrelated');
         $this->enforce();
 
-        // An admin may act on ANY business (the standard authorizeOwner rule),
-        // as THEMSELVES with an audited studio bypass.
+        // Admin bypasses Designer approval only for a business they own.
         $this->actingAs($admin)
             ->postJson("/api/businesses/{$business->id}/card/template-apply", [
                 'source' => 'builtin',
@@ -312,5 +319,12 @@ class StudioTemplateApplyTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseHas('audit_events', ['event' => 'admin.studio_bypass', 'actor_id' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/businesses/{$unrelatedBusiness->id}/card/template-apply", [
+                'source' => 'builtin',
+                'template_id' => self::CATALOG_ID,
+            ])
+            ->assertStatus(403);
     }
 }

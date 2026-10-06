@@ -18,11 +18,13 @@ import { EditorEngine, type ResizeHandle } from "../engine/EditorEngine";
 import { useCardEditor } from "./useCardEditor";
 import { LayerBox, LayeredCard } from "./LayeredCardRenderer";
 import { SelectionOverlay } from "./SelectionOverlay";
-import { shouldBeginHandleDrag } from "../domain/penGesture";
+import { shouldBeginHandleDrag, exceedsClickThreshold } from "../domain/penGesture";
+import { layerHitCursor } from "../domain/cursorPolicy";
 import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
 import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import { useQrAssets } from "./useQrAssets";
+import { useAltHeld } from "./useAltHeld";
 import {
   clampZoom,
   keepInside,
@@ -56,7 +58,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const state = useCardEditor(engine);
   // Owner-session QR assets: the canvas AND the export surface read the same
   // DOM, so registering here is what makes a draft business's QR real in both.
-  useQrAssets(doc);
+  // The revision MUST be threaded into the renderers (see `qrRevision`): the
+  // registry is module state, so nothing else tells React that `qrSrcFor()`
+  // started returning an authenticated data URL — the layer would keep the
+  // anonymous `/api/qr/{slug}` fallback, which 404s for a draft business.
+  const qrRevision = useQrAssets(doc);
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const isManualZoomRef = useRef(false);
@@ -70,12 +76,21 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
   const nodeMarqueeRef = useRef<{ x0: number; y0: number } | null>(null);
   const marqueeEndRef = useRef<{ x: number; y: number } | null>(null);
   const marqueeShiftRef = useRef(false);
+  /**
+   * Where the armed node marquee began, which decides what a click (no travel)
+   * on pointerup means: on the edited layer's box it LEAVES point-editing with
+   * the layer still selected; on empty canvas it deselects. Null `marqueeEndRef`
+   * is the "never crossed the threshold, so this was a click" signal.
+   */
+  const nodeMarqueeKindRef = useRef<"editedLayer" | "stage" | null>(null);
   const [mirrorAxisPickMode, setMirrorAxisPickMode] = useState(false);
   const [mirrorAxis, setMirrorAxis] = useState<{
     start: { x: number; y: number };
     end: { x: number; y: number } | null;
   } | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
+  /** Alt down right now — the "drag the whole layer" modifier of the node mode. */
+  const altHeld = useAltHeld();
   const panRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isEditingZoom, setIsEditingZoom] = useState(false);
@@ -266,15 +281,24 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     // mode. Pressing a DIFFERENT layer leaves point-editing and selects it —
     // otherwise the mode (entered automatically right after a stroke is drawn)
     // swallowed the click and the existing line/path could not be re-selected.
-    if (state.editingPathId === layerId) {
+    if (state.editingPathId === layerId && !event.altKey) {
       const pos = pointerPos(event);
+      // ARM the marquee without painting it. A press that never travels is a
+      // CLICK, and a click here must be able to leave point-editing with the
+      // layer still selected — there was otherwise no mouse path at all from
+      // "editing this path" to "this path is selected", because every press on
+      // this box used to be swallowed by a zero-size rubber band.
       nodeMarqueeRef.current = { x0: pos.x, y0: pos.y };
       marqueeEndRef.current = null;
       marqueeShiftRef.current = event.shiftKey;
-      setNodeMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y });
+      nodeMarqueeKindRef.current = "editedLayer";
       (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
       return;
     }
+    // ALT over the edited path (spilled out of the node toolbar's own contract)
+    // falls through to the layer move below: while point-editing, the box press
+    // would otherwise start a node marquee, and the user could not nudge the
+    // whole line without leaving the mode.
     const layer = doc.layers.find((l) => l.id === layerId);
     if (!layer || layer.locked) return;
     event.stopPropagation();
@@ -518,16 +542,20 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     // NODE MARQUEE: while point-editing, an empty-stage drag rubber-bands a
     // selection rect (Figma's node marquee). Shift keeps what was selected.
     if (state.editingPathId) {
+      // The edited layer's own hit-area arms the SAME press and lets it bubble
+      // here. Returning is the whole point: re-arming would relabel a click on
+      // the layer as a click on empty canvas, and falling through would run the
+      // deselect below and throw away the selection we are trying to keep.
+      if (nodeMarqueeRef.current) return;
       const pos = pointerPos(event);
       nodeMarqueeRef.current = { x0: pos.x, y0: pos.y };
       marqueeEndRef.current = null;
       marqueeShiftRef.current = event.shiftKey;
-      setNodeMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y });
+      nodeMarqueeKindRef.current = "stage";
       (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
       return;
     }
-    // Empty-canvas press in point-edit mode keeps the marquee contract above
-    // (Esc leaves the mode); otherwise it is a plain deselect.
+    // Empty-canvas press outside point-editing is a plain deselect.
     engine.select(null);
   };
 
@@ -599,6 +627,15 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     // transform guard).
     if (nodeMarqueeRef.current) {
       const pos = pointerPos(event);
+      // Stay INVISIBLE until the press has actually travelled. Until then it
+      // is still a click, and the click is what leaves point-editing.
+      if (marqueeEndRef.current === null) {
+        const origin = nodeMarqueeRef.current;
+        if (!exceedsClickThreshold({ x: origin.x0, y: origin.y0 }, pos, zoom)) return;
+        marqueeEndRef.current = pos;
+        setNodeMarquee({ x0: origin.x0, y0: origin.y0, x1: pos.x, y1: pos.y });
+        return;
+      }
       marqueeEndRef.current = pos;
       setNodeMarquee((current) => (current ? { ...current, x1: pos.x, y1: pos.y } : current));
       return;
@@ -695,17 +732,34 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     if (nodeMarqueeRef.current) {
       // Commit the node marquee: whatever the rect caught joins the selection.
       const start = nodeMarqueeRef.current;
+      const kind = nodeMarqueeKindRef.current;
       nodeMarqueeRef.current = null;
+      nodeMarqueeKindRef.current = null;
       const end = marqueeEndRef.current;
-      const endX = end?.x ?? start.x0;
-      const endY = end?.y ?? start.y0;
       setNodeMarquee(null);
+      if (end === null) {
+        // No travel: this was a CLICK, not a rubber band.
+        if (kind === "editedLayer") {
+          // Leave point-editing and KEEP the layer selected. `setPathEditing`
+          // only clears the point-editor keys, so the selection (and with it
+          // the inspector, delete and transform handles) survives — the Figma /
+          // Illustrator contract where point-editing is a sub-mode OF a
+          // selection rather than a replacement for it.
+          engine.setPathEditing(null);
+        } else {
+          // Clicking empty canvas leaves the mode AND drops the selection.
+          // `select(null)` already exits point-editing when a path was being
+          // edited (see EditorEngine.select).
+          engine.select(null);
+        }
+        return;
+      }
       engine.selectAnchorsInRect(
         {
-          x: Math.min(start.x0, endX),
-          y: Math.min(start.y0, endY),
-          width: Math.abs(endX - start.x0),
-          height: Math.abs(endY - start.y0),
+          x: Math.min(start.x0, end.x),
+          y: Math.min(start.y0, end.y),
+          width: Math.abs(end.x - start.x0),
+          height: Math.abs(end.y - start.y0),
         },
         marqueeShiftRef.current,
       );
@@ -776,7 +830,9 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
             <span className="text-xs font-bold text-white">ویرایش گره‌ها</span>
             <span className="text-[10px] text-slate-400">{selectedNodeIndices.length} گره انتخاب‌شده</span>
             </div>
-            <span className="text-[10px] text-slate-400">برای انتخاب، روی گره بزنید؛ برای چندانتخابی Shift را نگه دارید.</span>
+            <span className="text-[10px] text-slate-400">
+              برای انتخاب روی گره بزنید · برای منحنی‌کردن هر نقطه، روی همان نقطه از خط بکشید · Alt+کشیدن = جابه‌جایی لایه · کلیک روی کادر = خروج از ویرایش
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <button
@@ -850,9 +906,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
                 type="button"
                 disabled={
                   !editedPathLayer ||
-                  Boolean(editedPathLayer.rawD) ||
-                  editedPathLayer.bend !== undefined ||
-                  !mirrorAxis?.end
+                  !mirrorAxis?.end ||
+                  !engine.canMirrorPathAcrossAxis(editedPathLayer.id)
                 }
                 title="ساخت یک نسخهٔ قرینه از شکل در سمت دیگر محور"
                 onClick={() => {
@@ -1224,7 +1279,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
               role="button"
               tabIndex={0}
               aria-label={`لایه ${layer.kind}`}
-              className={`absolute cursor-move rounded-md transition-shadow ${
+              className={`absolute rounded-md transition-shadow ${
                 selected === layer.id && !preview ? "ring-2 ring-cyan-400 ring-offset-0" : "hover:ring-1 hover:ring-white/40"
               }`}
               style={{
@@ -1234,7 +1289,17 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
                 height: layer.height,
                 transform: layer.angle ? `rotate(${layer.angle}deg)` : undefined,
                 zIndex: 1000 + layerZ(index),
-                cursor: state.tool === "draw" ? "crosshair" : layer.locked ? "not-allowed" : "move",
+                // `move` is a PROMISE that the press moves the layer. Over the box of the
+                // path being point-edited it is false — the press starts a node
+                // marquee, or (click, no travel) leaves point-editing — so the
+                // cursor falls back to the neutral arrow. Alt is the documented
+                // way to drag the whole layer from inside the mode, so with Alt
+                // down the promise becomes true again.
+                cursor: layerHitCursor({
+                  tool: state.tool,
+                  locked: layer.locked,
+                  editing: state.editingPathId === layer.id && !altHeld,
+                }),
               }}
               onPointerDown={(e) => onLayerPointerDown(e, layer.id)}
               onDoubleClick={(e) => {
@@ -1314,9 +1379,23 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
           />
         ) : null}
 
-        {/* ARC BEND HANDLE OVERLAY (Canva-style curved lines) */}
-        {selectedLayer?.kind === "path" && (selectedLayer as PathLayer).points?.length === 2 ? (
-          <ArcBendHandleOverlay engine={engine} layer={selectedLayer as PathLayer} zoom={zoom} />
+        {/* BEND DOT — "grab the line anywhere and curve that spot".
+
+            Outside point-editing this IS the gesture: the dot follows the pointer
+            along the shape the layer draws (an arc's apex is only its resting
+            position) and the press turns that exact spot into a real node. Inside
+            point-editing the PathEditOverlay runs the very same gesture on its own
+            hit path, so this overlay steps aside instead of fighting it. */}
+        {state.tool === "select" &&
+        selectedLayer?.kind === "path" &&
+        (selectedLayer as PathLayer).points?.length >= 2 &&
+        state.editingPathId !== selectedLayer.id ? (
+          <ArcBendHandleOverlay
+            engine={engine}
+            layer={selectedLayer as PathLayer}
+            zoom={zoom}
+            toBoardPoint={pointerPos}
+          />
         ) : null}
 
         {/* Visual rendering — the SHARED document projection (`LayerBox`).
@@ -1325,7 +1404,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
             (hidden ones through opacity 0), exactly like export. */}
         <div className="pointer-events-none absolute inset-0" style={{ background: doc.background }}>
           {doc.layers.map((layer, index) => (
-            <LayerBox key={`v-${layer.id}`} layer={layer} z={layerZ(index)} />
+            <LayerBox key={`v-${layer.id}`} layer={layer} z={layerZ(index)} qrRevision={qrRevision} />
           ))}
         </div>
 
@@ -1577,7 +1656,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       {exportRef ? (
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-0">
           <div ref={exportRef} style={{ width: doc.artboard.width, height: doc.artboard.height }}>
-            <LayeredCard doc={doc} scale={1} />
+            <LayeredCard doc={doc} scale={1} qrRevision={qrRevision} />
           </div>
         </div>
       ) : null}

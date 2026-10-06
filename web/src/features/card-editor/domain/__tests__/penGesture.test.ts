@@ -1,9 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { PEN_DRAG_THRESHOLD_PX, shouldBeginHandleDrag } from "../penGesture";
+import {
+  CLICK_DRAG_THRESHOLD_PX,
+  PEN_DRAG_THRESHOLD_PX,
+  exceedsClickThreshold,
+  shouldBeginHandleDrag,
+} from "../penGesture";
 
-describe("PEN_DRAG_THRESHOLD_PX", () => {
+describe("CLICK_DRAG_THRESHOLD_PX", () => {
   it("is the documented 3px screen threshold", () => {
-    expect(PEN_DRAG_THRESHOLD_PX).toBe(3);
+    expect(CLICK_DRAG_THRESHOLD_PX).toBe(3);
+  });
+
+  it("is the SAME number the pen uses — one click↔drag rule for the whole editor", () => {
+    // The pen (corner anchor vs. handle drag) and the node marquee (click vs.
+    // rubber band) must not disagree, or the same gesture would cost a
+    // different amount of hand movement depending on the active tool.
+    expect(CLICK_DRAG_THRESHOLD_PX).toBe(PEN_DRAG_THRESHOLD_PX);
+  });
+});
+
+describe("exceedsClickThreshold", () => {
+  it("a press with no movement is still a click", () => {
+    expect(exceedsClickThreshold({ x: 100, y: 100 }, { x: 100, y: 100 }, 1)).toBe(false);
+  });
+
+  it("movement at exactly the threshold is still a click (strictly greater than)", () => {
+    expect(exceedsClickThreshold({ x: 0, y: 0 }, { x: CLICK_DRAG_THRESHOLD_PX, y: 0 }, 1)).toBe(false);
+  });
+
+  it("movement past the threshold is a drag", () => {
+    expect(exceedsClickThreshold({ x: 0, y: 0 }, { x: CLICK_DRAG_THRESHOLD_PX + 1, y: 0 }, 1)).toBe(true);
+  });
+
+  it("measures in SCREEN pixels, so zoom scales the artboard movement", () => {
+    expect(exceedsClickThreshold({ x: 0, y: 0 }, { x: 2, y: 0 }, 2)).toBe(true);
+    expect(exceedsClickThreshold({ x: 0, y: 0 }, { x: 2, y: 0 }, 1)).toBe(false);
+  });
+
+  it("tolerates a broken zoom instead of never dragging", () => {
+    expect(exceedsClickThreshold({ x: 0, y: 0 }, { x: 4, y: 0 }, Number.NaN)).toBe(true);
+    expect(exceedsClickThreshold({ x: 0, y: 0 }, { x: 2, y: 0 }, Number.NaN)).toBe(false);
+  });
+
+  it("is exactly the predicate the pen gesture already used", () => {
+    // `shouldBeginHandleDrag` is kept as the pen's own name for it; every
+    // existing pen test doubles as a test of the shared threshold.
+    for (const [dx, dy] of [[0, 0], [2, 0], [3, 0], [4, 0], [2, 2], [3, 3]]) {
+      expect(shouldBeginHandleDrag({ x: 0, y: 0 }, { x: dx, y: dy }, 1)).toBe(
+        exceedsClickThreshold({ x: 0, y: 0 }, { x: dx, y: dy }, 1),
+      );
+    }
   });
 });
 

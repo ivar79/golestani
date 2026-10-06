@@ -187,6 +187,12 @@ class SubscriptionController extends Controller
         // Purchase requires an ACTIVE plan (deactivation blocks new
         // purchases but never invalidates existing subscriptions).
         $plan = Plan::where('id', $request->validated('plan_id'))->where('is_active', true)->firstOrFail();
+        abort_unless(
+            ! ($plan->features['designer_studio'] ?? false)
+                || $request->user()?->hasApprovedDesignerStatus(),
+            403,
+            'خرید پلن استودیو فقط برای طراحان تأییدشده مجاز است.'
+        );
 
         $data = [
             'plan_id' => $plan->id,

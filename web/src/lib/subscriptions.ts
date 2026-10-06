@@ -19,6 +19,16 @@ export type Plan = {
   is_active: boolean;
 };
 
+/** Split the public catalog by its server-defined Designer Studio entitlement. */
+export function splitPlansByStudio(plans: Plan[]): { businessPlans: Plan[]; designerPlans: Plan[] } {
+  const businessPlans: Plan[] = [];
+  const designerPlans: Plan[] = [];
+  for (const plan of plans) {
+    (plan.features?.designer_studio === true ? designerPlans : businessPlans).push(plan);
+  }
+  return { businessPlans, designerPlans };
+}
+
 // Re-export the entitlement contract so existing consumers keep one import path.
 export type { PublicPlansResponse, PublicPlan };
 

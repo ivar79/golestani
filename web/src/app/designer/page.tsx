@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, Share2, Users, UploadCloud, Sparkles, CheckCircle2, AlertCircle, Trash2, X } from "lucide-react";
+import { Copy, Check, Share2, Users, UploadCloud, Sparkles, CheckCircle2, AlertCircle, Trash2, X, Building2, ArrowUpRight, LayoutDashboard, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import api, { extractApiError } from "@/lib/api";
+import { listBusinesses, type Business } from "@/lib/businesses";
 import AppTaskbar from "@/components/layout/AppTaskbar";
+import { SITE_URL } from "@/lib/siteUrl";
 
 type Portfolio = {
   id: number;
@@ -22,12 +24,27 @@ type Designer = {
   display_name: string;
   slug: string;
   referral_code?: string;
-  referral_link?: string;
   attributed_businesses_count?: number;
   bio?: string;
   status: string;
   portfolios?: Portfolio[];
 };
+
+type StudioWorkspace = {
+  business: Business;
+  allowed: boolean | null;
+  reason?: string;
+  error?: string;
+};
+
+type StudioCardResponse = {
+  studio?: {
+    allowed?: boolean;
+    reason?: string;
+  };
+};
+
+type DesignerProgramStatus = "none" | "pending" | "approved" | "rejected" | "suspended";
 
 export default function DesignerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -46,31 +63,111 @@ export default function DesignerPage() {
   const [deleteCandidate, setDeleteCandidate] = useState<Portfolio | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [programStatus, setProgramStatus] = useState<DesignerProgramStatus | null>(null);
+  const [programEnabled, setProgramEnabled] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [requestingProgram, setRequestingProgram] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<StudioWorkspace[]>([]);
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
   const MAX_PORTFOLIO_BYTES = 10 * 1024 * 1024; // matches backend max:10240
   const ALLOWED_PORTFOLIO_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 
   useEffect(() => {
-    if (!authLoading && user) {
-      // Deferred flag-set (project pattern): setState leaves the effect body
-      // (react-hooks/set-state-in-effect) while behavior stays unchanged.
-      const t = window.setTimeout(() => setLoadingProfile(true), 0);
-      api
-        .get<Designer>("/designer/profile")
-        .then(({ data }) => {
+    if (authLoading || !user) return;
+    let active = true;
+    void api.get<{ designer_status: DesignerProgramStatus; program_enabled: boolean }>("/designer/program/status")
+      .then(async ({ data: status }) => {
+        if (!active) return;
+        setProgramStatus(status.designer_status);
+        setProgramEnabled(status.program_enabled);
+        if (status.designer_status !== "approved") {
+          setLoadingProfile(false);
+          return;
+        }
+        try {
+          const { data } = await api.get<Designer>("/designer/profile");
+          if (!active) return;
           setDesigner(data);
           setName(data.display_name);
           setBio(data.bio || "");
-        })
-        .catch((err) => {
-          setMessage({ text: extractApiError(err), error: true });
-        })
-        .finally(() => {
-          window.clearTimeout(t);
+        } catch (error) {
+          if (active) setProfileError(extractApiError(error));
+        } finally {
+          if (active) setLoadingProfile(false);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setProfileError(extractApiError(error));
           setLoadingProfile(false);
-        });
-    }
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingStatus(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [authLoading, user]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    if (programStatus !== "approved") {
+      const timer = window.setTimeout(() => setLoadingWorkspaces(false), 0);
+      return () => window.clearTimeout(timer);
+    }
+    let active = true;
+
+    listBusinesses()
+      .then(async (businesses) => {
+        const rows = await Promise.all(
+          businesses.map(async (business): Promise<StudioWorkspace> => {
+            try {
+              const { data } = await api.get<StudioCardResponse>(`/businesses/${business.id}/card`);
+              return {
+                business,
+                allowed: data.studio?.allowed === true,
+                reason: data.studio?.reason,
+              };
+            } catch (error) {
+              return {
+                business,
+                allowed: null,
+                error: extractApiError(error),
+              };
+            }
+          }),
+        );
+        if (active) setWorkspaces(rows);
+      })
+      .catch((error) => {
+        if (active) setWorkspaceError(extractApiError(error));
+      })
+      .finally(() => {
+        if (active) setLoadingWorkspaces(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user, programStatus]);
+
+  async function requestDesignerProgram() {
+    setRequestingProgram(true);
+    setMessage(null);
+    try {
+      const { data } = await api.post<{ designer_status: DesignerProgramStatus }>("/designer/program/request");
+      setProgramStatus(data.designer_status);
+      setMessage({ text: "درخواست عضویت ثبت شد و برای بررسی ارسال شد." });
+    } catch (error) {
+      setMessage({ text: extractApiError(error), error: true });
+    } finally {
+      setRequestingProgram(false);
+    }
+  }
 
   function handlePortfolioFile(file: File | null) {
     setFileError(null);
@@ -148,16 +245,16 @@ export default function DesignerPage() {
     }
   }
 
-  const referralCode = designer?.referral_code || "········";
-  const referralLink =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/dashboard?ref=${referralCode}`
-      : designer?.referral_link || `https://inkart.ir/dashboard?ref=${referralCode}`;
+  const referralCode = designer?.referral_code || "";
+  const referralLink = `${SITE_URL}/dashboard?ref=${referralCode}`;
 
   function copyReferralLink() {
-    navigator.clipboard.writeText(referralLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    void navigator.clipboard.writeText(referralLink).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    }).catch((error: unknown) => {
+      setMessage({ text: extractApiError(error), error: true });
+    });
   }
 
   if (authLoading) {
@@ -184,22 +281,146 @@ export default function DesignerPage() {
     );
   }
 
+  if (loadingStatus) {
+    return (
+      <main dir="rtl" className="min-h-screen bg-[#050B14] pb-20 pt-28 text-white">
+        <AppTaskbar />
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <div className="animate-pulse rounded-3xl border border-white/10 bg-[#0c1626]/80 p-8">
+            <div className="h-6 w-40 rounded bg-white/10" />
+            <div className="mt-4 h-4 w-3/4 rounded bg-white/10" />
+            <div className="mt-8 h-32 rounded-2xl bg-white/5" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (profileError || programStatus !== "approved") {
+    const pending = programStatus === "pending";
+    const rejected = programStatus === "rejected";
+    const suspended = programStatus === "suspended";
+    return (
+      <main dir="rtl" className="min-h-screen bg-[#050B14] pb-20 pt-28 text-white">
+        <AppTaskbar />
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <div className="flex flex-col gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2.5 py-1 text-xs font-bold text-secondary">پنل طراح</span>
+              <h1 className="mt-3 text-2xl font-black">وضعیت حساب طراح</h1>
+            </div>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              ورود به داشبورد
+            </Link>
+          </div>
+
+          {profileError ? (
+            <section className="mt-6 rounded-3xl border border-red-500/25 bg-red-500/[0.06] p-6">
+              <AlertCircle className="h-6 w-6 text-red-300" />
+              <h2 className="mt-3 text-lg font-bold">دریافت اطلاعات پنل ناموفق بود</h2>
+              <p className="mt-2 text-sm leading-6 text-red-100/80">{profileError}</p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-300/25 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-400/10"
+              >
+                <RefreshCw className="h-4 w-4" />
+                تلاش دوباره
+              </button>
+            </section>
+          ) : (
+            <section className="mt-6 rounded-3xl border border-white/10 bg-[#0c1626]/80 p-6 sm:p-8">
+              <span className={`inline-flex rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                pending
+                  ? "border-amber-400/30 bg-amber-400/10 text-amber-200"
+                  : rejected || suspended
+                    ? "border-red-400/30 bg-red-400/10 text-red-200"
+                    : "border-white/15 bg-white/5 text-slate-300"
+              }`}>
+                {pending ? "در انتظار بررسی" : rejected ? "درخواست رد شده" : suspended ? "حساب تعلیق شده" : "هنوز عضو برنامه طراحان نیستید"}
+              </span>
+              <h2 className="mt-4 text-xl font-bold">
+                {pending
+                  ? "درخواست شما برای عضویت در حال بررسی است"
+                  : rejected
+                    ? "درخواست عضویت تأیید نشده است"
+                    : suspended
+                      ? "دسترسی حساب طراح موقتاً غیرفعال است"
+                      : "برای دسترسی به امکانات طراح، درخواست عضویت ثبت کنید"}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                {pending
+                  ? "پس از بررسی مدیر، نتیجه در همین صفحه نمایش داده می‌شود. در این مدت ابزارهای اختصاصی طراح در دسترس نیست."
+                  : rejected || suspended
+                    ? "برای پیگیری نتیجه یا اطلاع از دلیل، با پشتیبانی سامانه تماس بگیرید."
+                    : "درخواست شما پس از بررسی مدیر می‌تواند تأیید شود. تأیید طراح به‌تنهایی جای مجوز و اشتراک هر کسب‌وکار را نمی‌گیرد."}
+              </p>
+              {!pending && !suspended && (
+                <button
+                  type="button"
+                  onClick={() => void requestDesignerProgram()}
+                  disabled={!programEnabled || requestingProgram}
+                  className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-secondary px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {requestingProgram && <RefreshCw className="h-4 w-4 animate-spin" />}
+                  {programEnabled ? (requestingProgram ? "در حال ارسال…" : "ثبت درخواست عضویت") : "ثبت درخواست فعلاً غیرفعال است"}
+                </button>
+              )}
+              {message && (
+                <p className={`mt-4 text-sm ${message.error ? "text-red-300" : "text-emerald-300"}`} role="status">
+                  {message.text}
+                </p>
+              )}
+            </section>
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  if (loadingProfile) {
+    return (
+      <main dir="rtl" className="min-h-screen bg-[#050B14] pb-20 pt-28 text-white">
+        <AppTaskbar />
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#0c1626]/80 p-5">
+            <span className="text-sm text-slate-300" role="status">در حال بارگذاری پنل طراح…</span>
+            <Link href="/dashboard" className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10">
+              <LayoutDashboard className="h-4 w-4" /> داشبورد
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main dir="rtl" className="min-h-screen bg-[#050B14] pb-20 pt-28 sm:pt-32 text-white">
       <AppTaskbar />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         {/* Header */}
-        <div className="flex flex-col gap-2 border-b border-white/10 pb-6">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
             <span className="rounded-md bg-secondary/15 px-2.5 py-1 text-xs font-bold text-secondary border border-secondary/20">
-              فاز ۴ — اکوسیستم طراحان
+              پنل طراح
             </span>
+            <h1 className="mt-2 text-2xl sm:text-3xl font-black text-white">مدیریت حساب طراح</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              وضعیت استودیو، معرفی کسب‌وکارها و نمونه‌کارهای خود را مدیریت کنید.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white">پروفایل و پنل طراح اختصاصی</h1>
-          <p className="text-sm text-slate-400">
-            با کد و لینک اختصاصی خود کسب‌وکارها را معرفی کنید و نمونه‌کارهای گرافیکی و چاپی خود را به نمایش بگذارید.
-          </p>
+          <Link
+            href="/dashboard"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/10"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            ورود به داشبورد
+          </Link>
         </div>
 
         {/* Feedback Alert */}
@@ -215,6 +436,64 @@ export default function DesignerPage() {
             <span>{message.text}</span>
           </div>
         )}
+
+        <section className="mt-8 rounded-3xl border border-white/10 bg-[#0c1626]/80 p-6 backdrop-blur-xl">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-secondary/30 bg-secondary/15 text-secondary">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white">استودیوی طراحی بر اساس کسب‌وکار</h2>
+              <p className="mt-1 text-xs leading-6 text-slate-400">
+                دسترسی برای هر کسب‌وکار جداگانه بررسی می‌شود؛ تأیید طراح به‌تنهایی جای مالکیت کسب‌وکار یا قابلیت Studio آن را نمی‌گیرد.
+              </p>
+            </div>
+          </div>
+
+          {loadingWorkspaces ? (
+            <p className="mt-5 text-sm text-slate-400">            در حال بررسی کسب‌وکارها و دسترسی استودیو…</p>
+          ) : workspaceError ? (
+            <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">
+              دریافت فهرست کسب‌وکارها ناموفق بود: {workspaceError}
+            </div>
+          ) : workspaces.length === 0 ? (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-sm text-slate-300">هنوز کسب‌وکاری در این حساب ثبت نشده است.</p>
+              <Link href="/dashboard" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-slate-950 hover:bg-secondary-hover">
+                ثبت کسب‌وکار <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-5 grid gap-3">
+              {workspaces.map(({ business, allowed, reason, error }) => (
+                <div key={business.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white">{business.name}</h3>
+                    {error ? (
+                      <p className="mt-1 text-xs text-amber-300">بررسی مجوز ناموفق بود: {error}</p>
+                    ) : allowed ? (
+                      <p className="mt-1 text-xs text-emerald-300">این کسب‌وکار مجاز به استفاده از Studio است.</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-400">
+                        {reason === "no_capability"
+                          ? "امکان استفاده از استودیوی طراحی در اشتراک این کسب‌وکار فعال نیست."
+                          : reason === "not_approved"
+                            ? "حساب طراح هنوز تأیید نشده است."
+                            : "دسترسی Studio برای این کسب‌وکار تأیید نشد."}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href={`/card-maker?business_id=${business.id}`}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-secondary/30 px-4 py-2 text-sm font-bold text-secondary transition hover:bg-secondary/10"
+                  >
+                    مدیریت کارت <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Top Referral & Stats Cards */}
         <div className="mt-8 grid gap-6 md:grid-cols-[1.5fr_1fr]">

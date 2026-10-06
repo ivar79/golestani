@@ -30,6 +30,12 @@ class PaymentController extends Controller
         ]);
 
         $plan = Plan::findOrFail($data['plan_id']);
+        abort_unless(
+            ! ($plan->features['designer_studio'] ?? false)
+                || $request->user()?->hasApprovedDesignerStatus(),
+            403,
+            'خرید پلن استودیو فقط برای طراحان تأییدشده مجاز است.'
+        );
 
         $result = app(PaymentService::class)->init($request->user(), $business, $plan);
 

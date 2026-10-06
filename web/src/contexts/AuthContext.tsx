@@ -3,6 +3,7 @@ import { createContext,useCallback,useContext,useEffect,useMemo,useState,type Re
 import { clearSession, readStoredToken, setAuthCookie } from "@/lib/session";
 import { TOKEN_KEY } from "@/lib/session";
 import { getMe,logout as logoutApi,sendOtp as sendOtpApi,verifyOtp as verifyOtpApi,loginAdmin as loginAdminApi,uploadAvatar as uploadAvatarApi,deleteAvatar as deleteAvatarApi } from "@/lib/auth";
+import axios from "axios";
 import type { UserInfo, VerifyOtpResponse } from "@/types/auth";
 interface AuthContextValue {
   token:string|null; user:UserInfo|null; loading:boolean;
@@ -50,7 +51,28 @@ export function AuthProvider({children}:{children:ReactNode}) {
     }
     setAuthCookie(true);
     let active=true;
-    getMe().then(me=>{if(active)setUser(me);}).catch(()=>{if(active){clearSession();setToken(null);setUser(null);}}).finally(()=>{if(active)setLoading(false);});
+    const loadUser=async(retryTransient:boolean):Promise<void>=>{
+      try{
+        const me=await getMe();
+        if(active)setUser(me);
+      }catch(error){
+        if(!active)return;
+        if(axios.isAxiosError(error)&&error.response?.status===401){
+          clearSession();setToken(null);setUser(null);
+          return;
+        }
+        // A canceled request or temporary API failure must not strand a valid
+        // stored session on screens that require the resolved user.
+        if(retryTransient&&axios.isAxiosError(error)&&(
+          error.code===axios.AxiosError.ERR_CANCELED||
+          !error.response||
+          error.response.status>=500
+        )){
+          return loadUser(false);
+        }
+      }
+    };
+    void loadUser(true).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[token,hydrated]);
   const accept=useCallback((result:VerifyOtpResponse)=>{

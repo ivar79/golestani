@@ -15,6 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EditorEngine } from "../../engine/EditorEngine";
 import { InspectorPanel, Toolbox } from "../EditorPanels";
+import { LayeredCard, LayerVisual } from "../LayeredCardRenderer";
+import { clearQrAssets, registerQrAsset } from "../../domain/qrAssets";
 import { ARTBOARD, type CardDocument, type CardLayer, type ImageLayer, type QrLayer, type TextLayer } from "../../domain/document";
 
 // VectorInspectors (imported by EditorPanels) links out to the pricing page.
@@ -165,5 +167,44 @@ describe("InspectorPanel — mirror/flip for every layer kind", () => {
     render(<InspectorPanel engine={engine} businessSlug="golestani" />);
     fireEvent.click(screen.getByText("آینه عمودی ⇅"));
     expect(engine.getState().doc.layers[0].flipY).toBe(true);
+  });
+});
+
+/**
+ * QR SOURCE REPAINT (P0 regression).
+ *
+ * `qrSrcFor()` reads a MODULE-level registry, so React has no prop to diff and
+ * `QrVisual`'s memo would happily keep rendering the anonymous fallback
+ * `/api/qr/{slug}` forever. For a not-yet-approved business that fallback 404s
+ * (the API is owner-only upstream), which is exactly the "QR tool is broken"
+ * report: the layer is there, the code is not.
+ *
+ * The revision from `useQrAssets` is the ONLY signal that the registry changed,
+ * so it must reach the memoized visual through the prop chain. These tests fail
+ * if that chain is ever dropped again.
+ */
+describe("QR layer repaints when the owner-session asset arrives", () => {
+  afterEach(() => {
+    clearQrAssets();
+    cleanup();
+  });
+
+  it("switches from the public fallback to the registered data URL", () => {
+    const layer = qrLayer("golestani");
+    const { rerender } = render(<LayerVisual layer={layer} qrRevision={0} />);
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("/api/qr/golestani");
+
+    registerQrAsset("golestani", "data:image/svg+xml;base64,AAAA");
+
+    // Same layer object, same payload — ONLY qrRevision moved. Without it in
+    // the props, memo() would skip this render and the empty box would persist.
+    rerender(<LayerVisual layer={layer} qrRevision={1} />);
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("data:image/svg+xml;base64,AAAA");
+  });
+
+  it("LayeredCard forwards the revision to every QR layer", () => {
+    registerQrAsset("golestani", "data:image/svg+xml;base64,BBBB");
+    render(<LayeredCard doc={doc([qrLayer("golestani")])} qrRevision={3} />);
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("data:image/svg+xml;base64,BBBB");
   });
 });

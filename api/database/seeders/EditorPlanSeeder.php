@@ -45,6 +45,7 @@ class EditorPlanSeeder extends Seeder
                 // plans on the free layer cap.
                 'features' => [
                     'card_editor' => true,
+                    'designer_studio' => false,
                     'custom_templates' => false,
                     // Starter: legacy keys + the starter/modern layered ids.
                     'card_templates' => ['classic', 'local', 'midnight', 'starter-modern-dark-gradient', 'starter-emerald-executive', 'starter-creative-diagonal', 'starter-tech-developer', 'starter-medical-health', 'starter-real-estate-gold', 'free-classic-navy', 'free-minimal-white', 'free-local-shop'],
@@ -77,7 +78,8 @@ class EditorPlanSeeder extends Seeder
                 'is_active' => true,
                 'features' => [
                     'card_editor' => true,
-                    'custom_templates' => true,
+                    'designer_studio' => false,
+                    'custom_templates' => false,
                     // Professional: everything — legacy keys + ALL layered
                     // catalog ids (the full gallery), kept explicit so the
                     // snapshot contract stays auditable.
@@ -104,29 +106,23 @@ class EditorPlanSeeder extends Seeder
             ],
             [
                 // DESIGNER PLAN (example starting point, like the rows above).
-                // The studio gate is capability-based, never slug-based: what
-                // makes this a "designer plan" is `designer_studio` (Card
-                // Studio for an approved designer on the SAME business) plus
-                // `custom_templates` (personal templates + gallery
-                // submission). The admin can reprice, rename or retune it
+                // Studio identity is capability-based, never slug-based.
+                // `custom_templates` is a separate capability that varies by
+                // designer tier. The admin can reprice, rename or retune plans
                 // from the Admin Panel like any other plan.
                 'name' => 'طراح حرفه‌ای',
                 'slug' => 'designer-pro',
-                'description' => 'پلن طراحان: استودیوی طراحی کارت، قالب اختصاصی و ارسال به گالری.',
+                'description' => 'استودیوی طراحی برای طراحان تأییدشده، با سقف ۵۰ لایه و ۳ کارت.',
                 'price' => 399000,
                 'currency' => 'IRR',
                 'duration_days' => 30,
-                'sort_order' => 3,
-                // Highest tier: buying up from a business plan is an UPGRADE,
-                // never a same-level side-grade.
-                'tier' => 3,
+                'sort_order' => 4,
+                'tier' => 4,
                 'is_public' => true,
                 'is_featured' => false,
                 'is_active' => true,
                 'features' => [
                     'card_editor' => true,
-                    // THE designer capabilities (both mandatory for the full
-                    // Studio on a business that owns this plan).
                     'designer_studio' => true,
                     'custom_templates' => true,
                     'card_templates' => ['classic', 'local', 'midnight', 'emerald', 'creative', 'pro-persian-carpet-toranj', 'pro-persian-architecture-gereh', 'pro-laser-cut-walnut-wood', 'pro-gol-o-morgh-miniature', 'pro-gold-foil-embossed', 'pro-marble-stone-gold', 'starter-modern-dark-gradient', 'starter-emerald-executive', 'starter-creative-diagonal', 'starter-tech-developer', 'starter-medical-health', 'starter-real-estate-gold', 'free-classic-navy', 'free-minimal-white', 'free-local-shop'],
@@ -134,11 +130,11 @@ class EditorPlanSeeder extends Seeder
                     'card_fonts' => ['sans', 'vazir', 'serif'],
                     'card_exports' => ['png', 'jpg', 'svg', 'pdf'],
                     'print_file' => true,
-                    'max_layers' => null,
+                    'max_layers' => 50,
                     'card_layer_kinds' => ['text', 'image', 'qr', 'badge', 'shape', 'path'],
                     'card_premium_layer_kinds' => [],
                     'max_premium_elements' => null,
-                    'max_cards' => null,
+                    'max_cards' => 3,
                     'max_showcases' => 10,
                     'max_ads' => 2,
                     'showcase' => true,
@@ -147,8 +143,58 @@ class EditorPlanSeeder extends Seeder
             ],
         ];
 
+        $designerBaseFeatures = $plans[1]['features'];
+        $designerPlans = [
+            [
+                'name' => 'طراح شروع',
+                'slug' => 'designer-starter',
+                'description' => 'استودیوی طراحی برای طراحان تأییدشده، با سقف ۲۰ لایه و ۱ کارت.',
+                'price' => 199000,
+                'currency' => 'IRR',
+                'duration_days' => 30,
+                'sort_order' => 3,
+                'tier' => 3,
+                'is_public' => true,
+                'is_featured' => false,
+                'is_active' => true,
+                'features' => array_replace($designerBaseFeatures, [
+                    'designer_studio' => true,
+                    'custom_templates' => false,
+                    'card_exports' => ['png', 'jpg'],
+                    'print_file' => false,
+                    'max_layers' => 20,
+                    'max_cards' => 1,
+                ]),
+            ],
+            [
+                'name' => 'طراح استودیو',
+                'slug' => 'designer-studio',
+                'description' => 'امکانات گسترده‌تر استودیو برای طراحان تأییدشده، با سقف ۱۰۰ لایه و ۱۰ کارت.',
+                'price' => 699000,
+                'currency' => 'IRR',
+                'duration_days' => 30,
+                'sort_order' => 5,
+                'tier' => 5,
+                'is_public' => true,
+                'is_featured' => false,
+                'is_active' => true,
+                'features' => array_replace($designerBaseFeatures, [
+                    'designer_studio' => true,
+                    'custom_templates' => true,
+                    'card_exports' => ['png', 'jpg', 'svg', 'pdf'],
+                    'print_file' => true,
+                    'max_layers' => 100,
+                    'max_cards' => 10,
+                ]),
+            ],
+        ];
+        array_splice($plans, 2, 0, [$designerPlans[0]]);
+        $plans[] = $designerPlans[1];
+
         foreach ($plans as $plan) {
-            Plan::updateOrCreate(['slug' => $plan['slug']], $plan);
+            // Seed defaults only once so subsequent seeding never overwrites
+            // prices, names or limits managed from the Admin Panel.
+            Plan::firstOrCreate(['slug' => $plan['slug']], $plan);
         }
     }
 }

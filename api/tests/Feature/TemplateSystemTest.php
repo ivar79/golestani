@@ -69,6 +69,11 @@ class TemplateSystemTest extends TestCase
         return $plan;
     }
 
+    private function enforceStudioGate(): void
+    {
+        SiteSetting::updateOrCreate(['key' => 'studio_designer_only'], ['value' => '1']);
+    }
+
     private function validDesign(): array
     {
         return [
@@ -305,6 +310,81 @@ class TemplateSystemTest extends TestCase
             ->assertStatus(404);
     }
 
+    public function test_personal_template_apply_delete_and_asset_authoring_require_studio_access(): void
+    {
+        $user = $this->owner();
+        $business = $this->business($user, 'personal-studio-gate');
+        $this->attachPlan($business, [
+            'card_editor' => true,
+            'custom_templates' => true,
+            'designer_studio' => true,
+        ]);
+        $template = UserCardTemplate::create([
+            'user_id' => $user->id,
+            'name_fa' => 'قالب شخصی',
+            'category' => 'general',
+            'design_json' => json_encode($this->validDesign(), JSON_UNESCAPED_UNICODE),
+        ]);
+        $this->enforceStudioGate();
+
+        $this->actingAs($user)
+            ->postJson("/api/my/templates/{$template->id}/apply", ['business_id' => $business->id])
+            ->assertForbidden()
+            ->assertJsonPath('studio_errors.studio', 'not_approved');
+
+        $this->actingAs($user)
+            ->deleteJson("/api/my/templates/{$template->id}")
+            ->assertForbidden()
+            ->assertJsonPath('studio_errors.studio', 'not_approved');
+        $this->assertDatabaseHas('user_card_templates', ['id' => $template->id, 'deleted_at' => null]);
+
+        Storage::fake('public');
+        $this->actingAs($user)->call(
+            'POST',
+            '/api/my/templates-asset',
+            [],
+            [],
+            ['image' => UploadedFile::fake()->image('art.png')],
+            ['HTTP_X-Requested-With' => 'XMLHttpRequest', 'CONTENT_TYPE' => 'multipart/form-data'],
+        )->assertForbidden()
+            ->assertJsonPath('studio_errors.studio', 'not_approved');
+    }
+
+    public function test_admin_studio_bypass_does_not_accept_another_users_template_asset(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        $business = $this->business($admin, 'admin-studio-asset');
+        $this->attachPlan($business, [
+            'card_editor' => true,
+            'custom_templates' => true,
+            'designer_studio' => true,
+        ]);
+        $other = $this->owner();
+        $asset = $this->registerAsset($other->id);
+        $this->enforceStudioGate();
+
+        $this->actingAs($admin)
+            ->postJson('/api/my/templates', [
+                'business_id' => $business->id,
+                'name_fa' => 'قالب با دارایی غیرمجاز',
+                'design_json' => $this->designWithSrc('/storage/' . $asset->path),
+            ])
+            ->assertStatus(422);
+    }
+
+    public function test_admin_cannot_read_another_users_private_template_asset(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        $other = $this->owner();
+        $asset = $this->registerAsset($other->id);
+
+        $this->actingAs($admin)
+            ->getJson('/api/assets/private/' . $asset->path)
+            ->assertNotFound();
+    }
+
     public function test_personal_design_src_must_resolve_to_owned_registry_asset(): void
     {
         $user = $this->owner();
@@ -443,8 +523,31 @@ class TemplateSystemTest extends TestCase
         SiteSetting::updateOrCreate(['key' => 'designer_program_enabled'], ['value' => '1']);
         $user = $this->owner();
         $business = $this->business($user, 'designer-submit');
-        $this->attachPlan($business, ['card_editor' => true, 'custom_templates' => true]);
+        $this->attachPlan($business, [
+            'card_editor' => true,
+            'custom_templates' => true,
+            'designer_studio' => true,
+        ]);
         $user = User::find($user->id);
+        $this->enforceStudioGate();
+
+        // A normal user and an applicant still cannot submit a gallery design.
+        $this->actingAs($user)
+            ->postJson('/api/designer/templates', [
+                'business_id' => $business->id,
+                'name_fa' => 'قالب پیش از تأیید',
+                'design_json' => $this->validDesign(),
+            ])
+            ->assertForbidden();
+        $this->actingAs($user)->postJson('/api/designer/program/request')->assertOk();
+        $user = User::find($user->id);
+        $this->actingAs($user)
+            ->postJson('/api/designer/templates', [
+                'business_id' => $business->id,
+                'name_fa' => 'قالب در انتظار تأیید',
+                'design_json' => $this->validDesign(),
+            ])
+            ->assertForbidden();
 
         // Approve the designer status server-side.
         $user->forceFill(['designer_status' => 'approved'])->save();

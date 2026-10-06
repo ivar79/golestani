@@ -52,13 +52,28 @@ class BusinessTest extends TestCase
             ->assertJsonPath('name', 'نام به‌روزشده');
     }
 
-    public function test_user_and_designer_cannot_access_business_panel(): void
+    public function test_designer_can_use_own_business_panel_without_cross_business_access(): void
     {
-        // P1: a plain 'user' is now allowed to CREATE their first business
-        // (see test_user_creating_first_business_becomes_business_owner).
-        // designer-only users still have no business panel access.
-        $this->actingAs($this->user('designer'))->getJson('/api/businesses')->assertForbidden();
-        $this->actingAs($this->user('designer'))->postJson('/api/businesses', $this->data())->assertForbidden();
+        $designer = $this->user('designer');
+        $designer->forceFill(['designer_status' => 'approved'])->save();
+        $otherOwner = $this->user('business_owner');
+        $otherBusiness = $otherOwner->businesses()->create(
+            $this->data() + ['slug' => 'other-owner-business', 'status' => 'pending']
+        );
+
+        $this->actingAs($designer)->getJson('/api/businesses')->assertOk()->assertExactJson([]);
+
+        $created = $this->actingAs($designer)
+            ->postJson('/api/businesses', $this->data('کسب‌وکار طراح'))
+            ->assertCreated()
+            ->assertJsonPath('status', 'pending');
+
+        $business = Business::findOrFail($created->json('id'));
+        $this->assertSame($designer->id, $business->user_id);
+        $this->assertTrue($designer->fresh()->hasRole('business_owner'));
+
+        $this->actingAs($designer)->getJson('/api/businesses/'.$otherBusiness->id)->assertForbidden();
+        $this->actingAs($designer)->getJson('/api/businesses/'.$business->id.'/card')->assertOk();
     }
 
     public function test_idor_is_blocked_for_another_owner_and_admin_can_access(): void

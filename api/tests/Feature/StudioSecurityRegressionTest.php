@@ -150,7 +150,7 @@ class StudioSecurityRegressionTest extends TestCase
     {
         $this->enforce();
 
-        foreach (['rejected', 'suspended'] as $status) {
+        foreach (['pending', 'rejected', 'suspended'] as $status) {
             $designer = $this->user(['business_owner'], $status);
             $business = $this->business($designer, ['card_editor' => true, 'designer_studio' => true]);
 
