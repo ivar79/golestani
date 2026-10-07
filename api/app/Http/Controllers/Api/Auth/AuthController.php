@@ -262,7 +262,10 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $user->tokens()->delete();
+        // Single ADMIN session, but only admin tokens are revoked: deleting every
+        // token also logged the same account out of its own user/designer panel
+        // (OTP sessions) in other tabs and devices.
+        $user->tokens()->where('name', 'admin-token')->delete();
         $token = $user->createToken('admin-token', ['*'], now()->addDays(7))->plainTextToken;
 
         return response()->json([

@@ -1,5 +1,5 @@
 "use client";
-import { createContext,useCallback,useContext,useEffect,useMemo,useState,type ReactNode } from "react";
+import { createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { clearSession, readStoredToken, setAuthCookie } from "@/lib/session";
 import { TOKEN_KEY } from "@/lib/session";
 import { clearPrivateAssetCache } from "@/lib/privateAsset";
@@ -40,6 +40,27 @@ export function AuthProvider({children}:{children:ReactNode}) {
       setHydrated(true);
     },0);
     return()=>{window.clearTimeout(t);};
+  },[]);
+  // Cross-tab session sync. The bearer token lives in ONE localStorage slot
+  // shared by every role, so logging in as admin (or another account) in a
+  // second tab silently swaps the token under the first tab: its React state
+  // still shows the old user while every API call now runs as the new one —
+  // "data changes by itself / admin and user panels disagree". The `storage`
+  // event fires in the OTHER tabs only, so each tab re-adopts the new session
+  // (or the logout) instead of drifting.
+  const tokenRef=useRef<string|null>(null);
+  useEffect(()=>{tokenRef.current=token;},[token]);
+  useEffect(()=>{
+    const onStorage=(e:StorageEvent)=>{
+      if(e.key!==null&&e.key!==TOKEN_KEY)return;
+      const next=readStoredToken();
+      if(next===tokenRef.current)return;
+      setUser(null);
+      setLoading(next!==null);
+      setToken(next);
+    };
+    window.addEventListener("storage",onStorage);
+    return()=>{window.removeEventListener("storage",onStorage);};
   },[]);
   useEffect(()=>{
     if (!token) {

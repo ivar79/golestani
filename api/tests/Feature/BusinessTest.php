@@ -132,7 +132,10 @@ class BusinessTest extends TestCase
 
         foreach (['draft', 'pending', 'rejected', 'suspended'] as $status) {
             $business->update(['status' => $status]);
-            $this->getJson('/api/public/businesses/public-business')->assertNotFound();
+            $response = $this->getJson('/api/public/businesses/public-business')
+                ->assertNotFound()
+                ->assertJsonPath('reason', 'not_published');
+            $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
         }
     }
 

@@ -61,7 +61,7 @@ Route::prefix('auth')->group(function (): void {
     });
 });
 
-Route::middleware(['auth:sanctum', 'role:business_owner,designer,admin'])->group(function (): void {
+Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin'])->group(function (): void {
     Route::get('/businesses/{business}/card', [BusinessCardController::class, 'show']);
     // Card writes share ONE per-user throttle bucket (card-write) so hopping
     // between the save and template-apply endpoints cannot reset the quota.
@@ -108,7 +108,7 @@ Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin'])->
 });
 Route::get('/payments/callback', [PaymentController::class, 'callback'])->middleware('throttle:60,1');
 
-Route::middleware(['auth:sanctum', 'role:business_owner,designer,admin'])->group(function (): void {
+Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin'])->group(function (): void {
     Route::get('/businesses/{business}/subscriptions', [SubscriptionController::class, 'index']);
     Route::post('/businesses/{business}/subscriptions', [SubscriptionController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/businesses/{business}/showcases', [ShowcaseController::class, 'index']);

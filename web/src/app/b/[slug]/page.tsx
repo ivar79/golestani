@@ -12,16 +12,21 @@ import PublicCardView from "@/features/card-editor/react/PublicCardView";
 import { fetchPublicCard, resolveCardRender } from "@/lib/publicCard";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{slug:string}> };
-const fetchBusiness = cache(async(slug:string):Promise<Phase2Business|null> => {
+/** "unpublished": the business exists but is awaiting (re-)review — not a missing page. */
+type FetchedBusiness = Phase2Business | "unpublished" | null;
+const fetchBusiness = cache(async(slug:string):Promise<FetchedBusiness> => {
   try { return (await api.get<Phase2Business>(`/public/businesses/${encodeURIComponent(slug)}`)).data; }
   catch(e) {
-    if(axios.isAxiosError(e)&&e.response?.status===404)return null;
+    if(axios.isAxiosError(e)&&e.response?.status===404){
+      return (e.response.data as {reason?:string}|undefined)?.reason==="not_published"?"unpublished":null;
+    }
     // A server outage is not a missing business. Let Next show the error boundary.
     throw e;
   }
 });
 export async function generateMetadata({params}:Props):Promise<Metadata> {
   const {slug}=await params;const b=await fetchBusiness(slug);
+  if(b==="unpublished")return {title:"در انتظار تأیید",robots:{index:false,follow:false}};
   if(!b)return {title:"کسب‌وکار یافت نشد",robots:{index:false,follow:false}};
   return {title:`${b.name} | اینکارت`,description:(b.description||[b.category,b.city].filter(Boolean).join("، ")).slice(0,160),alternates:{canonical:safeHttpUrl(b.public_url)||undefined}};
 }
@@ -67,6 +72,10 @@ const imgBox = "rounded-lg border border-slate-200";
 
 export default async function PublicBusinessPage({params}:Props) {
   const {slug}=await params;const b=await fetchBusiness(slug);if(!b)notFound();
+  if(b==="unpublished")return <><AppTaskbar/><main className={page} dir="rtl">
+    <h1 className="text-2xl font-extrabold">این صفحه در انتظار تأیید است</h1>
+    <p className={`${muted} mt-3 max-w-[70ch]`}>صفحه‌ی این کسب‌وکار هنوز منتشر نشده یا پس از ویرایش برای بررسی مجدد به مدیر ارسال شده است. پس از تأیید، دوباره با همین لینک در دسترس خواهد بود.</p>
+  </main><SiteFooter/></>;
   // Published card. The design/legacy decision is made here once (pure), so the
   // client view only renders: design_json valid → layered projection, absent →
   // template renderer, malformed → template renderer + a visible notice.

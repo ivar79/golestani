@@ -12,6 +12,7 @@ import { type EntitlementPayload } from "@/lib/entitlements";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { avatarUrl } from "@/lib/auth";
 import { getQrUrl } from "@/lib/businesses";
+import { pickActiveBusiness, writeActiveBusinessId } from "@/lib/activeBusiness";
 import { getPublicTaxonomies } from "@/lib/taxonomies";
 import { OnboardingView } from "@/components/dashboard/OnboardingView";
 import UsernamePicker from "@/components/dashboard/UsernamePicker";
@@ -132,6 +133,10 @@ function DashboardInner() {
   const [social, setSocial] = useState<Social[]>([]);
   const [images, setImages] = useState<BusinessImage[]>([]);
   const [loading, setLoading] = useState(true);
+  // Load failure is NOT an empty account: keep it separate so a slow/failed API
+  // never renders the "no business" onboarding path.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
@@ -145,8 +150,24 @@ function DashboardInner() {
   // /businesses/{id}/entitlements and RE-SYNCS on mount + focus/visibility —
   // after a successful payment the panels see the new plan immediately
   // (stale-state fix: previously fetched once and never refreshed).
-  const { entitlements: liveEntitlements, subscription } = useEntitlements(editing?.id);
+  const {
+    entitlements: liveEntitlements,
+    subscription,
+    ready: entitlementsReady,
+    error: entitlementsError,
+    refresh: refreshEntitlements,
+  } = useEntitlements(editing?.id);
   const entitlements: EntitlementPayload = liveEntitlements;
+  const entitlementsStatus = entitlementsError ? (
+    <div role="alert" className="rounded-xl border border-ik-danger/30 bg-ik-danger/10 p-3 text-xs text-ik-danger">
+      <span>دریافت وضعیت اشتراک ناموفق بود: {entitlementsError}</span>
+      <button type="button" className="mr-2 font-bold underline" onClick={refreshEntitlements}>تلاش دوباره</button>
+    </div>
+  ) : (
+    <div role="status" className="rounded-xl border border-ik-border bg-ik-panel/70 p-3 text-xs text-ik-muted">
+      در حال بررسی امکانات اشتراک…
+    </div>
+  );
 
   // Responsive sidebar & tabs
   const [currentTab, setCurrentTab] = useState<DashboardTab>("overview");
@@ -168,6 +189,7 @@ function DashboardInner() {
   }, []);
 
   function choose(b: Phase2Business | null) {
+    if (b) writeActiveBusinessId(b.id);
     setEditing(b);
     setLogo(null);
     setCover(null);
@@ -216,19 +238,27 @@ function DashboardInner() {
     if (!authLoading && !user) router.replace("/login");
   }, [user, authLoading, router]);
 
+  // Keyed on the user ID, not the user object: AuthContext replaces the object
+  // on every refreshUser() (avatar/username), which used to re-run this load and
+  // snap the dashboard back to the first business, wiping the open form.
+  const userId = user?.id;
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     let active = true;
     getOwnedBusinesses()
       .then((data) => {
         if (active) {
           setItems(data);
-          choose(data[0] || null);
+          setLoadError(null);
+          choose(pickActiveBusiness(data));
           setOnboarding(data.length === 0);
         }
       })
       .catch((e) => {
-        if (active) setMessage({ text: extractApiError(e), error: true });
+        if (active) {
+          setLoadError(extractApiError(e));
+          setMessage({ text: extractApiError(e), error: true });
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -236,7 +266,7 @@ function DashboardInner() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [userId, reloadTick]);
 
   useEffect(() => {
     if (!editing?.id) return;
@@ -428,6 +458,28 @@ function DashboardInner() {
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-ik-accent" />
           <p className="text-xs sm:text-sm text-ik-muted font-medium">در حال بارگذاری پنل کسب‌وکار…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError && items.length === 0) {
+    return (
+      <div dir="rtl" data-theme={theme} className="dashboard-shell flex min-h-screen items-center justify-center bg-ik-bg text-ik-text">
+        <div className="max-w-sm rounded-2xl border border-ik-border p-6 text-center">
+          <p className="text-sm font-bold">دریافت اطلاعات کسب‌وکار ناموفق بود</p>
+          <p className="mt-2 text-xs text-ik-muted">{loadError}</p>
+          <button
+            type="button"
+            className="mt-4 rounded-xl bg-ik-accent px-5 py-2 text-sm font-bold text-white"
+            onClick={() => {
+              setLoadError(null);
+              setLoading(true);
+              setReloadTick((n) => n + 1);
+            }}
+          >
+            تلاش دوباره
+          </button>
         </div>
       </div>
     );
@@ -631,7 +683,7 @@ function DashboardInner() {
           {/* PAYMENT RESULT RETURN: the tab bar shows the live plan chip so a
               user coming back from the result page SEES the applied plan
               without hunting for it. Values come from the server snapshot. */}
-          {subscription && (
+          {entitlementsReady && subscription && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-ik-border bg-ik-panel/70 px-4 py-3 text-xs">
               <span className="font-semibold text-ik-text">
                 پلن فعلی: {subscription.plan_name ?? "—"}
@@ -647,8 +699,12 @@ function DashboardInner() {
           )}
 
           {/* PHASE 5: showcase & ads owner panels (entitlement mirrors). */}
-          {currentTab === "showcase" && <ShowcasePanel businessId={editing?.id} entitlements={entitlements} />}
-          {currentTab === "ads" && <AdsPanel businessId={editing?.id} entitlements={entitlements} />}
+          {currentTab === "showcase" && (entitlementsReady
+            ? <ShowcasePanel businessId={editing?.id} entitlements={entitlements} />
+            : entitlementsStatus)}
+          {currentTab === "ads" && (entitlementsReady
+            ? <AdsPanel businessId={editing?.id} entitlements={entitlements} />
+            : entitlementsStatus)}
 
           {/* TAB 2: BUSINESS INFO & CONTACT (مشخصات و تماس) */}
           {currentTab === "info" && (

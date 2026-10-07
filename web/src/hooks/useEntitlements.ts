@@ -16,7 +16,6 @@ import api from "@/lib/api";
  * This hook re-syncs on mount AND on focus/visibility (the same wake pattern
  * the greeting ticker uses), so a user returning from the payment result
  * page immediately sees the new plan — no logout/login, no window.reload().
- *
  * The backend remains the security authority: these values drive UX only
  * (locked overlays, upgrade CTAs, remaining-time display).
  */
@@ -50,7 +49,15 @@ export type EntitlementsResponse = {
 export type UseEntitlementsResult = {
   entitlements: EntitlementPayload;
   subscription: EntitlementSubscriptionInfo | null;
+  /** True while a request is in flight. */
   loading: boolean;
+  /**
+   * True once the server has answered at least once for the CURRENT business.
+   * Until then `entitlements` is only the free-tier placeholder: UI that says
+   * "plan inactive / upgrade" must wait for `ready`, otherwise a refresh flashes
+   * a paid account as free.
+   */
+  ready: boolean;
   error: string | null;
   /** Manual re-sync (e.g. after the payment result page reports success). */
   refresh: () => void;
@@ -60,25 +67,39 @@ export function useEntitlements(businessId: number | undefined): UseEntitlements
   const [entitlements, setEntitlements] = useState<EntitlementPayload>(FREE_TIER_FALLBACK);
   const [subscription, setSubscription] = useState<EntitlementSubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [readyForBusiness, setReadyForBusiness] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
+  // Monotonic request counter: focus + visibility + mount can fire several
+  // overlapping requests; only the NEWEST answer may write state, otherwise a
+  // slow older response overwrites a newer one (active ↔ inactive flicker).
+  const seq = useRef(0);
+  // Which business the current state belongs to (never show business A's plan
+  // while business B is loading).
+  const stateFor = useRef<number | undefined>(undefined);
 
   const fetchOnce = useCallback(async () => {
     if (!businessId) return;
+    const mine = ++seq.current;
     setLoading(true);
     try {
       const data = (await api.get<EntitlementsResponse>(`/businesses/${businessId}/entitlements`)).data;
-      if (!mounted.current) return;
+      if (!mounted.current || mine !== seq.current) return;
       if (data.entitlements) setEntitlements(data.entitlements);
       setSubscription(data.subscription ?? null);
+      stateFor.current = businessId;
+      setReadyForBusiness(businessId);
+      setReady(true);
       setError(null);
     } catch (e) {
-      if (!mounted.current) return;
-      // Keep the previous mirror on failure (never crash the dashboard for a
-      // UX mirror); surface the reason for panels that show a retry.
+      if (!mounted.current || mine !== seq.current) return;
+      // Keep the previous mirror for the SAME business (never crash the
+      // dashboard for a UX mirror); `ready` stays as it was so a failed
+      // refetch does not pretend the account is free.
       setError(e instanceof Error ? e.message : "entitlements fetch failed");
     } finally {
-      if (mounted.current) setLoading(false);
+      if (mounted.current && mine === seq.current) setLoading(false);
     }
   }, [businessId]);
 
@@ -86,15 +107,25 @@ export function useEntitlements(businessId: number | undefined): UseEntitlements
     void fetchOnce();
   }, [fetchOnce]);
 
-  // Initial fetch per business (deferred tick, project pattern).
+  // Initial fetch per business (deferred tick, project pattern). A business
+  // switch first drops the previous business' mirror.
   useEffect(() => {
     mounted.current = true;
-    const timer = window.setTimeout(() => void fetchOnce(), 0);
+    const timer = window.setTimeout(() => {
+      if (stateFor.current !== businessId) {
+        setEntitlements(FREE_TIER_FALLBACK);
+        setSubscription(null);
+        setReady(false);
+        setReadyForBusiness(undefined);
+        stateFor.current = undefined;
+      }
+      void fetchOnce();
+    }, 0);
     return () => {
       mounted.current = false;
       window.clearTimeout(timer);
     };
-  }, [fetchOnce]);
+  }, [businessId, fetchOnce]);
 
   // Wake re-sync: returning to the tab / window after a payment (or any
   // absence) refetches so limits and remaining time can never go stale.
@@ -111,5 +142,14 @@ export function useEntitlements(businessId: number | undefined): UseEntitlements
     };
   }, [businessId, fetchOnce]);
 
-  return { entitlements, subscription, loading, error, refresh };
+  const stateMatchesBusiness = readyForBusiness === businessId;
+
+  return {
+    entitlements: stateMatchesBusiness ? entitlements : FREE_TIER_FALLBACK,
+    subscription: stateMatchesBusiness ? subscription : null,
+    loading,
+    ready: ready && stateMatchesBusiness,
+    error,
+    refresh,
+  };
 }

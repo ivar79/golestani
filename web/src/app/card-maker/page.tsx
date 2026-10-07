@@ -33,6 +33,7 @@ import Link from "next/link";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { listBusinesses, type Business } from "@/lib/businesses";
+import { pickActiveBusiness, writeActiveBusinessId } from "@/lib/activeBusiness";
 import api, { extractApiError } from "@/lib/api";
 import { downloadPrintFile } from "@/lib/phase4";
 import CardCanvas, {
@@ -231,7 +232,8 @@ export default function CardMakerPage() {
         setBusinesses(items);
         const requestedBusinessId = Number(new URLSearchParams(window.location.search).get("business_id"));
         const requestedBusiness = items.find((item) => item.id === requestedBusinessId);
-        if (items.length > 0) setSelectedBusiness(requestedBusiness ?? items[0]);
+        // URL param wins, then the remembered business, then the newest one.
+        if (items.length > 0) setSelectedBusiness(pickActiveBusiness(items, requestedBusiness?.id));
       })
       .catch((err) => {
         if (!active) return;
@@ -252,6 +254,7 @@ export default function CardMakerPage() {
   // Load card settings for selected business
   useEffect(() => {
     if (!selectedBusiness) return;
+    writeActiveBusinessId(selectedBusiness.id);
     // Deferred flag-set (project pattern): setState leaves the effect body
     // (react-hooks/set-state-in-effect) while the loading UI shows one extra
     // frame at most — behavior is unchanged.

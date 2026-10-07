@@ -34,7 +34,7 @@ import {
   History as HistoryIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { extractApiError } from "@/lib/api";
+import { extractApiError, retryTransient } from "@/lib/api";
 import {
   getAdminOverview,
   moderateAdminSubscription,
@@ -237,10 +237,9 @@ export default function AdminPage() {
   async function refresh() {
     setRefreshing(true);
     try {
-      const [overview, rows] = await Promise.all([
-        getAdminOverview(),
-        getAdminSettings(),
-      ]);
+      const [overview, rows] = await retryTransient(() =>
+        Promise.all([getAdminOverview(), getAdminSettings()]),
+      );
       setData(overview);
       setSettings(Object.fromEntries(rows.map((x) => [x.key, x.value ?? ""])));
       setError(null);
@@ -257,12 +256,16 @@ export default function AdminPage() {
     }
   }, [authLoading, user, router]);
 
+  // Keyed on the stable user id + admin flag, not the user object (replaced on
+  // every refreshUser()), so the overview is not refetched needlessly.
+  const isAdmin = Boolean(user?.roles.includes("admin"));
+  const adminId = user?.id;
   useEffect(() => {
-    if (user?.roles.includes("admin")) {
+    if (isAdmin) {
       const t = window.setTimeout(() => void refresh(), 0);
       return () => window.clearTimeout(t);
     }
-  }, [user]);
+  }, [isAdmin, adminId]);
 
   async function save() {
     try {

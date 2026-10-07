@@ -38,9 +38,11 @@ class BusinessEntitlementController extends Controller
         // this read is the exact moment a scheduled downgrade becomes real.
         $subscription = $gate->activeSubscription($business)
             // After expiry the granting lookup is (correctly) empty — the
-            // UI still needs the LAST subscription to show its derived
-            // expired state, but it MUST NOT re-grant anything.
-            ?? $business->subscriptions()->latest('expires_at')->first();
+            // Newest REAL lifetime (active/expired) by id. The old
+            // latest('expires_at') sorts NULLs FIRST on PostgreSQL, so a
+            // pending_receipt/rejected row (no expiry) could win and make a
+            // paid account flip to "pending" after the plan lapsed.
+            ?? $business->subscriptions()->whereIn('status', ['active', 'expired'])->latest('id')->first();
 
         return response()->json([
             // payload() includes plan + source + capabilities + `scheduled`

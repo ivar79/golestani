@@ -13,7 +13,18 @@ class PublicBusinessController extends Controller
 {
     public function show(Request $request, string $slug): JsonResponse
     {
-        $b = Business::where('slug', $slug)->where('status', 'approved')->firstOrFail();
+        $b = Business::where('slug', $slug)->firstOrFail();
+        if ($b->status !== 'approved') {
+            // Still 404 (nothing about the business is disclosed), but with a
+            // machine-readable reason so the page can say "awaiting review"
+            // instead of "business not found". An owner edit sends an approved
+            // business back to review (BusinessPublication::invalidate), which
+            // used to look exactly like the business had been deleted.
+            abort(response()->json([
+                'message' => 'این صفحه در حال حاضر منتشر نشده است.',
+                'reason'  => 'not_published',
+            ], 404)->header('Cache-Control', 'no-store'));
+        }
         $data = $b->only(['name','slug','category','services','description','phone','email','address','city','neighborhood','latitude','longitude','social_links','badges','logo','cover_image','created_at','updated_at']);
         $data['images'] = $b->images()->get(['id','path','alt']);
         $data['public_url'] = BusinessUrl::public($b, $request);

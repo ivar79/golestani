@@ -60,6 +60,22 @@ class AdminLoginTest extends TestCase
         ])->assertOk();
     }
 
+    public function test_admin_login_replaces_only_previous_admin_tokens(): void
+    {
+        $admin = $this->adminUser();
+        $admin->createToken('user-token');
+        $admin->createToken('admin-token');
+
+        $this->postJson('/api/auth/admin/login', [
+            'identifier' => 'admin@golestani.ir',
+            'password' => self::PASSWORD,
+        ])->assertOk();
+
+        $this->assertSame(1, $admin->tokens()->where('name', 'user-token')->count());
+        $this->assertSame(1, $admin->tokens()->where('name', 'admin-token')->count());
+        $this->assertSame(2, $admin->tokens()->count());
+    }
+
     public function test_persian_digit_identifier_with_whitespace_succeeds(): void
     {
         $this->adminUser();

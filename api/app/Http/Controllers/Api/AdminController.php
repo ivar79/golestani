@@ -310,11 +310,20 @@ return response()->json(Article::create($data), 201);
             report($e);
         }
 
-        try {
-            Redis::connection()->ping();
-            $redis['ok'] = true;
-        } catch (\Throwable $e) {
-            report($e);
+        // Ping Redis only when cache/session/queue actually use it. In the
+        // no-Redis preview setup the ping targets an unreachable host and can
+        // block until the connect timeout — longer than the browser's 15 s
+        // request timeout — which surfaced as "admin lost the server".
+        $usesRedis = in_array('redis', [config('cache.default'), config('session.driver'), config('queue.default')], true);
+        if ($usesRedis) {
+            try {
+                Redis::connection()->ping();
+                $redis['ok'] = true;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        } else {
+            $redis['skipped'] = true;
         }
 
         return response()->json([

@@ -12,6 +12,7 @@ use App\Services\FeatureGate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -22,16 +23,35 @@ class SubscriptionController extends Controller
      | config, never from frontend constants (price hardcode ban).
      * ----------------------------------------------------------------- */
 
-    /** GET /api/plans — public pricing page payload. */
-    public function plans(): JsonResponse
+    /**
+     * GET /api/plans — public pricing page payload.
+     *
+     * DESIGNER-ONLY plans (features.designer_studio) are listed only for an
+     * approved designer. Anonymous visitors and ordinary business owners never
+     * see them (purchase is also refused server-side in store()/init()), so the
+     * pricing page can no longer offer a plan the buyer is not allowed to buy.
+     * The token is optional here: the route is public, a bearer token (if sent)
+     * is resolved through the sanctum guard exactly like PublicBusinessController::qr.
+     */
+    public function plans(Request $request): JsonResponse
     {
         $freeTier = FeatureGate::freeTier();
+        $isDesigner = (bool) $request->user('sanctum')?->hasApprovedDesignerStatus();
+
+        $plans = Plan::public()->get()
+            ->map(function (Plan $plan) {
+                $plan->setAttribute('audience', ($plan->features['designer_studio'] ?? false) ? 'designer' : 'business');
+
+                return $plan;
+            })
+            ->filter(fn (Plan $plan) => $isDesigner || $plan->getAttribute('audience') !== 'designer')
+            ->values();
 
         return response()->json([
             'free_tier' => $freeTier,
             'labels' => collect(FeatureGate::catalog())
                 ->map(fn (array $entry) => ['label' => $entry[1], 'type' => $entry[0], 'group' => $entry[2]]),
-            'plans' => Plan::public()->get(),
+            'plans' => $plans,
         ]);
     }
 
@@ -248,45 +268,56 @@ class SubscriptionController extends Controller
             'admin_note' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ($data['status'] === 'active') {
-            $plan = $subscription->plan;
-            abort_if($plan === null || ! $plan->is_active, 422, 'پلن این اشتراک غیرفعال است؛ ابتدا پلن را فعال کنید.');
+        // ONE transaction under a business row lock: activation, the
+        // supersede of the previous active row and the final status write must
+        // be atomic. Previously they were separate statements, so a concurrent
+        // read (dashboard refresh) between "old row expired" and "new row
+        // active" saw NO active subscription — the account looked inactive for
+        // a moment, and a crash in between left it inactive for good.
+        DB::transaction(function () use ($subscription, &$data): void {
+            \App\Models\Business::query()->whereKey($subscription->business_id)->lockForUpdate()->first();
+            $subscription->refresh();
 
-            // Backfill money snapshot for requests created before the
-            // snapshot columns existed (legacy rows).
-            $subscription->forceFill([
-                'plan_name' => $subscription->plan_name ?? $plan->name,
-                'price_amount' => $subscription->price_amount ?? $plan->price,
-                'price_currency' => $subscription->price_currency ?? $plan->currency,
-                'duration_days' => $subscription->duration_days ?? $plan->duration_days,
-                // POLICY snapshot_entitlements — freeze current plan config.
-                'entitlements' => FeatureGate::normalize($plan->features),
-            ])->save();
+            if ($data['status'] === 'active') {
+                $plan = $subscription->plan;
+                abort_if($plan === null || ! $plan->is_active, 422, 'پلن این اشتراک غیرفعال است؛ ابتدا پلن را فعال کنید.');
 
-            $data['start_date'] = Carbon::today();
-            $data['end_date'] = Carbon::today()->addDays($plan->duration_days);
+                // Backfill money snapshot for requests created before the
+                // snapshot columns existed (legacy rows).
+                $subscription->forceFill([
+                    'plan_name' => $subscription->plan_name ?? $plan->name,
+                    'price_amount' => $subscription->price_amount ?? $plan->price,
+                    'price_currency' => $subscription->price_currency ?? $plan->currency,
+                    'duration_days' => $subscription->duration_days ?? $plan->duration_days,
+                    // POLICY snapshot_entitlements — freeze current plan config.
+                    'entitlements' => FeatureGate::normalize($plan->features),
+                ])->save();
 
-            // TIME LIFECYCLE — timestamp source of truth (same contract as
-            // the online-payment activation). started_at = the exact
-            // activation moment; expires_at = started_at + plan duration.
-            // Remaining time is always derived (expires_at − now) — FeatureGate
-            // checks expires_at, never a stale `active` flag alone.
-            $now = Carbon::now();
-            $subscription->forceFill([
-                'started_at' => $now,
-                'expires_at' => $now->copy()->addDays((int) $plan->duration_days),
-            ])->save();
+                $data['start_date'] = Carbon::today();
+                $data['end_date'] = Carbon::today()->addDays($plan->duration_days);
 
-            // Single-active invariant: supersede other active subscriptions.
-            if (FeatureGate::policy('supersede_on_activation', true)) {
-                $subscription->business->subscriptions()
-                    ->where('status', 'active')
-                    ->where('id', '!=', $subscription->id)
-                    ->update(['status' => 'expired', 'admin_note' => 'با فعال‌سازی اشتراک جدید جایگزین شد.']);
+                // TIME LIFECYCLE — timestamp source of truth (same contract as
+                // the online-payment activation). started_at = the exact
+                // activation moment; expires_at = started_at + plan duration.
+                // Remaining time is always derived (expires_at − now) — FeatureGate
+                // checks expires_at, never a stale `active` flag alone.
+                $now = Carbon::now();
+                $subscription->forceFill([
+                    'started_at' => $now,
+                    'expires_at' => $now->copy()->addDays((int) $plan->duration_days),
+                ])->save();
+
+                // Single-active invariant: supersede other active subscriptions.
+                if (FeatureGate::policy('supersede_on_activation', true)) {
+                    $subscription->business->subscriptions()
+                        ->where('status', 'active')
+                        ->where('id', '!=', $subscription->id)
+                        ->update(['status' => 'expired', 'admin_note' => 'با فعال‌سازی اشتراک جدید جایگزین شد.']);
+                }
             }
-        }
 
-        $subscription->update($data);
+            $subscription->update($data);
+        });
 
         if ($subscription->business?->user_id) {
             InternalNotification::create([

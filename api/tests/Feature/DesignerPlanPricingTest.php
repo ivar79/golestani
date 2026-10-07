@@ -87,16 +87,32 @@ class DesignerPlanPricingTest extends TestCase
         $this->assertSame([false, true, true], $tiers->map(fn (Plan $tier) => $tier->features['custom_templates'])->all());
     }
 
-    public function test_public_pricing_endpoint_lists_the_priced_designer_plan(): void
+    public function test_public_pricing_endpoint_shows_designer_plans_only_to_approved_designers(): void
     {
         $plan = $this->designerPlan();
 
         $response = $this->getJson('/api/plans')->assertOk();
+        $publicPlans = collect($response->json('plans'));
+        $this->assertNotNull($publicPlans->firstWhere('slug', 'professional'));
+        $this->assertNull($publicPlans->firstWhere('slug', 'designer-pro'));
+
+        $owner = $this->owner();
+        $ownerResponse = $this->actingAs($owner)->getJson('/api/plans')->assertOk();
+        $this->assertNull(collect($ownerResponse->json('plans'))->firstWhere('slug', 'designer-pro'));
+
+        $designer = User::factory()->create([
+            'phone' => '09'.fake()->unique()->numerify('#########'),
+            'is_active' => true,
+            'designer_status' => 'approved',
+        ]);
+        $designer->assignRole('designer');
+        $response = $this->actingAs($designer)->getJson('/api/plans')->assertOk();
         $row = collect($response->json('plans'))->firstWhere('slug', 'designer-pro');
 
         $this->assertNotNull($row);
         $this->assertSame($plan->price, $row['price']);
         $this->assertTrue((bool) $row['features']['designer_studio']);
+        $this->assertSame('designer', $row['audience']);
         // The pricing page renders labels from the SERVER catalog — the studio
         // capability must be advertised there (never hardcoded in the frontend).
         $this->assertArrayHasKey('designer_studio', $response->json('labels'));

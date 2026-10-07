@@ -49,7 +49,12 @@ class StudioAccess
     /** Is the gate currently enforced? ('0'/missing = staged off). */
     public static function enforced(): bool
     {
-        return SiteSetting::query()->where('key', self::SETTING_KEY)->value('value') === '1';
+        // Tolerate the values an admin UI / seeder may realistically store
+        // ('1', 'true', 'on', boolean true cast to '1'); a strict === '1'
+        // silently left the designer-only gate OFF for any other spelling.
+        $value = SiteSetting::query()->where('key', self::SETTING_KEY)->value('value');
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'on', 'yes'], true);
     }
 
     /**

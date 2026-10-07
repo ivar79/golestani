@@ -75,8 +75,11 @@ export default function DesignerPage() {
   const MAX_PORTFOLIO_BYTES = 10 * 1024 * 1024; // matches backend max:10240
   const ALLOWED_PORTFOLIO_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 
+  // Depend on the user ID (stable), not the user object (replaced on every
+  // refreshUser()) — otherwise the profile/workspace loads re-run and flicker.
+  const userId = user?.id;
   useEffect(() => {
-    if (authLoading || !user) return;
+    if (authLoading || !userId) return;
     let active = true;
     void api.get<{ designer_status: DesignerProgramStatus; program_enabled: boolean }>("/designer/program/status")
       .then(async ({ data: status }) => {
@@ -111,10 +114,10 @@ export default function DesignerPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, user]);
+  }, [authLoading, userId]);
 
   useEffect(() => {
-    if (authLoading || !user) return;
+    if (authLoading || !userId) return;
     if (programStatus !== "approved") {
       const timer = window.setTimeout(() => setLoadingWorkspaces(false), 0);
       return () => window.clearTimeout(timer);
@@ -153,7 +156,7 @@ export default function DesignerPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, user, programStatus]);
+  }, [authLoading, userId, programStatus]);
 
   async function requestDesignerProgram() {
     setRequestingProgram(true);

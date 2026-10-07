@@ -55,6 +55,24 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+/**
+ * Retry a request ONLY when the API did not answer (network drop, timeout,
+ * 5xx — e.g. a cold serverless database). 4xx answers (401/403/422/429) are
+ * real answers and are never retried. Used by admin reads so one dropped
+ * request no longer turns the whole panel into "connection lost".
+ */
+export async function retryTransient<T>(run: () => Promise<T>, delays: number[] = [600, 1800]): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      const transient = axios.isAxiosError(error) && (!error.response || error.response.status >= 500);
+      if (!transient || attempt >= delays.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+}
+
 export function extractApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { errors?: Record<string, string[]>; message?: string } | undefined;
