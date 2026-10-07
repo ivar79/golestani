@@ -56,6 +56,17 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute((int) config('studio.rate_limits.studio_authoring', 30))
                 ->by($request->user()?->id ?: $request->ip());
         });
+
+        // Public browse throttling (audit finding `search-unclaimed-set-uncapped`):
+        // /search/businesses and /search/facets share ONE per-IP bucket, so
+        // alternating endpoints cannot reset the quota the way independent
+        // per-route buckets would. Guests have no user id — the key is the
+        // client IP. This bounds request volume; the response size is bounded
+        // separately by config('search.max_map_pins') in BusinessController.
+        RateLimiter::for('public-search', function (Request $request): Limit {
+            return Limit::perMinute((int) config('search.rate_limit_per_minute', 60))
+                ->by($request->ip());
+        });
     }
 
     /**

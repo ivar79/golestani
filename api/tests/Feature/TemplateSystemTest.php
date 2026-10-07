@@ -452,10 +452,13 @@ class TemplateSystemTest extends TestCase
         $user = $this->owner();
         $business = $this->business($user, 'personal-upload');
         $this->attachPlan($business, ['card_editor' => true, 'custom_templates' => true]);
+        // Personal uploads must land on the PRIVATE disk (audit finding
+        // `private-template-asset-public-disk`); the public disk is faked as
+        // well so the test can prove nothing was written there.
         Storage::fake('public');
+        Storage::fake(\App\Services\TemplateAssetService::PRIVATE_DISK);
 
         $image = UploadedFile::fake()->image('art.png', 800, 600);
-        Storage::persistentFake('public');
         // Multipart contract (ApiRequestSafety): files go through the $files
         // slot with an explicit multipart Content-Type + the XHR header.
         $res = $this->actingAs($user)->call(
@@ -468,6 +471,11 @@ class TemplateSystemTest extends TestCase
         $path = $res->json('asset.path');
         $this->assertStringStartsWith("templates/users/{$user->id}/", $path);
         $this->assertDatabaseHas('template_assets', ['path' => $path, 'scope' => 'personal', 'owner_id' => $user->id]);
+
+        // The file is on the private disk and NOT in the web-served root, so
+        // /storage/templates/users/… cannot serve these bytes any more.
+        Storage::disk(\App\Services\TemplateAssetService::PRIVATE_DISK)->assertExists($path);
+        Storage::disk('public')->assertMissing($path);
 
         // Without the capability → 403.
         $plain = $this->owner();

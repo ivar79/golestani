@@ -73,6 +73,47 @@ class HomepageCmsTest extends TestCase
         $this->assertSame('عنوان به‌روزشده', $payload['homepage.hero.title']);
     }
 
+    /**
+     * Finding `homepage-jsonld-script-context-injection` — server side.
+     *
+     * The CMS value is DATA: the API must persist and return the exact bytes
+     * (no silent stripping or mangling) and must answer as JSON, never HTML.
+     * A `<\/script>` payload is therefore a legal setting value — encoding it
+     * for a script context is the render boundary's job
+     * (web/src/lib/structuredData.ts). This test pins that contract so the
+     * fix can never be "solved" by dropping data on write.
+     */
+    public function test_script_payload_in_cms_setting_roundtrips_as_json_data(): void
+    {
+        $admin = User::factory()->create(['phone' => '09000000012']);
+        $admin->assignRole('admin');
+        $payload = "</script><script>fetch('/EXECUTED_JSONLD')</script>";
+
+        $this->actingAs($admin)
+            ->putJson('/api/admin/settings/homepage.hero.subtitle', ['value' => $payload])
+            ->assertOk()
+            ->assertJsonPath('value', $payload);
+
+        $response = $this->getJson('/api/public/homepage')->assertOk();
+
+        $this->assertStringStartsWith('application/json', (string) $response->headers->get('Content-Type'));
+        // Array access: the key contains dots, so `json('homepage.hero.subtitle')`
+        // would be read as a nested path.
+        $body = $response->json();
+        $this->assertSame($payload, $body['homepage.hero.subtitle']);
+    }
+
+    /** Only an admin may write CMS text (the injection source). */
+    public function test_guest_and_ordinary_user_cannot_write_cms_settings(): void
+    {
+        $this->putJson('/api/admin/settings/homepage.hero.subtitle', ['value' => 'x'])->assertUnauthorized();
+
+        $user = User::factory()->create(['phone' => '09000000013']);
+        $this->actingAs($user)
+            ->putJson('/api/admin/settings/homepage.hero.subtitle', ['value' => 'x'])
+            ->assertForbidden();
+    }
+
     public function test_greeting_schedule_setting_roundtrips_through_public_payload(): void
     {
         $admin = User::factory()->create(['phone' => '09000000009']);

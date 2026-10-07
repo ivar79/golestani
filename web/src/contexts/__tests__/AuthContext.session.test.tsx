@@ -13,7 +13,7 @@
  * Only a real 401 may end the session.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { AxiosError, AxiosHeaders } from "axios";
 import { AuthProvider, useAuth } from "../AuthContext";
 import { TOKEN_KEY } from "@/lib/session";
@@ -80,13 +80,32 @@ describe("AuthProvider — only a real 401 ends the session", () => {
     expect(window.localStorage.getItem(TOKEN_KEY)).toBe("stored-token");
   });
 
-  it("KEEPS the token when the API is simply unreachable", async () => {
-    getMe.mockRejectedValue(new AxiosError("Network Error", AxiosError.ERR_NETWORK));
-    await renderWithToken();
+  it("recovers the stored session after a transient network failure", async () => {
+    getMe
+      .mockRejectedValueOnce(new AxiosError("Network Error", AxiosError.ERR_NETWORK))
+      .mockResolvedValue({ id: 1, phone: "09120000000", username: "shop", avatar: null });
+    window.localStorage.setItem(TOKEN_KEY, "stored-token");
+    vi.useFakeTimers();
+    try {
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
 
-    await waitFor(() => expect(document.querySelector('[data-testid="user"]')?.textContent).toBe("none"));
-    expect(getMe).toHaveBeenCalledTimes(2);
-    expect(window.localStorage.getItem(TOKEN_KEY)).toBe("stored-token");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(document.querySelector('[data-testid="user"]')?.textContent).toBe("09120000000");
+      expect(getMe).toHaveBeenCalledTimes(2);
+      expect(window.localStorage.getItem(TOKEN_KEY)).toBe("stored-token");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("still ends the session on a genuine 401", async () => {

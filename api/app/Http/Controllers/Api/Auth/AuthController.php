@@ -111,7 +111,12 @@ class AuthController extends Controller
 
         $this->otp->clearAttempts($phone);
 
-        $user->tokens()->delete();
+        // Multi-session OTP login (regression decision 2026-10-07): a second
+        // login (new tab/device) must NOT revoke existing tokens — revoking
+        // here logged every other session out at its next request and read
+        // as an unexpected logout. Exposure stays capped by the 7-day expiry;
+        // logout still deletes only the current token; admin password login
+        // and recovery keep single-session semantics (high-value accounts).
         // P0: per-token expiry so leaked tokens self-expire (Sanctum expires_at).
         $token = $user->createToken('auth-token', ['*'], now()->addDays(7))->plainTextToken;
 

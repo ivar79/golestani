@@ -39,6 +39,11 @@ export function mediaSrc(path?: string | null): string | null {
   // Reject traversal and query/fragment/backslash tricks — the server already
   // refuses them, this keeps the proxy surface equally strict.
   if (relative.includes("..") || /[\\?#%]/.test(relative)) return null;
+  // Canonical form only: repeated slashes could otherwise make a namespace
+  // check (`storage/templates/users/…`) miss a path that the filesystem then
+  // resolves to the private namespace anyway (audit lead
+  // `media-proxy-double-slash-namespace-bypass`).
+  if (relative.includes("//")) return null;
   if (!/^storage\/[A-Za-z0-9._\-/]+$/.test(relative)) return null;
 
   return `/api/media/${relative}`;
@@ -53,5 +58,8 @@ export function upstreamMediaUrl(apiBaseUrl: string, relativePath: string): stri
   const origin = apiBaseUrl.replace(/\/$/, "").replace(/\/api(\/v\d+)?$/, "");
   if (!/^https?:\/\//i.test(origin)) return null;
   if (!/^storage\/[A-Za-z0-9._\-/]+$/.test(relativePath) || relativePath.includes("..")) return null;
+  // Same canonical-path rule as mediaSrc: a duplicate slash must never reach
+  // the upstream and be collapsed into a different namespace server-side.
+  if (relativePath.includes("//")) return null;
   return `${origin}/${relativePath}`;
 }

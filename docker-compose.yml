@@ -1,4 +1,15 @@
 services:
+  api-vendor-init:
+    image: golestani-php:8.3
+    restart: "no"
+    volumes:
+      - ./api/vendor:/source:ro
+      - golestani-api-vendor:/vendor
+    command:
+      - sh
+      - -c
+      - if [ ! -f /vendor/autoload.php ]; then cp -a /source/. /vendor/; fi
+
   api:
     build:
       context: .
@@ -8,16 +19,24 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     volumes:
-      - ./api:/var/www/html
+      - golestani-api-source:/var/www/html
+      - golestani-api-vendor:/var/www/html/vendor
       # opcache for the dev CLI server: Laravel boots once per worker instead
       # of re-parsing hundreds of files per request over the slow Windows mount
       - ./docker/php/prod.ini:/usr/local/etc/php/conf.d/zz-prod.ini:ro
+      # Per-request log writes (security audit + request timing) measured
+      # 1.5s PER LINE on the Windows bind mount (flush stalls) — the whole
+      # API felt "dead" (17-57s per request). A Linux volume writes in <1ms.
+      # Old logs stay on the host mount; new logs: docker exec + /var/www/html/storage/logs.
+      - golestani-logs:/var/www/html/storage/logs
+      # Only the opt-in, non-production demo OTP is written to this host-visible file.
+      - ./api/storage/logs/otp-demo.log:/var/www/html/storage/logs/otp-demo.log
     ports:
       - "8000:8000"
     environment:
-      # php -S is single-threaded by default: the search page fires 6+ parallel
-      # requests (search, facets, ads, tiles) that then queue behind each other
-      # and hit the 15s axios timeout. 8 workers serve them concurrently.
+      # The search page fires 6+ parallel requests (search, facets, ads, tiles)
+      # that queue behind each other in a single PHP server. Run from public so
+      # Laravel's router resolves public/index.php, and let PHP fork workers.
       PHP_CLI_SERVER_WORKERS: 8
       # Redis lives in its own container; inside this one the compose service
       # name resolves it (127.0.0.1 would point at the API container itself).
@@ -26,14 +45,35 @@ services:
       REDIS_HOST: redis
     env_file:
       - ./api/.env
-    command: php artisan serve --host=0.0.0.0 --port=8000
+    command:
+      - sh
+      - -c
+      - cd public && exec php -S 0.0.0.0:8000 -t . ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
     networks:
       - golestani-network
     depends_on:
+      api-vendor-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./api
+          target: /var/www/html
+          initial_sync: true
+          ignore:
+            - vendor/
+            - .env
+            - .env.*
+            - storage/logs/
+            - storage/framework/cache/
+            - storage/framework/sessions/
+            - storage/framework/views/
+            - bootstrap/cache/*.php
+            - public/storage
 
   worker:
     build:
@@ -44,7 +84,9 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     volumes:
-      - ./api:/var/www/html
+      - golestani-api-source:/var/www/html
+      - golestani-api-vendor:/var/www/html/vendor
+      - golestani-logs:/var/www/html/storage/logs
     environment:
       # queue:work redis needs the compose service name, not the 127.0.0.1 default
       REDIS_HOST: redis
@@ -54,10 +96,28 @@ services:
     networks:
       - golestani-network
     depends_on:
+      api-vendor-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./api
+          target: /var/www/html
+          initial_sync: true
+          ignore:
+            - vendor/
+            - .env
+            - .env.*
+            - storage/logs/
+            - storage/framework/cache/
+            - storage/framework/sessions/
+            - storage/framework/views/
+            - bootstrap/cache/*.php
+            - public/storage
 
   postgres:
     image: postgis/postgis:16-3.4
@@ -101,7 +161,13 @@ networks:
     driver: bridge
 
 volumes:
+  golestani-api-source:
+    driver: local
+  golestani-api-vendor:
+    driver: local
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  golestani-logs:
     driver: local

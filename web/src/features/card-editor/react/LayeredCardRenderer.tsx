@@ -27,11 +27,12 @@
  * isolated by the caller's own typography.
  */
 
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { CardDocument, CardLayer, ImageLayer, QrLayer, ShapeLayer, TextLayer, BadgeLayer, PathLayer } from "../domain/document";
 import { layerZ } from "../domain/document";
 import { mediaSrc } from "@/lib/media";
+import { fetchPrivateAssetUrl, isPrivateAssetSrc, releasePrivateAssetUrl } from "@/lib/privateAsset";
 import { resolveLayerPathD } from "../domain/path";
 import { resolveShapePaint, type SvgPrimitive } from "../domain/shapes";
 import { resolveStroke, type ResolvedStroke } from "../domain/stroke";
@@ -268,10 +269,47 @@ function TextVisual({ layer }: { layer: TextLayer }) {
 }
 
 function ImageVisual({ layer }: { layer: ImageLayer }) {
-  const [broken, setBroken] = useState(false);
+  const srcRef = layer.src;
+  const isPrivate = isPrivateAssetSrc(srcRef);
+  // Both states are TAGGED with the src they belong to, so switching layers can
+  // never display stale bytes and no state has to be reset synchronously.
+  const [loaded, setLoaded] = useState<{ src: string; url: string } | null>(null);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  // PRIVATE artwork (personal templates, review-stage submissions) is fetched
+  // with the session credential and handed to the DOM as a document-local blob
+  // URL, so the token never appears in markup and the bytes are revoked when
+  // this layer unmounts. Public media keeps using the same-origin proxy.
+  useEffect(() => {
+    if (!isPrivate || typeof srcRef !== "string") return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    void fetchPrivateAssetUrl(srcRef, controller.signal).then((url) => {
+      if (cancelled) {
+        if (url) releasePrivateAssetUrl(srcRef);
+
+        return;
+      }
+      if (url) {
+        setLoaded({ src: srcRef, url });
+      } else {
+        setFailedSrc(srcRef);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      releasePrivateAssetUrl(srcRef);
+    };
+  }, [isPrivate, srcRef]);
+
   // Same-origin proxy: rasterizable by html-to-image AND displayable publicly.
   // Mirroring is NOT applied here — the layer frame owns it for every kind.
-  const src = mediaSrc(layer.src);
+  const src = isPrivate ? (loaded?.src === srcRef ? loaded.url : null) : mediaSrc(srcRef);
+  const broken = failedSrc === srcRef;
   return (
     <div
       style={{
@@ -289,7 +327,7 @@ function ImageVisual({ layer }: { layer: ImageLayer }) {
           alt=""
           className="h-full w-full"
           style={{ objectFit: layer.objectFit }}
-          onError={() => setBroken(true)}
+          onError={() => setFailedSrc(srcRef)}
         />
       ) : null}
     </div>

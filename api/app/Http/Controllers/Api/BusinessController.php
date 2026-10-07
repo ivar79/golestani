@@ -1,13 +1,15 @@
 <?php
+
 namespace App\Http\Controllers\Api;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Business\BusinessRequest;
 use App\Http\Requests\Business\SearchBusinessRequest;
 use App\Models\Business;
+use App\Models\Designer;
 use App\Services\BusinessAudit;
 use App\Services\BusinessMedia;
 use App\Services\BusinessPublication;
-
 use App\Support\BusinessUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,22 +17,27 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+
 class BusinessController extends Controller
 {
     private function ownerData(Business $b): array
     {
         return $b->loadMissing(['cards', 'designer:id,display_name,referral_code'])->toArray() + ['public_url' => BusinessUrl::public($b)];
     }
+
     public function index(Request $r): JsonResponse
     {
-        return response()->json($r->user()->businesses()->with(['cards', 'designer:id,display_name,referral_code'])->latest()->get()->map(fn(Business $b) => $this->ownerData($b)));
+        return response()->json($r->user()->businesses()->with(['cards', 'designer:id,display_name,referral_code'])->latest()->get()->map(fn (Business $b) => $this->ownerData($b)));
     }
+
     public function store(BusinessRequest $r): JsonResponse
     {
         $b = DB::transaction(function () use ($r) {
             // Serialize first-business role assignment for a given user.
             $user = $r->user()->newQuery()->lockForUpdate()->findOrFail($r->user()->id);
-            if (!$user->hasRole('admin') && !$user->hasRole('business_owner')) $user->assignRole('business_owner');
+            if (! $user->hasRole('admin') && ! $user->hasRole('business_owner')) {
+                $user->assignRole('business_owner');
+            }
             $data = $r->validated();
             $this->resolveDesignerAttribution($data);
             $data['slug'] = (Str::slug($data['name']) ?: 'business').'-'.Str::lower((string) Str::ulid());
@@ -38,15 +45,20 @@ class BusinessController extends Controller
             $b = $user->businesses()->create($data);
             $this->syncGeometry($b);
             BusinessAudit::record($r, 'business.created', $b->id, ['fields' => array_keys($r->validated()), 'status' => 'pending']);
+
             return $b->fresh();
         });
+
         return response()->json($this->ownerData($b), 201);
     }
+
     public function show(Request $r, Business $business): JsonResponse
     {
         $this->authorizeOwner($r, $business);
+
         return response()->json($this->ownerData($business->load(['images', 'cards', 'designer:id,display_name,referral_code'])));
     }
+
     public function update(BusinessRequest $r, Business $business): JsonResponse
     {
         $b = DB::transaction(function () use ($r, $business) {
@@ -62,46 +74,65 @@ class BusinessController extends Controller
                 $this->syncGeometry($b);
                 BusinessAudit::record($r, 'business.updated', $b->id, ['fields' => $fields, 'from_status' => $before, 'to_status' => $b->status]);
             }
+
             return $b->fresh();
         });
         Cache::forget('search_facets_v1');
+
         return response()->json($this->ownerData($b));
     }
+
     public function upload(Request $r, Business $business): JsonResponse
     {
         $this->authorizeOwner($r, $business);
         $r->validate([
             'logo' => array_merge(['nullable'], BusinessMedia::rules(2048)),
             'cover_image' => array_merge(['nullable'], BusinessMedia::rules()),
-            'remove_logo' => ['sometimes','boolean'], 'remove_cover_image' => ['sometimes','boolean'],
+            'remove_logo' => ['sometimes', 'boolean'], 'remove_cover_image' => ['sometimes', 'boolean'],
         ]);
-        foreach (['logo','cover_image'] as $field) {
-            if ($r->hasFile($field) && $r->boolean('remove_'.$field)) abort(422, 'آپلود و حذف همزمان یک تصویر مجاز نیست.');
+        foreach (['logo', 'cover_image'] as $field) {
+            if ($r->hasFile($field) && $r->boolean('remove_'.$field)) {
+                abort(422, 'آپلود و حذف همزمان یک تصویر مجاز نیست.');
+            }
         }
-        $paths = []; $old = [];
+        $paths = [];
+        $old = [];
         try {
-            foreach (['logo','cover_image'] as $field) {
-                if ($r->hasFile($field)) $paths[$field] = BusinessMedia::store($r->file($field), $field === 'logo' ? 'logos' : 'covers');
-                elseif ($r->boolean('remove_'.$field)) $paths[$field] = null;
+            foreach (['logo', 'cover_image'] as $field) {
+                if ($r->hasFile($field)) {
+                    $paths[$field] = BusinessMedia::store($r->file($field), $field === 'logo' ? 'logos' : 'covers');
+                } elseif ($r->boolean('remove_'.$field)) {
+                    $paths[$field] = null;
+                }
             }
             abort_if($paths === [], 422, 'تصویری برای تغییر انتخاب نشده است.');
             $b = DB::transaction(function () use ($r, $business, $paths, &$old) {
                 $b = Business::lockForUpdate()->findOrFail($business->id);
                 $this->authorizeOwner($r, $b);
                 $before = $b->status;
-                foreach ($paths as $field => $path) { $old[] = $b->{$field}; $b->{$field} = $path; }
+                foreach ($paths as $field => $path) {
+                    $old[] = $b->{$field};
+                    $b->{$field} = $path;
+                }
                 BusinessPublication::invalidate($b);
                 BusinessAudit::record($r, 'business.media_changed', $b->id, ['fields' => array_keys($paths), 'from_status' => $before, 'to_status' => $b->status]);
+
                 return $b->fresh();
             });
         } catch (\Throwable $e) {
-            foreach ($paths as $path) BusinessMedia::cleanup($path);
+            foreach ($paths as $path) {
+                BusinessMedia::cleanup($path);
+            }
             throw $e;
         }
-        foreach ($old as $path) BusinessMedia::cleanup($path);
+        foreach ($old as $path) {
+            BusinessMedia::cleanup($path);
+        }
         Cache::forget('search_facets_v1');
+
         return response()->json($this->ownerData($b));
     }
+
     public function destroy(Request $r, Business $business): JsonResponse
     {
         DB::transaction(function () use ($r, $business) {
@@ -113,34 +144,43 @@ class BusinessController extends Controller
         // Files intentionally retained on whole-business deletion to avoid
         // deleting media still referenced by other modules. See retention guide.
         Cache::forget('search_facets_v1');
+
         return response()->json(['message' => 'پروفایل کسب‌وکار حذف شد.']);
     }
+
     public function moderate(Request $r, Business $business): JsonResponse
     {
         abort_unless($r->user()?->hasRole('admin'), 403);
         $data = $r->validate([
-            'status' => ['required', Rule::in(['approved','rejected','suspended'])],
-            'moderation_note' => ['nullable','string','max:1000'],
-            'badges' => ['sometimes','array','max:3'],
-            'badges.*' => ['string','distinct', Rule::in(config('business.badges'))],
+            'status' => ['required', Rule::in(['approved', 'rejected', 'suspended'])],
+            'moderation_note' => ['nullable', 'string', 'max:1000'],
+            'badges' => ['sometimes', 'array', 'max:3'],
+            'badges.*' => ['string', 'distinct', Rule::in(config('business.badges'))],
         ]);
         $b = DB::transaction(function () use ($r, $business, $data) {
             $b = Business::lockForUpdate()->findOrFail($business->id);
             $before = $b->status;
             $b->status = $data['status'];
             $b->moderation_note = $data['moderation_note'] ?? null;
-            if (array_key_exists('badges', $data)) $b->badges = $data['badges'];
-            if ($b->status !== 'approved') $b->badges = array_values(array_diff((array) $b->badges, ['verified']));
+            if (array_key_exists('badges', $data)) {
+                $b->badges = $data['badges'];
+            }
+            if ($b->status !== 'approved') {
+                $b->badges = array_values(array_diff((array) $b->badges, ['verified']));
+            }
             $b->save();
             BusinessAudit::record($r, 'business.moderated', $b->id, [
                 'from_status' => $before, 'to_status' => $b->status,
-                'badges' => $b->badges, 'has_note' => !empty($b->moderation_note),
+                'badges' => $b->badges, 'has_note' => ! empty($b->moderation_note),
             ]);
+
             return $b->fresh();
         });
         Cache::forget('search_facets_v1');
+
         return response()->json($this->ownerData($b));
     }
+
     public function search(SearchBusinessRequest $r): JsonResponse
     {
         $data = $r->validated();
@@ -158,26 +198,42 @@ class BusinessController extends Controller
         // applies to both identically.
         $base = function () use ($data, $pgsql, $like) {
             $query = Business::query()->where('status', 'approved');
-            if (!empty($data['q'])) {
+            if (! empty($data['q'])) {
                 $term = '%'.addcslashes($data['q'], '%_\\').'%';
                 $query->where(function ($q) use ($term, $like, $pgsql) {
                     $q->where('name', $like, $term)->orWhere('category', $like, $term)->orWhere('description', $like, $term);
                     // Identifiers are fixed; all user input remains bound parameters.
-                    foreach (['services','social_links'] as $column) {
-                        if ($pgsql) $q->orWhereRaw('CAST('.$column.' AS TEXT) ILIKE ?', [$term]);
-                        else $q->orWhere($column, 'like', $term);
+                    foreach (['services', 'social_links'] as $column) {
+                        if ($pgsql) {
+                            $q->orWhereRaw('CAST('.$column.' AS TEXT) ILIKE ?', [$term]);
+                        } else {
+                            $q->orWhere($column, 'like', $term);
+                        }
                     }
                 });
             }
-            foreach (['city','neighborhood','category'] as $field) if (!empty($data[$field])) $query->where($field, $data[$field]);
-            if (!empty($data['verified'])) $query->whereJsonContains('badges', 'verified');
-            if (!empty($data['showcase'])) $query->whereHas('showcases', fn($q) => $q->where('is_published', true));
+            foreach (['city', 'neighborhood', 'category'] as $field) {
+                if (! empty($data[$field])) {
+                    $query->where($field, $data[$field]);
+                }
+            }
+            if (! empty($data['verified'])) {
+                $query->whereJsonContains('badges', 'verified');
+            }
+            if (! empty($data['showcase'])) {
+                $query->whereHas('showcases', fn ($q) => $q->where('is_published', true));
+            }
             $hasPoint = isset($data['latitude'], $data['longitude']);
-            if ($hasPoint && isset($data['radius']) && $pgsql) $query->whereRaw('ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)', [$data['longitude'], $data['latitude'], $data['radius']]);
+            if ($hasPoint && isset($data['radius']) && $pgsql) {
+                $query->whereRaw('ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)', [$data['longitude'], $data['latitude'], $data['radius']]);
+            }
             if ($hasPoint && $pgsql) {
                 // Phase 3 approved ordering: promoted first, then nearest, then id.
                 $query->select('businesses.*')->selectRaw('ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_meters', [$data['longitude'], $data['latitude']])->orderByDesc('is_promoted')->orderBy('distance_meters')->orderBy('id');
-            } else $query->orderByDesc('is_promoted')->latest()->orderByDesc('id');
+            } else {
+                $query->orderByDesc('is_promoted')->latest()->orderByDesc('id');
+            }
+
             return $query;
         };
 
@@ -191,10 +247,18 @@ class BusinessController extends Controller
         // row limit is applied here. If a performance cap is ever introduced,
         // it must slice AFTER the spatial ordering above (never dropping the
         // nearest pins first) and must never touch the claimed pagination.
-        $unclaimedRows = $base()->where('is_claimed', false)->get();
+        //
+        // BOUNDED MAP SET (audit finding `search-unclaimed-set-uncapped`): an
+        // uncapped `get()` here materialised the entire unclaimed collection on
+        // every unauthenticated request, so response cost scaled with the table
+        // rather than with the request. The cap is applied AFTER the ordering
+        // above (promoted → distance → id), so it never drops the nearest pins
+        // first, and it never touches the claimed pagination.
+        $mapPinLimit = max(1, (int) config('search.max_map_pins', 200));
+        $unclaimedRows = $base()->where('is_claimed', false)->limit($mapPinLimit)->get();
 
-        $items = $p->getCollection()->map(fn(Business $b) => $this->searchItem($b))->all();
-        $unclaimed = $unclaimedRows->map(fn(Business $b) => $this->searchItem($b))->all();
+        $items = $p->getCollection()->map(fn (Business $b) => $this->searchItem($b))->all();
+        $unclaimed = $unclaimedRows->map(fn (Business $b) => $this->searchItem($b))->all();
 
         return response()->json([
             'data' => $items,
@@ -204,7 +268,12 @@ class BusinessController extends Controller
                 'total' => $p->total(),
                 'last_page' => $p->lastPage(),
                 'next_page' => $p->nextPageUrl(),
+                // Unchanged semantics: the number of map pins returned for
+                // THIS request. `unclaimed_capped` is additive and only tells
+                // the client the server-side cap was reached (more pins exist
+                // in the same filter scope).
                 'unclaimed_total' => count($unclaimed),
+                'unclaimed_capped' => count($unclaimed) >= $mapPinLimit,
             ],
             // Phase 3 cold-start pins for the map only (gray pin, simple
             // popup). They never appear in `data` and never affect its
@@ -220,29 +289,33 @@ class BusinessController extends Controller
     private function searchItem(Business $b): array
     {
         return [
-            'id'=>$b->id,'slug'=>$b->slug,'name'=>$b->name,'category'=>$b->category,'city'=>$b->city,'neighborhood'=>$b->neighborhood,'address'=>$b->address,
-            'coordinates'=>['latitude'=>$b->latitude,'longitude'=>$b->longitude],'distance'=>$b->distance_meters ?? null,
-            'verification_badge'=>in_array('verified',(array)$b->badges,true),'badges'=>$b->badges,
-            'is_promoted'=>(bool) $b->is_promoted,'is_claimed'=>(bool) $b->is_claimed,
-            'license_verified'=>filled($b->license_tracking_code),
+            'id' => $b->id, 'slug' => $b->slug, 'name' => $b->name, 'category' => $b->category, 'city' => $b->city, 'neighborhood' => $b->neighborhood, 'address' => $b->address,
+            'coordinates' => ['latitude' => $b->latitude, 'longitude' => $b->longitude], 'distance' => $b->distance_meters ?? null,
+            'verification_badge' => in_array('verified', (array) $b->badges, true), 'badges' => $b->badges,
+            'is_promoted' => (bool) $b->is_promoted, 'is_claimed' => (bool) $b->is_claimed,
+            'license_verified' => filled($b->license_tracking_code),
             // Phase 3: the raw code feeds the front-end license-track deep link
             // (qr.mojavez.ir). Null for businesses without a license code.
-            'license_tracking_code'=>$b->license_tracking_code,
+            'license_tracking_code' => $b->license_tracking_code,
             // Phase 3: map popups show the logo when one was uploaded.
-            'logo'=>$b->logo,
-            'phone'=>$b->phone,'services'=>$b->services,'description'=>$b->description,
+            'logo' => $b->logo,
+            'phone' => $b->phone, 'services' => $b->services, 'description' => $b->description,
         ];
     }
+
     public function facets(): JsonResponse
     {
         return response()->json(Cache::remember('search_facets_v1', 300, function () {
-            $result = []; $base = Business::where('status', 'approved');
-            foreach (['cities'=>'city','categories'=>'category','neighborhoods'=>'neighborhood'] as $key=>$column) {
-                $result[$key] = (clone $base)->whereNotNull($column)->where($column,'!=','')->distinct()->orderBy($column)->pluck($column);
+            $result = [];
+            $base = Business::where('status', 'approved');
+            foreach (['cities' => 'city', 'categories' => 'category', 'neighborhoods' => 'neighborhood'] as $key => $column) {
+                $result[$key] = (clone $base)->whereNotNull($column)->where($column, '!=', '')->distinct()->orderBy($column)->pluck($column);
             }
+
             return $result;
         }));
     }
+
     /**
      * Phase 4: attribution is resolved SERVER-SIDE from the referral code —
      * designer_id is never accepted from the client. An explicitly empty
@@ -255,7 +328,7 @@ class BusinessController extends Controller
         $refCode = trim((string) ($data['designer_referral_code'] ?? $data['referral_code'] ?? ''));
 
         if ($refCode !== '') {
-            $designer = \App\Models\Designer::where('referral_code', $refCode)->first();
+            $designer = Designer::where('referral_code', $refCode)->first();
             $data['designer_id'] = $designer?->id;
         } elseif ($present) {
             $data['designer_id'] = null; // explicit clear
@@ -266,11 +339,16 @@ class BusinessController extends Controller
 
     private function syncGeometry(Business $b): void
     {
-        if (DB::connection()->getDriverName() !== 'pgsql') return;
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
         if ($b->latitude !== null && $b->longitude !== null) {
-            DB::statement('UPDATE businesses SET geom = ST_SetSRID(ST_MakePoint(?, ?), 4326) WHERE id = ?', [$b->longitude,$b->latitude,$b->id]);
-        } else DB::statement('UPDATE businesses SET geom = NULL WHERE id = ?', [$b->id]);
+            DB::statement('UPDATE businesses SET geom = ST_SetSRID(ST_MakePoint(?, ?), 4326) WHERE id = ?', [$b->longitude, $b->latitude, $b->id]);
+        } else {
+            DB::statement('UPDATE businesses SET geom = NULL WHERE id = ?', [$b->id]);
+        }
     }
+
     private function authorizeOwner(Request $r, Business $b): void
     {
         abort_unless($r->user()?->hasRole('admin') || (int) $b->user_id === (int) $r->user()?->id, 403);

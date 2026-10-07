@@ -93,6 +93,38 @@ return [
             'report' => false,
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Template Assets (private — personal + submission scopes)
+        |----------------------------------------------------------------------
+        |
+        | Personal templates and review-stage designer submissions are PRIVATE
+        | artwork (audit finding `private-template-asset-public-disk`). They
+        | live on a disk that is NOT linked into public/ and has no `serve`
+        | route, so no static URL can reach them — the web server can never
+        | bypass application authorization.
+        |
+        |   personal    → read ONLY through the ownership-checked endpoint
+        |                 (/api/assets/private/{path}).
+        |   submission  → published to the public disk by an explicit,
+        |                 idempotent step AFTER admin approval
+        |                 (TemplateAssetService::publishSubmissionAssets).
+        |
+        | Legacy public copies are migrated by the idempotent command
+        | `php artisan template-assets:move-to-private` — deliberately NOT
+        | inside a schema migration (filesystem ops must not block deploys).
+        | Production (Liara Object Storage): swap the driver to "s3" with
+        | private visibility via env — no code change needed.
+        |
+        */
+
+        'template_assets' => [
+            'driver' => 'local',
+            'root' => env('TEMPLATE_ASSETS_DISK_ROOT', storage_path('app/private/template_assets')),
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

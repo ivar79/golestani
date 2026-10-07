@@ -42,9 +42,23 @@ describe("mediaSrc", () => {
     expect(mediaSrc(undefined)).toBeNull();
     expect(mediaSrc(`/storage/${"a".repeat(500)}.png`)).toBeNull();
   });
+
+  it("refuses duplicate slashes (namespace-check bypass)", () => {
+    // Audit lead `media-proxy-double-slash-namespace-bypass`: a web server that
+    // collapses `//` could resolve this into the PRIVATE namespace after the
+    // prefix check saw something else. Only the canonical form is allowed.
+    expect(mediaSrc("/storage//templates/users/1/art-abc-v1.png")).toBeNull();
+    expect(mediaSrc("/storage/templates//users/1/art-abc-v1.png")).toBeNull();
+    expect(mediaSrc("/storage///cards/images/logo.png")).toBeNull();
+  });
 });
 
 describe("upstreamMediaUrl", () => {
+  it("refuses duplicate slashes before they reach the upstream", () => {
+    expect(upstreamMediaUrl("https://api.example.test/api", "storage//templates/users/1/x.png")).toBeNull();
+    expect(upstreamMediaUrl("https://api.example.test/api", "storage///a.png")).toBeNull();
+  });
+
   it("strips the /api suffix so storage is fetched from the app root", () => {
     expect(upstreamMediaUrl("https://api.example.test/api", "storage/a.png")).toBe(
       "https://api.example.test/storage/a.png",

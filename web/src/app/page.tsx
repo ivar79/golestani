@@ -9,6 +9,7 @@ import HomeFooter from "@/components/home/HomeFooter";
 import { HomepageContentProvider } from "@/lib/homepage";
 import { cms, fetchHomepageContentServer, type HomepageContent } from "@/lib/homepageContent";
 import { SITE_URL } from "@/lib/siteUrl";
+import { jsonLdScript } from "@/lib/structuredData";
 
 /** ISR: the homepage re-renders at most once per minute; CMS fetch is cached. */
 export const revalidate = 60;
@@ -100,7 +101,7 @@ export default async function Home() {
         <HomeFooter content={content} />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
         />
       </main>
     </HomepageContentProvider>

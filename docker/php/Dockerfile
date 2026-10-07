@@ -23,11 +23,10 @@ RUN docker-php-ext-configure intl \
 # Install Redis extension via PECL
 RUN pecl install redis && docker-php-ext-enable redis
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
 # Set working directory
 WORKDIR /var/www/html
 
-# Since this is a development environment where the source is mounted,
-# we do not need to copy the application code or run composer install during the build phase.
+# Keep PHP source and dependencies on Docker's Linux filesystem. Accessing
+# Laravel's many PHP files through a Windows bind mount makes every request
+# block on slow cross-OS filesystem operations.
+COPY api/ /var/www/html/

@@ -8,7 +8,12 @@ class BusinessCardRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return (bool) ($this->user()?->hasRole('business_owner') || $this->user()?->hasRole('admin'));
+        // Route groups were widened to `designer` in 342c7f5 (studio plans);
+        // this gate must match or designer-only owners get a 403 on save
+        // (regression: audit event #17 stripped business_owner via the admin
+        // role replace and every card write started failing). Ownership,
+        // studio and entitlement checks are enforced in the controller.
+        return (bool) ($this->user()?->hasAnyRole(['business_owner', 'designer', 'admin']));
     }
 
     public function rules(): array

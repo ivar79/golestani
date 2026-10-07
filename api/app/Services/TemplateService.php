@@ -82,7 +82,7 @@ class TemplateService
             $items[] = [
                 'id' => $legacyKey,
                 'source' => 'builtin',
-                'name_fa' => 'قالب کلاسیک ' . $legacyKey,
+                'name_fa' => 'قالب کلاسیک '.$legacyKey,
                 'category' => 'general',
                 'description' => 'قالب پایه کارت‌ساز کلاسیک.',
                 'background' => '#f6f8fb',
@@ -131,6 +131,16 @@ class TemplateService
             abort(422, 'سند قالب نامعتبر است.');
         }
 
+        // Callers resolve this template through `approved()`, so the
+        // submission artwork it references is public by decision. Publishing
+        // here is idempotent and self-healing: if approval-time publication was
+        // interrupted, the assets are copied now — an applied card can never
+        // point at an unreachable path, and personal assets are never touched
+        // (publishSubmissionAssets only copies scope=submission).
+        TemplateAssetService::publishSubmissionAssets(
+            is_string($template->design_json) ? $template->design_json : json_encode($template->design_json)
+        );
+
         return $this->materialize($doc, $fills);
     }
 
@@ -170,7 +180,7 @@ class TemplateService
             }
             $layer = $this->fillPlaceholders($layer, $fills);
             // Fresh unique id for EVERY layer — the clone contract.
-            $layer['id'] = 'layer-' . bin2hex(random_bytes(8));
+            $layer['id'] = 'layer-'.bin2hex(random_bytes(8));
             $layers[] = $layer;
         }
 
@@ -202,7 +212,7 @@ class TemplateService
             }
             foreach (self::PLACEHOLDERS as $token) {
                 $value = str_replace(
-                    '{{' . $token . '}}',
+                    '{{'.$token.'}}',
                     (string) ($fills[$token] ?? ''),
                     $value
                 );

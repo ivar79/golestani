@@ -6,6 +6,7 @@ use App\Services\Sms\Drivers\LogSmsDriver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Psr\Log\LoggerInterface;
 use Tests\TestCase;
 
 class SendOtpTest extends TestCase
@@ -25,6 +26,11 @@ class SendOtpTest extends TestCase
 
     public function test_otp_is_delivered_through_log_sms_driver(): void
     {
+        // Hermetic: pin demo mode off so the host env (OTP_DEMO_MODE=true)
+        // can't route delivery into the otp_demo channel. Under Log::spy()
+        // that channel resolves to a mock whose channel() returns null, which
+        // surfaces as a 503 instead of the 200 this test asserts.
+        config(['sms.otp_demo_mode' => false]);
         Log::spy();
 
         $this->postJson('/api/auth/send-otp', ['phone' => '09123456789'])->assertOk();
@@ -84,14 +90,16 @@ class SendOtpTest extends TestCase
         config(['sms.otp_demo_mode' => true]);
         config(['app.env' => 'preview']);
         Log::spy();
+        $demoLog = \Mockery::mock(LoggerInterface::class);
+        $demoLog->shouldReceive('info')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'OTP code (demo/preview only)')
+                && str_contains($message, '12345')
+                && ($context['phone'] ?? null) === '****6789');
+        Log::shouldReceive('channel')->once()->with('otp_demo')->andReturn($demoLog);
 
         $driver = new LogSmsDriver();
         $this->assertTrue($driver->send('09123456789', 'کد تأیید شما: 12345'));
-
-        Log::shouldHaveReceived('info')
-            ->atLeast()->once()
-            ->withArgs(fn (string $message): bool => str_contains($message, 'OTP code (demo/preview only)')
-                && str_contains($message, '12345'));
     }
 
     public function test_demo_mode_off_never_exposes_code(): void

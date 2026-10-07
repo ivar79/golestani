@@ -95,6 +95,8 @@ export type BusinessSearchPagination = {
   next_page: string | null;
   /** Count of the map-only unclaimed pins in the same filter scope. */
   unclaimed_total: number;
+  /** True when the server-side map-pin cap was reached (more pins exist). */
+  unclaimed_capped?: boolean;
 };
 
 export type BusinessSearchResponse = {

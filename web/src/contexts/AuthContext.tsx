@@ -2,6 +2,7 @@
 import { createContext,useCallback,useContext,useEffect,useMemo,useState,type ReactNode } from "react";
 import { clearSession, readStoredToken, setAuthCookie } from "@/lib/session";
 import { TOKEN_KEY } from "@/lib/session";
+import { clearPrivateAssetCache } from "@/lib/privateAsset";
 import { getMe,logout as logoutApi,sendOtp as sendOtpApi,verifyOtp as verifyOtpApi,loginAdmin as loginAdminApi,uploadAvatar as uploadAvatarApi,deleteAvatar as deleteAvatarApi } from "@/lib/auth";
 import axios from "axios";
 import type { UserInfo, VerifyOtpResponse } from "@/types/auth";
@@ -51,28 +52,48 @@ export function AuthProvider({children}:{children:ReactNode}) {
     }
     setAuthCookie(true);
     let active=true;
-    const loadUser=async(retryTransient:boolean):Promise<void>=>{
-      try{
-        const me=await getMe();
-        if(active)setUser(me);
-      }catch(error){
-        if(!active)return;
-        if(axios.isAxiosError(error)&&error.response?.status===401){
-          clearSession();setToken(null);setUser(null);
+    /*
+     * Auth-state machine on refresh (regression 2026-10-07):
+     *   401                    → real logout: clear session, redirect happens
+     *                            via the page gates.
+     *   network/timeout/5xx    → AUTH UNKNOWN: the stored session is still
+     *                            valid, so retry with backoff and keep
+     *                            `loading` — pages render their loading state
+     *                            instead of a logged-out gate. Previously ONE
+     *                            retry ran and then the app rendered every
+     *                            gate as "log in", which read as an automatic
+     *                            logout on a slow API (ERR_ABORTED on /auth/me).
+     *   other 4xx              → give up without clearing the session.
+     * While unknown, poll /auth/me every 3s until the API answers; the user
+     * then resumes exactly where they were (user demand: refresh must never
+     * cost the session).
+     */
+    const loadUser=async():Promise<void>=>{
+      const backoffs=[300,900,2000];
+      let attempt=0;
+      while(active){
+        try{
+          const me=await getMe();
+          if(active){setUser(me);setLoading(false);}
           return;
-        }
-        // A canceled request or temporary API failure must not strand a valid
-        // stored session on screens that require the resolved user.
-        if(retryTransient&&axios.isAxiosError(error)&&(
-          error.code===axios.AxiosError.ERR_CANCELED||
-          !error.response||
-          error.response.status>=500
-        )){
-          return loadUser(false);
+        }catch(error){
+          if(!active)return;
+          if(axios.isAxiosError(error)&&error.response?.status===401){
+            clearSession();setToken(null);setUser(null);setLoading(false);
+            return;
+          }
+          const transient=!axios.isAxiosError(error)
+            ||!error.response
+            ||error.code===axios.AxiosError.ERR_CANCELED
+            ||error.response.status>=500;
+          if(!transient){setLoading(false);return;}
+          const delay=attempt<backoffs.length?backoffs[attempt]:3000;
+          attempt++;
+          await new Promise((resolve)=>{window.setTimeout(resolve,delay);});
         }
       }
     };
-    void loadUser(true).finally(()=>{if(active)setLoading(false);});
+    void loadUser();
     return()=>{active=false;};
   },[token,hydrated]);
   const accept=useCallback((result:VerifyOtpResponse)=>{
@@ -82,7 +103,7 @@ export function AuthProvider({children}:{children:ReactNode}) {
   const verifyOtp=useCallback(async(phone:string,code:string)=>accept(await verifyOtpApi(phone,code)),[accept]);
   const loginAdmin=useCallback(async(identifier:string,password:string)=>accept(await loginAdminApi(identifier,password)),[accept]);
   const logout=useCallback(async()=>{
-    try{await logoutApi();}catch{/* Local cleanup still works if the token is expired. */}finally{clearSession();setToken(null);setUser(null);}
+    try{await logoutApi();}catch{/* Local cleanup still works if the token is expired. */}finally{clearSession();setToken(null);setUser(null);clearPrivateAssetCache();}
   },[]);
   const refreshUser=useCallback(async()=>{
     try{const me=await getMe();setUser(me);}catch{/* Keep the stale user; the next full reload fixes it. */}

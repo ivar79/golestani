@@ -65,6 +65,13 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'otp_demo' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/otp-demo.log'),
+            'level' => 'info',
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

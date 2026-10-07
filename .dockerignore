@@ -3,5 +3,14 @@
 node_modules
 web/node_modules
 api/vendor
+api/.env
+api/.env.*
+!api/.env.example
+api/storage/logs/*.log
+api/storage/framework/cache/data/*
+api/storage/framework/sessions/*
+api/storage/framework/views/*
+api/bootstrap/cache/*.php
+api/public/storage
 .env
 .devcontainer

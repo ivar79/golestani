@@ -176,13 +176,22 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::put('/plans/{plan}', [SubscriptionController::class, 'updatePlan']);
     Route::delete('/plans/{plan}', [SubscriptionController::class, 'destroyPlan']);
 });
-Route::get('/search/businesses', [BusinessController::class, 'search']);
+// Public browse endpoints: both share the ONE per-IP `public-search` bucket
+// (AppServiceProvider) so endpoint hopping cannot reset the quota, and the
+// map-pin set is capped server-side (config/search.php).
+Route::get('/search/businesses', [BusinessController::class, 'search'])->middleware('throttle:public-search');
 // M1 (Phase 3): distinct filter values for the search UI (cached 5 min).
-Route::get('/search/facets', [BusinessController::class, 'facets']);
+Route::get('/search/facets', [BusinessController::class, 'facets'])->middleware('throttle:public-search');
 Route::get('/public/businesses/{slug}', [PublicBusinessController::class, 'show']);
 Route::get('/public/businesses/{slug}/card', [PublicBusinessController::class, 'card']);
 Route::get('/public/businesses/{slug}/qr', [PublicBusinessController::class, 'qr']);
-Route::middleware('auth:sanctum')->post('/public/businesses/{business}/reports', [BusinessReportController::class, 'store']);
+// Report submission: authenticated, validated AND rate limited — a single
+// account must not be able to flood the moderation queue
+// (audit finding `reports-endpoint-unbounded-writes`). The quota is per user,
+// not per business; the controller additionally refuses an identical report
+// that is still active (409 carrying the existing report id — never a silent
+// discard).
+Route::middleware(['auth:sanctum', 'throttle:5,60'])->post('/public/businesses/{business}/reports', [BusinessReportController::class, 'store']);
 // Users and approved designers may create/manage their own business space;
 // the business_owner role is assigned server-side on first creation. Every
 // resource remains ownership-scoped through authorizeOwner()/own-relation queries.

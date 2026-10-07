@@ -39,6 +39,14 @@ export async function GET(
     return new NextResponse("Invalid media path", { status: 400 });
   }
 
+  // Canonical form only. A duplicate slash can be collapsed by an upstream web
+  // server into a DIFFERENT namespace than the one the prefix check below saw
+  // (audit lead `media-proxy-double-slash-namespace-bypass`), so such paths are
+  // refused outright rather than normalized.
+  if (relative.includes("//") || relative !== relative.replace(/\/{2,}/g, "/")) {
+    return new NextResponse("Invalid media path", { status: 400 });
+  }
+
   // Private template namespace: never proxied without a session (see above).
   if (relative.startsWith(PRIVATE_TEMPLATE_PREFIX)) {
     return new NextResponse("Private asset — use the authorized endpoint", { status: 403 });

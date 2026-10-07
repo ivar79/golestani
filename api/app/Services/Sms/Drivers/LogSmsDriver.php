@@ -23,7 +23,7 @@ class LogSmsDriver implements SmsServiceInterface
         ]);
 
         if ($this->shouldExposeOtp()) {
-            Log::info('OTP code (demo/preview only): '.$message, [
+            Log::channel('otp_demo')->info('OTP code (demo/preview only): '.$message, [
                 'phone' => $this->maskPhone($phone),
             ]);
         }

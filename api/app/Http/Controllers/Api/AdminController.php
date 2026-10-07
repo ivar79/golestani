@@ -385,21 +385,39 @@ return response()->json(Article::create($data), 201);
         unset($data['roles']);
         if (is_array($roles)) {
             $roleNames = array_values(array_unique(array_map('strval', $roles)));
-            if (in_array('designer', $roleNames, true) && ! $user->hasApprovedDesignerStatus()) {
-                abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
+
+            if (count($roleNames) === 1) {
+                // Single-role payloads come from the admin UI's one-value
+                // dropdown: they ADD the role instead of replacing the set.
+                // A replace here silently stripped every other role (audit
+                // event #17 wiped business_owner by granting designer, and
+                // the owner's card saves started 403-ing). Removal stays an
+                // explicit multi-role replace below.
+                $addName = $roleNames[0];
+                if ($addName === 'designer' && ! $user->hasApprovedDesignerStatus()) {
+                    abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
+                }
+                $roleId = Role::query()->where('name', $addName)->value('id');
+                abort_if($roleId === null, 422, 'یکی از نقش‌های انتخاب‌شده معتبر نیست.');
+                $user->roles()->syncWithoutDetaching([$roleId]);
+            } else {
+                // Explicit multi-role payload: full replace, all guards.
+                if (in_array('designer', $roleNames, true) && ! $user->hasApprovedDesignerStatus()) {
+                    abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
+                }
+                if ($user->hasApprovedDesignerStatus() && ! in_array('designer', $roleNames, true)) {
+                    $roleNames[] = 'designer';
+                }
+                $roleIds = Role::whereIn('name', $roleNames)->pluck('id', 'name');
+                abort_if($roleIds->count() !== count($roleNames), 422, 'یکی از نقش‌های انتخاب‌شده معتبر نیست.');
+                if ($user->is($request->user()) && ! in_array('admin', $roleNames, true)) {
+                    abort(422, 'مدیر نمی‌تواند نقش مدیریتی خودش را حذف کند.');
+                }
+                if ($user->hasRole('admin') && ! in_array('admin', $roleNames, true) && User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->count() <= 1) {
+                    abort(422, 'آخرین مدیر سامانه قابل تنزل نیست.');
+                }
+                $user->roles()->sync($roleIds->values());
             }
-            if ($user->hasApprovedDesignerStatus() && ! in_array('designer', $roleNames, true)) {
-                $roleNames[] = 'designer';
-            }
-            $roleIds = Role::whereIn('name', $roleNames)->pluck('id', 'name');
-            abort_if($roleIds->count() !== count($roleNames), 422, 'یکی از نقش‌های انتخاب‌شده معتبر نیست.');
-            if ($user->is($request->user()) && ! in_array('admin', $roleNames, true)) {
-                abort(422, 'مدیر نمی‌تواند نقش مدیریتی خودش را حذف کند.');
-            }
-            if ($user->hasRole('admin') && ! in_array('admin', $roleNames, true) && User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->count() <= 1) {
-                abort(422, 'آخرین مدیر سامانه قابل تنزل نیست.');
-            }
-            $user->roles()->sync($roleIds->values());
         }
         $user->update($data);
 
@@ -409,6 +427,7 @@ return response()->json(Article::create($data), 201);
             'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : null,
             'name_changed' => array_key_exists('name', $data),
             'roles' => is_array($roles) ? array_values(array_unique(array_map('strval', $roles))) : null,
+            'role_mode' => is_array($roles) && count($roles) === 1 ? 'attach' : (is_array($roles) ? 'replace' : null),
         ]);
 
         return response()->json($user->fresh(['roles', 'designer:id,user_id,status']));

@@ -9,9 +9,11 @@ use App\Models\TemplateAsset;
 use App\Services\CardDesignValidator;
 use App\Services\FeatureGate;
 use App\Services\StudioAccess;
-use App\Services\TemplateAssetService;use Illuminate\Http\JsonResponse;
+use App\Services\TemplateAssetService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Designer program + gallery submissions.
@@ -24,9 +26,7 @@ use Illuminate\Support\Facades\DB;
  */
 class DesignerTemplateController extends Controller
 {
-    public function __construct(private CardDesignValidator $validator)
-    {
-    }
+    public function __construct(private CardDesignValidator $validator) {}
 
     public static function programEnabled(): bool
     {
@@ -93,7 +93,7 @@ class DesignerTemplateController extends Controller
         $this->resolveAssets($clean, (int) $user->id, (array) ($data['asset_paths'] ?? []));
 
         $template = CardTemplate::create([
-            'slug' => 'designer-' . $user->id . '-' . strtolower(\Illuminate\Support\Str::random(8)),
+            'slug' => 'designer-'.$user->id.'-'.strtolower(Str::random(8)),
             'name_fa' => $data['name_fa'],
             'category' => $data['category'] ?? 'general',
             'origin' => 'designer',
@@ -119,9 +119,10 @@ class DesignerTemplateController extends Controller
 
     /**
      * Admin moderation: approve/reject/archive. Approved submissions join
-     * the public gallery; their submission-scope assets become public by
-     * construction (the gallery + media proxy treat approved submissions as
-     * system-public per the visibility contract).
+     * the public gallery, and approval PUBLISHES the submission-scope artwork
+     * they reference (copy to the public disk — idempotent, reported, and
+     * retryable via `template-assets:publish`). Review-stage artwork stays on
+     * the private disk, so nothing is publicly readable before approval.
      */
     public function moderate(Request $request, CardTemplate $template): JsonResponse
     {
@@ -142,7 +143,29 @@ class DesignerTemplateController extends Controller
             'rejection_reason' => $data['action'] === 'reject' ? $data['reason'] : null,
         ]);
 
-        return response()->json(['template' => $template->only(['id', 'status', 'rejection_reason'])]);
+        // PUBLICATION (audit finding `private-template-asset-public-disk`):
+        // approval is the ONLY moment submission artwork becomes publicly
+        // readable — pending/rejected/archived templates keep it private. The
+        // copy is idempotent and deliberately runs AFTER the status write and
+        // outside any transaction: an object-store problem must never roll back
+        // or block a moderation decision. Anything that could not be published
+        // is reported (`unpublished`, `unpublished_count`) so the state is
+        // detectable, and `php artisan template-assets:publish` retries it.
+        $publication = null;
+        if ($status === 'approved') {
+            $publication = TemplateAssetService::publishSubmissionAssets(
+                is_string($template->design_json) ? $template->design_json : json_encode($template->design_json)
+            );
+        }
+
+        return response()->json([
+            'template' => $template->only(['id', 'status', 'rejection_reason']),
+            'publication' => $publication === null ? null : [
+                'published_count' => count($publication['published']),
+                'unpublished_count' => count($publication['unpublished']),
+                'unpublished' => $publication['unpublished'],
+            ],
+        ]);
     }
 
     /** Admin listing with filters (origin, status). */
@@ -184,7 +207,7 @@ class DesignerTemplateController extends Controller
         $template = null;
         DB::transaction(function () use (&$template, $data, $clean, $request): void {
             $template = CardTemplate::create([
-                'slug' => $data['slug'] ?? ('admin-' . strtolower(\Illuminate\Support\Str::random(8))),
+                'slug' => $data['slug'] ?? ('admin-'.strtolower(Str::random(8))),
                 'name_fa' => $data['name_fa'],
                 'category' => $data['category'] ?? 'general',
                 'origin' => 'admin',
@@ -258,7 +281,7 @@ class DesignerTemplateController extends Controller
                 $ownerId === null ? ['system'] : ['submission', 'personal'],
                 $ownerId
             );
-            abort_if($asset === null, 422, 'منبع تصویر قالب معتبر نیست یا متعلق به شما نیست: ' . ($layer['src'] ?? ''));
+            abort_if($asset === null, 422, 'منبع تصویر قالب معتبر نیست یا متعلق به شما نیست: '.($layer['src'] ?? ''));
         }
 
         // Declared asset uploads (this submission's own files) must exist in

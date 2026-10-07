@@ -26,6 +26,7 @@ import { jsPDF } from "jspdf";
 import "svg2pdf.js";
 import type { BadgeLayer, CardDocument, TextLayer } from "../domain/document";
 import { mediaSrc } from "@/lib/media";
+import { fetchPrivateAssetUrl, isPrivateAssetSrc, releasePrivateAssetUrl } from "@/lib/privateAsset";
 import { qrSrcFor } from "../domain/qrAssets";
 import { RTL_CHARACTERS, badgeTextLayout, serializeDocument, svgColor, type SvgAssetMap } from "./documentToSvg";
 import { exportFileName } from "./formats";
@@ -119,11 +120,16 @@ export function loadFontCss(): Promise<string> {
 type AssetRequest = { key: string; url: string; targetWidth: number };
 
 /** Every external pixel the document references, with the resolution it needs. */
-function assetRequests(doc: CardDocument, scale: number): AssetRequest[] {
+async function assetRequests(doc: CardDocument, scale: number): Promise<AssetRequest[]> {
   const requests: AssetRequest[] = [];
   for (const layer of doc.layers) {
     if (layer.kind === "image" && layer.src) {
-      const url = mediaSrc(layer.src);
+      // PRIVATE artwork (personal templates) is fetched with the session token
+      // into a document-local blob URL — the credential never enters a URL or
+      // the exported markup. Callers release the reference afterwards.
+      const url = isPrivateAssetSrc(layer.src)
+        ? await fetchPrivateAssetUrl(layer.src)
+        : mediaSrc(layer.src);
       if (url) requests.push({ key: layer.src, url, targetWidth: Math.ceil(layer.width * scale) });
     } else if (layer.kind === "qr") {
       const slug = layer.payload.trim();
@@ -194,31 +200,46 @@ async function rasterizeToPngDataUrl(url: string, targetWidth: number): Promise<
  * (our own QR route) stay VECTOR inside the exported file.
  */
 export async function collectVectorAssets(doc: CardDocument): Promise<SvgAssetMap> {
-  const requests = assetRequests(doc, 1);
-  const results = await Promise.all(
-    requests.map(async (request) => {
-      try {
-        const res = await fetch(request.url, { credentials: "same-origin" });
-        if (!res.ok) return null;
-        return [request.key, await blobToDataUrl(await res.blob())] as const;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return Object.fromEntries(results.filter((entry): entry is readonly [string, string] => entry !== null));
+  const requests = await assetRequests(doc, 1);
+  try {
+    const results = await Promise.all(
+      requests.map(async (request) => {
+        try {
+          const res = await fetch(request.url, { credentials: "same-origin" });
+          if (!res.ok) return null;
+          return [request.key, await blobToDataUrl(await res.blob())] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return Object.fromEntries(results.filter((entry): entry is readonly [string, string] => entry !== null));
+  } finally {
+    releasePrivateRequests(requests);
+  }
 }
 
 /** Assets for the PDF export: everything normalized to PNG (jsPDF-compatible). */
 async function collectPdfAssets(doc: CardDocument, scale: number): Promise<SvgAssetMap> {
-  const requests = assetRequests(doc, scale);
-  const results = await Promise.all(
-    requests.map(async (request) => {
-      const png = await rasterizeToPngDataUrl(request.url, request.targetWidth);
-      return png ? ([request.key, png] as const) : null;
-    }),
-  );
-  return Object.fromEntries(results.filter((entry): entry is readonly [string, string] => entry !== null));
+  const requests = await assetRequests(doc, scale);
+  try {
+    const results = await Promise.all(
+      requests.map(async (request) => {
+        const png = await rasterizeToPngDataUrl(request.url, request.targetWidth);
+        return png ? ([request.key, png] as const) : null;
+      }),
+    );
+    return Object.fromEntries(results.filter((entry): entry is readonly [string, string] => entry !== null));
+  } finally {
+    releasePrivateRequests(requests);
+  }
+}
+
+/** Release the private-asset references acquired by `assetRequests`. */
+function releasePrivateRequests(requests: AssetRequest[]): void {
+  for (const request of requests) {
+    if (isPrivateAssetSrc(request.key)) releasePrivateAssetUrl(request.key);
+  }
 }
 
 /* --------------------------------- download --------------------------------- */
