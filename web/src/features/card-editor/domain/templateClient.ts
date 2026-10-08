@@ -7,6 +7,7 @@
  */
 
 import type { CardDocument } from "./document";
+import { readStoredToken } from "@/lib/session";
 
 export type TemplateSource = "builtin" | "db" | "personal";
 
@@ -37,8 +38,7 @@ export type ApplyResponse = {
 };
 
 function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const token = window.localStorage.getItem("golestani_token");
+  const token = readStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

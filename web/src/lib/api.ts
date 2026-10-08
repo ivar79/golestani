@@ -1,5 +1,5 @@
 import axios from "axios";
-import { TOKEN_KEY, clearSession } from "@/lib/session";
+import { clearSession, readStoredToken } from "@/lib/session";
 // Backwards-compatible re-export: existing imports of TOKEN_KEY keep working.
 export { TOKEN_KEY } from "@/lib/session";
 // Host URLs must come from NEXT_PUBLIC_API_URL only (Vercel now, Liara later).
@@ -13,10 +13,11 @@ const api = axios.create({
   withCredentials: false,
 });
 api.interceptors.request.use(config => {
-  if (typeof window !== "undefined") {
-    const token = window.localStorage.getItem(TOKEN_KEY);
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-  }
+  // Always the CURRENT TAB's token (sessionStorage-backed). Never read the
+  // shared localStorage slot directly: that is how a request could silently
+  // start running as another tab's account.
+  const token = readStoredToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   // Non-GET requests need a non-simple Content-Type for the backend CSRF
   // guard (ApiRequestSafety). axios only SENDS the Content-Type header when a
   // body exists, so body-less DELETE/PUT calls were rejected with 415 in the

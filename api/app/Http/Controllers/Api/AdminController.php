@@ -376,12 +376,52 @@ return response()->json(Article::create($data), 201);
         ]);
     }
 
-    public function users(): JsonResponse
+    public function users(Request $request): JsonResponse
     {
         // designer:id,user_id,status feeds the divergence badge: the legacy
         // `designers` row and the canonical users.designer_status must never
         // silently disagree again.
-        return response()->json(User::with(['roles', 'designer:id,user_id,status'])->latest()->paginate(25));
+        //
+        // Optional filters (the users panel searches by handle/phone and can
+        // focus one role group). Filtering happens BEFORE pagination so a
+        // search matches accounts on any page, not just the loaded one.
+        $search = trim((string) $request->query('search', ''));
+        $role = trim((string) $request->query('role', ''));
+
+        $query = User::with(['roles', 'designer:id,user_id,status']);
+
+        if ($search !== '') {
+            $like = '%'.$search.'%';
+            $query->where(function ($inner) use ($like): void {
+                $inner->where('phone', 'like', $like)
+                    ->orWhere('username', 'like', $like)
+                    ->orWhere('name', 'like', $like)
+                    ->orWhere('email', 'like', $like);
+            });
+        }
+
+        // A user belongs to exactly ONE group, mirroring the panel's
+        // primaryRole() priority (admin > designer > business_owner > user).
+        // A plain membership filter would also list a designer who owns a
+        // business under "کاربران عادی", so the same account appeared in two
+        // groups at once when a chip was active.
+        $rolePriorities = [
+            'admin' => [],
+            'designer' => ['admin'],
+            'business_owner' => ['admin', 'designer'],
+            'user' => ['admin', 'designer', 'business_owner'],
+        ];
+
+        if (isset($rolePriorities[$role])) {
+            if ($role !== 'user') {
+                $query->whereHas('roles', fn ($roles) => $roles->where('name', $role));
+            }
+            foreach ($rolePriorities[$role] as $higher) {
+                $query->whereDoesntHave('roles', fn ($roles) => $roles->where('name', $higher));
+            }
+        }
+
+        return response()->json($query->latest()->paginate(25));
     }
 
     public function updateUser(Request $request, User $user): JsonResponse

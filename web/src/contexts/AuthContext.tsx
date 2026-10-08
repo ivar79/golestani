@@ -1,7 +1,6 @@
 "use client";
-import { createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
-import { clearSession, readStoredToken, setAuthCookie } from "@/lib/session";
-import { TOKEN_KEY } from "@/lib/session";
+import { createContext,useCallback,useContext,useEffect,useMemo,useState,type ReactNode } from "react";
+import { clearSession, readStoredToken, setAuthCookie, storeSessionToken } from "@/lib/session";
 import { clearPrivateAssetCache } from "@/lib/privateAsset";
 import { getMe,logout as logoutApi,sendOtp as sendOtpApi,verifyOtp as verifyOtpApi,loginAdmin as loginAdminApi,uploadAvatar as uploadAvatarApi,deleteAvatar as deleteAvatarApi } from "@/lib/auth";
 import axios from "axios";
@@ -41,27 +40,10 @@ export function AuthProvider({children}:{children:ReactNode}) {
     },0);
     return()=>{window.clearTimeout(t);};
   },[]);
-  // Cross-tab session sync. The bearer token lives in ONE localStorage slot
-  // shared by every role, so logging in as admin (or another account) in a
-  // second tab silently swaps the token under the first tab: its React state
-  // still shows the old user while every API call now runs as the new one —
-  // "data changes by itself / admin and user panels disagree". The `storage`
-  // event fires in the OTHER tabs only, so each tab re-adopts the new session
-  // (or the logout) instead of drifting.
-  const tokenRef=useRef<string|null>(null);
-  useEffect(()=>{tokenRef.current=token;},[token]);
-  useEffect(()=>{
-    const onStorage=(e:StorageEvent)=>{
-      if(e.key!==null&&e.key!==TOKEN_KEY)return;
-      const next=readStoredToken();
-      if(next===tokenRef.current)return;
-      setUser(null);
-      setLoading(next!==null);
-      setToken(next);
-    };
-    window.addEventListener("storage",onStorage);
-    return()=>{window.removeEventListener("storage",onStorage);};
-  },[]);
+  // No cross-tab session listener on purpose (regression 2026-10-08): the
+  // bearer token is per-tab now, so another tab's login/logout must NOT touch
+  // this tab's identity. Adopting the shared slot here was what silently
+  // converted an admin tab into whatever account another tab signed into.
   useEffect(()=>{
     if (!token) {
       setAuthCookie(false);
@@ -118,7 +100,7 @@ export function AuthProvider({children}:{children:ReactNode}) {
     return()=>{active=false;};
   },[token,hydrated]);
   const accept=useCallback((result:VerifyOtpResponse)=>{
-    localStorage.setItem(TOKEN_KEY,result.token);setAuthCookie(true);setToken(result.token);setUser(result.user);setLoading(false);return result.user;
+    storeSessionToken(result.token);setAuthCookie(true);setToken(result.token);setUser(result.user);setLoading(false);return result.user;
   },[]);
   const sendOtp=useCallback(async(phone:string)=>{await sendOtpApi(phone);},[]);
   const verifyOtp=useCallback(async(phone:string,code:string)=>accept(await verifyOtpApi(phone,code)),[accept]);

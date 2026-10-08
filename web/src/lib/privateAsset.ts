@@ -1,7 +1,6 @@
 /**
  * Authenticated access to PRIVATE template artwork (personal templates and
  * review-stage designer submissions).
- *
  * WHY: private artwork now lives on a private disk and is served ONLY by the
  * ownership-checked API endpoint (`GET /assets/private/{path}`). The public
  * `/api/media` proxy refuses that namespace, so the editor must fetch these
@@ -18,8 +17,9 @@
  *     releases them, and `clearPrivateAssetCache()` nukes everything on logout.
  */
 
+import { readStoredToken } from "@/lib/session";
+
 const PRIVATE_PATH_PREFIX = "storage/templates/users/";
-const TOKEN_KEY = "golestani_token";
 const MAX_PATH_LENGTH = 400;
 const ALLOWED_PATH = /^storage\/[A-Za-z0-9._\-\/]+$/;
 
@@ -62,9 +62,8 @@ type CacheEntry = { url: string; token: string; refs: number };
 const cache = new Map<string, CacheEntry>();
 
 function sessionToken(): string | null {
-  if (typeof window === "undefined") return null;
-  const token = window.localStorage.getItem(TOKEN_KEY);
-  return token && token.length > 0 ? token : null;
+  // The CURRENT TAB's credential (never another tab's slot) — see session.ts.
+  return readStoredToken();
 }
 
 /**

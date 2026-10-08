@@ -61,6 +61,7 @@ import {
 type BadgeLayerLike = Pick<BadgeLayer, "style">;
 import type { EditorEngine, NumericField } from "../engine/EditorEngine";
 import { BOOLEAN_OP_LABELS, type BooleanOp } from "../domain/geometry/booleanOps";
+import { validateCardImageFile } from "../domain/imageUpload";
 import { useCardEditor } from "./useCardEditor";
 import { ColorPickerField } from "./ColorPickerField";
 import { GradientField } from "./GradientField";
@@ -396,8 +397,9 @@ export function Toolbox({
   async function onImagePicked(file: File | null) {
     if (imageInputRef.current) imageInputRef.current.value = "";
     if (!file || !onUploadImage) return;
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
-      setUploadError("فقط JPEG، PNG یا WebP مجاز است.");
+    const validationError = validateCardImageFile(file);
+    if (validationError) {
+      setUploadError(validationError);
       return;
     }
     setUploadError(null);

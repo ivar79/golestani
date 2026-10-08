@@ -123,6 +123,8 @@ export async function moderateAdminPortfolio(id: number, status: string, moderat
 export type AdminUser = {
   id: number;
   name: string | null;
+  /** Unique public handle (null until the account claims one). */
+  username?: string | null;
   phone: string;
   email: string | null;
   is_active: boolean;
@@ -134,8 +136,14 @@ export type AdminUser = {
   designer?: { id: number; user_id: number; status: string } | null;
 };
 
-export async function getAdminUsers(page = 1) {
-  return (await api.get<{ data: AdminUser[]; current_page: number; last_page: number; total: number }>(`/admin/users?page=${page}`)).data;
+/** One role group the panel can focus (server-side filter). */
+export type AdminUserRoleFilter = "admin" | "designer" | "business_owner" | "user";
+
+export async function getAdminUsers(page = 1, search = "", role: AdminUserRoleFilter | "" = "") {
+  const params = new URLSearchParams({ page: String(page) });
+  if (search.trim()) params.set("search", search.trim());
+  if (role) params.set("role", role);
+  return (await api.get<{ data: AdminUser[]; current_page: number; last_page: number; total: number }>(`/admin/users?${params.toString()}`)).data;
 }
 
 export async function updateAdminUser(id: number, data: { name?: string; is_active?: boolean; roles?: string[] }) {

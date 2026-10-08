@@ -32,7 +32,9 @@ vi.mock("@/lib/auth", () => ({
 afterEach(() => {
   cleanup();
   getMe.mockReset();
+  // The tab token lives in sessionStorage now; clear both so tests stay isolated.
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 /** The shape axios rejects with when the browser cancels an XHR. */
@@ -46,6 +48,19 @@ function unauthorized() {
     status: 401,
     statusText: "Unauthorized",
     data: { message: "Unauthenticated." },
+    headers: new AxiosHeaders(),
+    config: { headers: new AxiosHeaders() },
+  };
+  return error;
+}
+
+/** An axios-style rejection carrying an HTTP status. */
+function errorWithStatus(status: number) {
+  const error = new AxiosError(`Request failed with status code ${status}`);
+  error.response = {
+    status,
+    statusText: "Error",
+    data: {},
     headers: new AxiosHeaders(),
     config: { headers: new AxiosHeaders() },
   };
@@ -123,5 +138,66 @@ describe("AuthProvider — only a real 401 ends the session", () => {
 
     await waitFor(() => expect(document.querySelector('[data-testid="user"]')?.textContent).toBe("09120000000"));
     expect(window.localStorage.getItem(TOKEN_KEY)).toBe("stored-token");
+  });
+
+  it.each([403, 422, 429])("does NOT end the session on a %i", async (status) => {
+    getMe.mockRejectedValue(errorWithStatus(status));
+    await renderWithToken();
+
+    // A real answer that is not 401 keeps the session; no retry is attempted.
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1));
+    expect(window.localStorage.getItem(TOKEN_KEY)).toBe("stored-token");
+  });
+
+  it("does NOT end the session on a 500 and recovers when the API returns", async () => {
+    getMe
+      .mockRejectedValueOnce(errorWithStatus(500))
+      .mockResolvedValue({ id: 1, phone: "09120000000", username: "shop", avatar: null });
+    window.localStorage.setItem(TOKEN_KEY, "stored-token");
+    vi.useFakeTimers();
+    try {
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(document.querySelector('[data-testid="user"]')?.textContent).toBe("09120000000");
+      expect(window.localStorage.getItem(TOKEN_KEY)).toBe("stored-token");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does NOT adopt another tab's login (no storage listener)", async () => {
+    getMe.mockResolvedValue({ id: 1, phone: "09120000000", username: "shop", avatar: null } as never);
+    await renderWithToken();
+    await waitFor(() => expect(document.querySelector('[data-testid="user"]')?.textContent).toBe("09120000000"));
+
+    // Another tab signs in as a different account and rewrites the shared slot.
+    // Before the fix this fired a `storage` listener that replaced this tab's
+    // identity; now this tab must ignore it entirely.
+    window.localStorage.setItem(TOKEN_KEY, "other-tab-token");
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: TOKEN_KEY,
+          newValue: "other-tab-token",
+          oldValue: "stored-token",
+          storageArea: window.localStorage,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector('[data-testid="user"]')?.textContent).toBe("09120000000");
+    expect(getMe).toHaveBeenCalledTimes(1);
   });
 });

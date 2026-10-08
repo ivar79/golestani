@@ -25,6 +25,7 @@ import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import { useQrAssets } from "./useQrAssets";
 import { useAltHeld } from "./useAltHeld";
+import { validateCardImageFile } from "../domain/imageUpload";
 import {
   clampZoom,
   keepInside,
@@ -41,6 +42,8 @@ type Props = {
   exportRef?: React.Ref<HTMLDivElement>;
   /** Preview mode hides selection/handles/guides/inspector affordances. */
   preview?: boolean;
+  /** Persist a picked/dropped image file and return its server path. */
+  onUploadImage?: (file: File) => Promise<string>;
 };
 
 function worldAnchorPosition(layer: PathLayer, index: number): { x: number; y: number } {
@@ -54,7 +57,7 @@ function worldAnchorPosition(layer: PathLayer, index: number): { x: number; y: n
   };
 }
 
-export function EditorStage({ engine, doc, exportRef, preview = false }: Props) {
+export function EditorStage({ engine, doc, exportRef, preview = false, onUploadImage }: Props) {
   const state = useCardEditor(engine);
   // Owner-session QR assets: the canvas AND the export surface read the same
   // DOM, so registering here is what makes a draft business's QR real in both.
@@ -786,6 +789,51 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
     setEditingTextId(null);
   };
 
+  // --- Drag-and-drop image upload -----------------------------------------
+  const [dragOver, setDragOver] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
+  const [dropping, setDropping] = useState(false);
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    if (preview || !onUploadImage || !e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  }, [preview, onUploadImage]);
+
+  const onDragLeave = useCallback(() => setDragOver(false), []);
+
+  const onDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (preview || !onUploadImage || dropping) return;
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const err = validateCardImageFile(file);
+    if (err) { setDropError(err); return; }
+    setDropError(null);
+    setDropping(true);
+    try {
+      const src = await onUploadImage(file);
+      // Place the image roughly where the user dropped it.
+      const pos = pointerPos(e);
+      engine.setTool("select");
+      engine.addLayer("image", {
+        src,
+        radius: 12,
+        objectFit: "cover",
+        x: Math.max(0, pos.x - 150),
+        y: Math.max(0, pos.y - 75),
+        width: 300,
+        height: 150,
+      });
+    } catch (error) {
+      setDropError(error instanceof Error ? error.message : "آپلود تصویر ناموفق بود.");
+    } finally {
+      setDropping(false);
+    }
+  }, [preview, onUploadImage, dropping, engine, pointerPos]);
+
   const editingLayer = useMemo(
     () => (editingTextId ? (doc.layers.find((l) => l.id === editingTextId) as TextLayer | undefined) : undefined),
     [editingTextId, doc.layers],
@@ -806,6 +854,9 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
       onPointerMove={onStagePointerMove}
       onPointerUp={onStagePointerUp}
       onWheel={onStageWheel}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       style={{
         minHeight: 420,
         height: state.editingPathId && !preview
@@ -816,6 +867,25 @@ export function EditorStage({ engine, doc, exportRef, preview = false }: Props) 
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025), 0 28px 80px rgba(0,0,0,0.32)",
       }}
     >
+      {/* Drag-and-drop overlay */}
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-[9999] flex items-center justify-center rounded-[24px] border-2 border-dashed border-cyan-400 bg-cyan-500/10 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-300"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span className="text-sm font-bold text-cyan-200">تصویر را اینجا رها کنید</span>
+            <span className="text-[11px] text-slate-400">JPEG، PNG یا WebP — حداکثر ۵ مگابایت</span>
+          </div>
+        </div>
+      )}
+
+      {/* Drop error toast */}
+      {dropError && (
+        <div className="absolute left-4 top-4 z-[9999] flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/15 px-4 py-2.5 text-xs font-semibold text-rose-200 shadow-lg backdrop-blur-xl">
+          <span>{dropError}</span>
+          <button type="button" onClick={() => setDropError(null)} className="ml-1 text-rose-400 hover:text-white">✕</button>
+        </div>
+      )}
+
       {/* Primary path-edit actions stay visible; precision tools are grouped below. */}
       {state.editingPathId && !preview && (
         <div

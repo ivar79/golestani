@@ -318,7 +318,7 @@ export function CardStudio({
           canvas to a strip and buried the inspector in nested mini-scrollers. */}
       <div className="relative grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-white/[0.09] bg-[#0a0f16] p-1.5 shadow-[0_18px_54px_rgba(0,0,0,0.32)] md:h-[calc(100vh-9.5rem)] md:min-h-[560px] md:grid-cols-[minmax(0,1fr)_150px_288px] xl:grid-cols-[minmax(0,1fr)_166px_336px]">
         <div className="min-w-0 rounded-[18px] md:h-full md:min-h-0 md:overflow-y-auto">
-          <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} />
+          <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} onUploadImage={onUploadImage} />
         </div>
         {preview ? null : (
           <>

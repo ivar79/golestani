@@ -21,14 +21,15 @@ import type { EditorEngine } from "../engine/EditorEngine";
 import { applyTemplate, fetchGallery, type GalleryTemplate } from "../domain/templateClient";
 import type { CardLayer } from "../domain/document";
 import type { Business } from "@/lib/businesses";
+import { readStoredToken } from "@/lib/session";
 import { useEntitlements, PremiumBadge } from "@/components/cards/FeatureGate";
 import { allowedValues, isEnabled } from "@/lib/entitlements";
 
 function authHeadersJson(): Record<string, string> {
-  if (typeof window === "undefined") return {};
+  const token = readStoredToken();
   return {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${window.localStorage.getItem("golestani_token") ?? ""}`,
+    Authorization: `Bearer ${token ?? ""}`,
   };
 }
 

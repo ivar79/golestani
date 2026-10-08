@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import api, { TOKEN_KEY } from "@/lib/api";
+import api from "@/lib/api";
+import { readStoredToken } from "@/lib/session";
 import { acquireBestFix, GpsError } from "@/lib/gps";
 
 export type GeoPoint = {
@@ -172,7 +173,7 @@ export function useLocationPick(): LocationState {
   /** Fire-and-forget server sync for logged-in users; silently skips anonymous. */
   const syncToServer = useCallback(async (point: GeoPoint | null) => {
     if (typeof window === "undefined") return;
-    if (!window.localStorage.getItem(TOKEN_KEY)) return; // anonymous — local only
+    if (!readStoredToken()) return; // anonymous — local only
     try {
       await api.put("/auth/location", point
         ? { latitude: point.latitude, longitude: point.longitude, label: point.label ?? null }

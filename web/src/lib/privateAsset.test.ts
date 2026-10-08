@@ -56,7 +56,8 @@ describe("fetchPrivateAssetUrl", () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
-    window.localStorage.setItem(TOKEN_KEY, "token-user-a");
+    // The token is per-tab now: readStoredToken() reads sessionStorage first.
+    window.sessionStorage.setItem(TOKEN_KEY, "token-user-a");
     URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
     URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
     fetchMock.mockReset();
@@ -68,6 +69,7 @@ describe("fetchPrivateAssetUrl", () => {
   afterEach(() => {
     clearPrivateAssetCache();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -86,10 +88,11 @@ describe("fetchPrivateAssetUrl", () => {
   });
 
   it("returns null (placeholder) without a session or for non-private srcs", async () => {
+    window.sessionStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(TOKEN_KEY);
     expect(await fetchPrivateAssetUrl("/storage/templates/users/1/art.png")).toBeNull();
 
-    window.localStorage.setItem(TOKEN_KEY, "token-user-a");
+    window.sessionStorage.setItem(TOKEN_KEY, "token-user-a");
     expect(await fetchPrivateAssetUrl("/storage/templates/uploaded/art.png")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -121,7 +124,7 @@ describe("fetchPrivateAssetUrl", () => {
 
     // A different principal signs in: the cached entry must be revoked and
     // re-fetched with the new credential, never served from the old one.
-    window.localStorage.setItem(TOKEN_KEY, "token-user-b");
+    window.sessionStorage.setItem(TOKEN_KEY, "token-user-b");
     createObjectURL.mockReturnValueOnce("blob:second-user");
     const second = await fetchPrivateAssetUrl(src);
 
