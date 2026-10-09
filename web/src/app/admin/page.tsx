@@ -337,7 +337,17 @@ export default function AdminPage() {
           mobileMenuOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div>
+        {/*
+         * The drawer is `fixed inset-y-0` on mobile, so it is exactly one
+         * viewport tall. Brand + moderation link + 13 nav items measured
+         * 1022px, which pushed the footer (identity + refresh + LOGOUT) to
+         * y=1113 in a 900px viewport: with `overflow: visible` nothing
+         * scrolled, so the sign-out button was unreachable on any narrow or
+         * short screen (a fixed element does not move when the page scrolls).
+         * Standard drawer pattern: the content region scrolls, the footer is
+         * pinned and always visible.
+         */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Brand Header */}
           <div className="flex items-center justify-between border-b border-white/[0.08] px-6 py-5">
             <Link
@@ -414,8 +424,8 @@ export default function AdminPage() {
           </nav>
         </div>
 
-        {/* Sidebar Footer: Admin Identity & System Controls */}
-        <div className="border-t border-white/[0.08] p-4">
+        {/* Sidebar Footer: Admin Identity & System Controls (never scrolls away) */}
+        <div className="shrink-0 border-t border-white/[0.08] p-4">
           <div className="mb-3 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md p-3">
             <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-400">
               <ShieldCheck className="h-5 w-5" />
@@ -453,10 +463,12 @@ export default function AdminPage() {
                 await logout();
                 router.push("/login");
               }}
-              className="flex items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 transition-colors hover:bg-rose-500/20 cursor-pointer"
+              className="flex min-h-[38px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 transition-colors hover:bg-rose-500/20 cursor-pointer"
               title="خروج از حساب"
+              aria-label="خروج از حساب"
             >
               <LogOut className="h-3.5 w-3.5" />
+              <span>خروج</span>
             </button>
           </div>
         </div>

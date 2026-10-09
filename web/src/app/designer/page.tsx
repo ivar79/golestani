@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { Copy, Check, Share2, Users, UploadCloud, Sparkles, CheckCircle2, AlertCircle, Trash2, X, Building2, ArrowUpRight, LayoutDashboard, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
-import api, { extractApiError } from "@/lib/api";
+import api, { extractApiError, retryTransient } from "@/lib/api";
 import { listBusinesses, type Business } from "@/lib/businesses";
 import AppTaskbar from "@/components/layout/AppTaskbar";
-import { SITE_URL } from "@/lib/siteUrl";
+import { useSiteOrigin } from "@/lib/useSiteOrigin";
 
 type Portfolio = {
   id: number;
@@ -71,6 +71,12 @@ export default function DesignerPage() {
   const [workspaces, setWorkspaces] = useState<StudioWorkspace[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  // آدرس سایت نباید هاردکد باشد: لینک معرف باید همان دامنه‌ای را نشان دهد که
+  // کاربر همین حالا روی آن است (production / staging / custom domain).
+  // useSiteOrigin از origin واقعی مرورگر می‌خواند (SSR-safe) و اگر canonical
+  // صریحاً تنظیم نشده باشد، تا پیمایش کلاینت خالی می‌ماند تا "localhost" گذرا
+  // هرگز به کاربر نشان داده نشود.
+  const siteOrigin = useSiteOrigin();
 
   const MAX_PORTFOLIO_BYTES = 10 * 1024 * 1024; // matches backend max:10240
   const ALLOWED_PORTFOLIO_TYPES = ["image/jpeg", "image/png", "application/pdf"];
@@ -129,7 +135,9 @@ export default function DesignerPage() {
         const rows = await Promise.all(
           businesses.map(async (business): Promise<StudioWorkspace> => {
             try {
-              const { data } = await api.get<StudioCardResponse>(`/businesses/${business.id}/card`);
+              const { data } = await retryTransient(() =>
+                api.get<StudioCardResponse>(`/businesses/${business.id}/card`),
+              );
               return {
                 business,
                 allowed: data.studio?.allowed === true,
@@ -157,6 +165,7 @@ export default function DesignerPage() {
       active = false;
     };
   }, [authLoading, userId, programStatus]);
+
 
   async function requestDesignerProgram() {
     setRequestingProgram(true);
@@ -249,9 +258,11 @@ export default function DesignerPage() {
   }
 
   const referralCode = designer?.referral_code || "";
-  const referralLink = `${SITE_URL}/dashboard?ref=${referralCode}`;
+  const referralLink = siteOrigin ? `${siteOrigin}/dashboard?ref=${referralCode}` : "";
 
   function copyReferralLink() {
+    // قبل از مشخص‌شدن دامنهٔ واقعی چیزی برای کپی وجود ندارد.
+    if (!referralLink) return;
     void navigator.clipboard.writeText(referralLink).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);

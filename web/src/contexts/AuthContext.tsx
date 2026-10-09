@@ -72,7 +72,12 @@ export function AuthProvider({children}:{children:ReactNode}) {
      * cost the session).
      */
     const loadUser=async():Promise<void>=>{
+      // CAP: without a ceiling, a dead API URL or a persistently cold
+      // server spins this forever and the user is trapped on the loading
+      // gate with no logout/retry affordance. After MAX_ATTEMPTS we give
+      // up, drop loading, and let the page gates show their logged-out UI.
       const backoffs=[300,900,2000];
+      const MAX_ATTEMPTS=5;
       let attempt=0;
       while(active){
         try{
@@ -90,8 +95,11 @@ export function AuthProvider({children}:{children:ReactNode}) {
             ||error.code===axios.AxiosError.ERR_CANCELED
             ||error.response.status>=500;
           if(!transient){setLoading(false);return;}
+          // Increment AFTER computing the delay: the first retry must use
+          // backoffs[0], matching the backoff schedule the tests time against.
           const delay=attempt<backoffs.length?backoffs[attempt]:3000;
           attempt++;
+          if(attempt>=MAX_ATTEMPTS){setLoading(false);return;}
           await new Promise((resolve)=>{window.setTimeout(resolve,delay);});
         }
       }

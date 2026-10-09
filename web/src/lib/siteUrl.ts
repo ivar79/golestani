@@ -16,3 +16,16 @@ export function getSiteUrl(): string {
 }
 
 export const SITE_URL = getSiteUrl();
+
+/**
+ * Was the canonical origin actually CONFIGURED (vs. the dev fallback above)?
+ *
+ * The fallback keeps SEO metadata valid, but it is NOT a URL to show a user:
+ * the designer referral link would otherwise paint "http://localhost:3000" for
+ * the first frame (SSR) before the mount effect swaps in the real origin.
+ * Callers that render a user-visible address use this flag to stay blank until
+ * the browser origin is known — never to render an address the site is not at.
+ */
+export const SITE_URL_CONFIGURED = Boolean(
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.VERCEL_URL?.trim(),
+);

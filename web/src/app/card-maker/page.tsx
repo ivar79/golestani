@@ -34,7 +34,7 @@ import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { listBusinesses, type Business } from "@/lib/businesses";
 import { pickActiveBusiness, writeActiveBusinessId } from "@/lib/activeBusiness";
-import api, { extractApiError } from "@/lib/api";
+import api, { extractApiError, retryTransient } from "@/lib/api";
 import { downloadPrintFile } from "@/lib/phase4";
 import CardCanvas, {
   type CardTemplate,
@@ -226,7 +226,11 @@ export default function CardMakerPage() {
       setBusinessesLoading(true);
       setBusinessesError(null);
     }, 0);
-    listBusinesses()
+    // Same cold-boot contract as the card GET below: retry ONLY when the API
+    // did not answer (timeout / network drop / 5xx). A real 4xx — including the
+    // 429 this endpoint's `throttle:30,1` group returns after ~30 calls/min —
+    // surfaces immediately instead of being retried into a longer lockout.
+    retryTransient(() => listBusinesses())
       .then((items) => {
         if (!active) return;
         setBusinesses(items);
@@ -259,8 +263,12 @@ export default function CardMakerPage() {
     // (react-hooks/set-state-in-effect) while the loading UI shows one extra
     // frame at most — behavior is unchanged.
     const t = window.setTimeout(() => setCardLoading(true), 0);
-    api
-      .get<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`)
+    // The API runs in a Docker container whose first request after an idle
+    // period pays the Laravel boot cost (~6s) — close to the 15s axios ceiling
+    // on a slow Windows mount. retryTransient retries only when the API did
+    // NOT answer (timeout / network drop / 5xx); a real 4xx answer is never
+    // retried, so a 403/422 surfaces immediately.
+    retryTransient(() => api.get<BusinessCardResponse>(`/businesses/${selectedBusiness.id}/card`))
       .then(({ data }) => {
         setCardData(data);
         setCardId(typeof data.id === "number" ? data.id : null);

@@ -8,6 +8,7 @@
 
 import type { CardDocument } from "./document";
 import { readStoredToken } from "@/lib/session";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 export type TemplateSource = "builtin" | "db" | "personal";
 
@@ -58,10 +59,20 @@ async function parse<T>(res: Response): Promise<T> {
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
-/** Gallery with per-business entitlement flags (anonymous-safe). */
-export async function fetchGallery(businessId?: number): Promise<GalleryTemplate[]> {
+/**
+ * Gallery with per-business entitlement flags (anonymous-safe).
+ *
+ * Deadline-bound and cancellable: callers pass a signal tied to the panel's
+ * lifetime, so unmounting the studio never leaves this request hanging (it used
+ * to answer after 42s on a saturated API and then set state on a dead tree).
+ */
+export async function fetchGallery(businessId?: number, signal?: AbortSignal): Promise<GalleryTemplate[]> {
   const qs = businessId ? `?business_id=${businessId}` : "";
-  const res = await fetch(`${API}/card-templates${qs}`, { headers: authHeaders(), cache: "no-store" });
+  const res = await fetchWithTimeout(`${API}/card-templates${qs}`, {
+    headers: authHeaders(),
+    cache: "no-store",
+    signal,
+  });
   const body = await parse<{ templates: GalleryTemplate[] }>(res);
   return body.templates;
 }

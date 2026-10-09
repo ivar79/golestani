@@ -27,7 +27,6 @@ vi.mock("next/link", () => ({
 }));
 
 import DesignerPage from "../page";
-import { SITE_URL } from "@/lib/siteUrl";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,7 +61,7 @@ describe("designer dashboard", () => {
 
     expect(await screen.findByRole("heading", { name: "مدیریت حساب طراح" })).toBeTruthy();
     expect(screen.getByRole("link", { name: /ورود به داشبورد/ }).getAttribute("href")).toBe("/dashboard");
-    expect(screen.getByDisplayValue(`${SITE_URL}/dashboard?ref=DES-TEST`)).toBeTruthy();
+    expect(screen.getByDisplayValue(`${window.location.origin}/dashboard?ref=DES-TEST`)).toBeTruthy();
     expect(apiMock.get).toHaveBeenCalledWith("/designer/profile");
   });
 

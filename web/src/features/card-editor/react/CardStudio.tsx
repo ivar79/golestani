@@ -25,7 +25,8 @@ import { createDocumentFromBusiness, type TemplateKey } from "../domain/factory"
 import type { CardDocument } from "../domain/document";
 import { SaveQueue } from "../domain/saveQueue";
 import { auditDocument, budgetForTier } from "../domain/saveLimits";
-import { describeEntitlementErrors, describeStudioErrors, extractEntitlementErrors, extractStudioErrors, limitOf } from "@/lib/entitlements";
+import { limitOf } from "@/lib/entitlements";
+import { describeSaveFailure, saveFailureDiagnostics } from "../domain/saveFailure";
 import { EditorStage } from "./EditorStage";
 import { useEntitlements } from "@/components/cards/FeatureGate";
 import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel } from "./EditorPanels";
@@ -151,23 +152,16 @@ export function CardStudio({
         if (!guard.isCurrent()) return;
         // The server is the entitlement authority: when it refuses a save, say
         // WHICH capability refused it instead of a generic failure. A locked
-        // control must never look like a transient error. A 422 is a structural
-        // rejection (the document does not satisfy today's validator); its body
-        // names the failing rule for the developer, the user gets a calm hint.
-        const status = (error as { response?: { status?: number } })?.response?.status;
-        setSaveStatus({
-          kind: "error",
-          message:
-            describeStudioErrors(extractStudioErrors(error)) ??
-            describeEntitlementErrors(extractEntitlementErrors(error)) ??
-            (status === 429
-              ? "تعداد درخواست‌ها زیاد است؛ چند لحظه صبر کنید و دوباره تلاش کنید."
-              : status === 422
-              ? "سند کارت با ساختار مجاز سرور همخوانی نیست — بخشی از طرح ذخیره نشد."
-              : error instanceof Error
-                ? error.message
-                : "ذخیره‌سازی ناموفق بود."),
-        });
+        // control must never look like a transient error, and a timeout never
+        // claims success or failure outright (the outcome is ambiguous). That
+        // whole contract lives in domain/saveFailure.ts so it is unit-tested
+        // without mounting the editor.
+        setSaveStatus({ kind: "error", message: describeSaveFailure(error) });
+        // Dev-only, field-selected diagnostics (never the error object: its
+        // axios config holds the Authorization header).
+        if (process.env.NODE_ENV === "development") {
+          console.error("[CardStudio][save]", saveFailureDiagnostics(error));
+        }
       }
     });
   }, [engine, onSaved, saveQueue, maxLayersEntitlement]);

@@ -112,4 +112,33 @@ class PhaseSixTest extends TestCase
         $this->actingAs($admin)->patchJson('/api/admin/users/'.$admin->id, ['roles' => ['user']])->assertStatus(422);
         $this->actingAs($admin)->patchJson('/api/admin/users/'.$admin->id, ['roles' => ['user']])->assertStatus(422);
     }
+
+    public function test_admin_cannot_deactivate_itself_or_the_last_active_admin(): void
+    {
+        $admin = $this->admin();
+        $other = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
+
+        // Deactivating another (non-admin) user is fine.
+        $this->actingAs($admin)->patchJson('/api/admin/users/'.$other->id, ['is_active' => false])
+            ->assertOk()->assertJsonPath('is_active', false);
+
+        // Self-deactivation is a permanent lockout: CheckRole denies inactive
+        // accounts on every admin route AND the admin login rejects them.
+        $this->actingAs($admin)->patchJson('/api/admin/users/'.$admin->id, ['is_active' => false])
+            ->assertStatus(422);
+        $this->assertTrue($admin->fresh()->is_active, 'self-deactivation must not persist');
+
+        // With a second ACTIVE admin, deactivating the other admin is allowed
+        // (the acting admin keeps the system manageable).
+        $second = $this->admin();
+        $this->actingAs($admin)->patchJson('/api/admin/users/'.$second->id, ['is_active' => false])
+            ->assertOk();
+        $this->assertFalse($second->fresh()->is_active);
+
+        // …but once only ONE active admin remains, that last one is locked.
+        // (Act through $admin, who is now the sole active admin.)
+        $this->actingAs($admin)->patchJson('/api/admin/users/'.$admin->id, ['is_active' => false])
+            ->assertStatus(422);
+        $this->assertTrue($admin->fresh()->is_active, 'last active admin must stay active');
+    }
 }

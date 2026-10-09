@@ -7,10 +7,12 @@ import {
   type AdminUserRoleFilter,
 } from "@/lib/admin";
 import { extractApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AtSign,
   Crown,
   Loader2,
+  Lock,
   Mail,
   Palette,
   Phone,
@@ -23,6 +25,25 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+
+/**
+ * SELF-ACCOUNT LOCKOUT PROTECTION (2026-10-09).
+ *
+ * An admin deactivating or demoting their OWN account is unrecoverable from
+ * the product: CheckRole denies every admin route for inactive accounts and
+ * loginAdmin refuses inactive admins, so the only way back is direct DB
+ * access. Standard practice is that the option is never offered for your own
+ * account in the first place (Google Workspace does not let you delete or
+ * deactivate the account you are signed in as, and keeps a mandatory last
+ * super admin) — hiding it is the convenience layer, the API rejects it with
+ * 422 either way (AdminController::updateUser).
+ *
+ * So for the signed-in admin's own row: the status toggle is REMOVED, not
+ * disabled, and the role dropdown is locked (every single-role change on your
+ * own account is refused server-side, so the control was dead anyway).
+ */
+const SELF_STATUS_HINT = "حساب خودتان غیرقابل غیرفعال‌سازی است (جلوگیری از قفل‌شدن کامل دسترسی مدیریتی).";
+const SELF_ROLE_HINT = "نقش حساب خودتان قابل تغییر نیست (جلوگیری از حذف دسترسی مدیریتی خودتان).";
 
 /** Canonical designer program statuses (users.designer_status). */
 const DESIGNER_STATUSES = ["none", "pending", "approved", "rejected", "suspended"] as const;
@@ -124,13 +145,15 @@ function primaryRole(user: AdminUser): RoleKey {
 
 type Handlers = {
   busyId: number | null;
+  /** Signed-in admin's id — their own row offers no lockout action. */
+  currentUserId: number | null;
   onToggleStatus: (user: AdminUser) => void;
   onRoleChange: (user: AdminUser, role: string) => void;
   onDesignerStatusChange: (user: AdminUser, next: string) => void;
 };
 
 /** Desktop/tablet table for one role group. */
-function GroupTable({ users, busyId, onToggleStatus, onRoleChange, onDesignerStatusChange }: Handlers & { users: AdminUser[] }) {
+function GroupTable({ users, busyId, currentUserId, onToggleStatus, onRoleChange, onDesignerStatusChange }: Handlers & { users: AdminUser[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-right text-sm">
@@ -147,6 +170,7 @@ function GroupTable({ users, busyId, onToggleStatus, onRoleChange, onDesignerSta
         <tbody className="divide-y divide-white/[0.08]">
           {users.map((user) => {
             const isBusy = busyId === user.id;
+            const isSelf = currentUserId !== null && user.id === currentUserId;
             return (
               <tr key={user.id} className="transition-colors hover:bg-white/[0.03]">
                 <td className="px-5 py-3.5">
@@ -176,20 +200,22 @@ function GroupTable({ users, busyId, onToggleStatus, onRoleChange, onDesignerSta
                       </span>
                     ))}
                     {user.roles.length === 0 && <span className="text-xs text-slate-500">کاربر عادی</span>}
-                    <select
-                      value={user.roles[0]?.name ?? "user"}
-                      onChange={(event) => void onRoleChange(user, event.target.value)}
-                      disabled={isBusy}
-                      className="rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1 text-[11px] text-slate-300"
-                      aria-label="تغییر نقش کاربر"
-                    >
-                      <option value="user">کاربر</option>
-                      <option value="business_owner">صاحب کسب‌وکار</option>
-                      <option value="designer">طراح</option>
-                      <option value="support">پشتیبانی</option>
-                      <option value="expert">کارشناس</option>
-                      <option value="admin">مدیر</option>
-                    </select>
+                    <span title={isSelf ? SELF_ROLE_HINT : undefined}>
+                      <select
+                        value={user.roles[0]?.name ?? "user"}
+                        onChange={(event) => void onRoleChange(user, event.target.value)}
+                        disabled={isBusy || isSelf}
+                        className="rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1 text-[11px] text-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="تغییر نقش کاربر"
+                      >
+                        <option value="user">کاربر</option>
+                        <option value="business_owner">صاحب کسب‌وکار</option>
+                        <option value="designer">طراح</option>
+                        <option value="support">پشتیبانی</option>
+                        <option value="expert">کارشناس</option>
+                        <option value="admin">مدیر</option>
+                      </select>
+                    </span>
                   </div>
                 </td>
                 <td className="px-5 py-3.5">
@@ -239,28 +265,40 @@ function GroupTable({ users, busyId, onToggleStatus, onRoleChange, onDesignerSta
                   </span>
                 </td>
                 <td className="px-5 py-3.5 text-left">
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => void onToggleStatus(user)}
-                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-all whitespace-nowrap active:scale-95 disabled:opacity-50 cursor-pointer ${
-                      user.is_active
-                        ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
-                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/60 hover:bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                    }`}
-                  >
-                    {user.is_active ? (
-                      <>
-                        <UserX className="h-3.5 w-3.5" />
-                        <span>غیرفعال‌سازی</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="h-3.5 w-3.5" />
-                        <span>فعال‌سازی</span>
-                      </>
-                    )}
-                  </button>
+                  {isSelf ? (
+                    <div className="flex flex-col items-end gap-1" title={SELF_STATUS_HINT}>
+                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-500/30 bg-slate-500/10 px-3.5 py-1.5 text-xs font-semibold text-slate-300 whitespace-nowrap">
+                        <Lock className="h-3.5 w-3.5" />
+                        <span>حساب شما</span>
+                      </span>
+                      <span className="max-w-[190px] text-right text-[10px] leading-4 text-slate-500">
+                        {SELF_STATUS_HINT}
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void onToggleStatus(user)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-all whitespace-nowrap active:scale-95 disabled:opacity-50 cursor-pointer ${
+                        user.is_active
+                          ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+                          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/60 hover:bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
+                      }`}
+                    >
+                      {user.is_active ? (
+                        <>
+                          <UserX className="h-3.5 w-3.5" />
+                          <span>غیرفعال‌سازی</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="h-3.5 w-3.5" />
+                          <span>فعال‌سازی</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </td>
               </tr>
             );
@@ -272,11 +310,12 @@ function GroupTable({ users, busyId, onToggleStatus, onRoleChange, onDesignerSta
 }
 
 /** Touch-first card stack for one role group (< md). */
-function GroupCards({ users, busyId, onToggleStatus, onDesignerStatusChange }: Omit<Handlers, "onRoleChange"> & { users: AdminUser[] }) {
+function GroupCards({ users, busyId, currentUserId, onToggleStatus, onDesignerStatusChange }: Omit<Handlers, "onRoleChange"> & { users: AdminUser[] }) {
   return (
     <div className="grid gap-3 md:hidden">
       {users.map((user) => {
         const isBusy = busyId === user.id;
+        const isSelf = currentUserId !== null && user.id === currentUserId;
         return (
           <div
             key={user.id}
@@ -369,28 +408,38 @@ function GroupCards({ users, busyId, onToggleStatus, onDesignerStatusChange }: O
             </div>
 
             <div className="pt-1">
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => void onToggleStatus(user)}
-                className={`flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap active:scale-[0.98] disabled:opacity-50 cursor-pointer ${
-                  user.is_active
-                    ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/60 hover:bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                }`}
-              >
-                {user.is_active ? (
-                  <>
-                    <UserX className="h-4 w-4" />
-                    <span>غیرفعال‌سازی کاربر</span>
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="h-4 w-4" />
-                    <span>فعال‌سازی مجدد کاربر</span>
-                  </>
-                )}
-              </button>
+              {isSelf ? (
+                <div className="flex flex-col items-center gap-1 rounded-xl border border-slate-500/30 bg-slate-500/10 px-4 py-2.5" title={SELF_STATUS_HINT}>
+                  <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-300">
+                    <Lock className="h-4 w-4" />
+                    <span>حساب شما</span>
+                  </span>
+                  <span className="text-center text-[10px] leading-4 text-slate-500">{SELF_STATUS_HINT}</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void onToggleStatus(user)}
+                  className={`flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap active:scale-[0.98] disabled:opacity-50 cursor-pointer ${
+                    user.is_active
+                      ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/60 hover:bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
+                  }`}
+                >
+                  {user.is_active ? (
+                    <>
+                      <UserX className="h-4 w-4" />
+                      <span>غیرفعال‌سازی کاربر</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="h-4 w-4" />
+                      <span>فعال‌سازی مجدد کاربر</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         );
@@ -400,6 +449,9 @@ function GroupCards({ users, busyId, onToggleStatus, onDesignerStatusChange }: O
 }
 
 export default function AdminUsersTab() {
+  // Signed-in admin: their own row must not offer a self-lockout action.
+  const { user: currentUser } = useAuth();
+  const currentUserId = currentUser?.id ?? null;
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -449,6 +501,10 @@ export default function AdminUsersTab() {
   }, [users]);
 
   const handleToggleStatus = async (user: AdminUser) => {
+    // Defense in depth: even if a self row ever renders an action again, the
+    // request is never sent — the API would answer 422 (self-deactivation is
+    // an unrecoverable lockout).
+    if (currentUserId !== null && user.id === currentUserId) return;
     setBusyId(user.id);
     try {
       const updated = await updateAdminUser(user.id, { is_active: !user.is_active });
@@ -614,6 +670,7 @@ export default function AdminUsersTab() {
                 <GroupTable
                   users={rows}
                   busyId={busyId}
+                  currentUserId={currentUserId}
                   onToggleStatus={handleToggleStatus}
                   onRoleChange={handleRoleChange}
                   onDesignerStatusChange={handleDesignerStatusChange}
@@ -623,6 +680,7 @@ export default function AdminUsersTab() {
                 <GroupCards
                   users={rows}
                   busyId={busyId}
+                  currentUserId={currentUserId}
                   onToggleStatus={handleToggleStatus}
                   onDesignerStatusChange={handleDesignerStatusChange}
                 />
