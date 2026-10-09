@@ -24,6 +24,7 @@ import type { Business } from "@/lib/businesses";
 import { readStoredToken } from "@/lib/session";
 import { useEntitlements, PremiumBadge } from "@/components/cards/FeatureGate";
 import { allowedValues, isEnabled } from "@/lib/entitlements";
+import { fetchWithTimeout, isTimeoutError } from "@/lib/fetchWithTimeout";
 
 function authHeadersJson(): Record<string, string> {
   const token = readStoredToken();
@@ -64,19 +65,21 @@ export function TemplatesPanel({
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [appliedId, setAppliedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumping this re-runs the load effect (the error banner's retry affordance).
+  const [reloadToken, setReloadToken] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [designerStatus, setDesignerStatus] = useState<string | null>(null);
 
-  const reloadPersonal = useCallback(async () => {
+  const reloadPersonal = useCallback(async (signal?: AbortSignal) => {
     if (!canPersonal) return;
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/my/templates`, {
-        headers: authHeadersJson(),
-        cache: "no-store",
-      });
+      const res = await fetchWithTimeout(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/my/templates`,
+        { headers: authHeadersJson(), cache: "no-store", signal },
+      );
       if (res.ok) setPersonal(((await res.json()) as { templates?: GalleryTemplate[] }).templates ?? []);
     } catch {
-      /* personal list is optional UX */
+      /* personal list is optional UX (including a deadline or an unmount) */
     }
   }, [canPersonal]);
 
@@ -85,19 +88,33 @@ export function TemplatesPanel({
   // State updates happen in promise callbacks, never synchronously.
   useEffect(() => {
     let cancelled = false;
+    // Every request in this panel is deadline-bound AND cancellable: measured
+    // 2026-10-09, the un-timed fetches here hung 36–42s on a saturated API and
+    // outlived the component. Unmounting now aborts them, and an abort is never
+    // reported to the user as an error.
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      fetchGallery(business.id)
+      fetchGallery(business.id, controller.signal)
         .then((templates) => {
-          if (!cancelled) setGallery(templates);
+          if (!cancelled) {
+            setGallery(templates);
+            setError(null);
+          }
         })
-        .catch(() => {
-          if (!cancelled) setError("بارگذاری گالری قالب‌ها ناموفق بود.");
+        .catch((error: unknown) => {
+          if (cancelled || controller.signal.aborted) return;
+          setError(
+            isTimeoutError(error)
+              ? "بارگذاری گالری قالب‌ها طول کشید و پاسخ نداد؛ دوباره تلاش کنید."
+              : "بارگذاری گالری قالب‌ها ناموفق بود.",
+          );
         });
-      void reloadPersonal();
+      void reloadPersonal(controller.signal);
       if (canPersonal) {
-        fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/designer/program/status`, {
+        fetchWithTimeout(`${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/designer/program/status`, {
           headers: authHeadersJson(),
           cache: "no-store",
+          signal: controller.signal,
         })
           .then((r) => (r.ok ? r.json() : null))
           .then((b: { designer_status?: string } | null) => {
@@ -108,9 +125,10 @@ export function TemplatesPanel({
     }, 0);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
-  }, [business.id, canPersonal, reloadPersonal]);
+  }, [business.id, canPersonal, reloadPersonal, reloadToken]);
 
   const all = useMemo(() => [...gallery, ...personal], [gallery, personal]);
   const categories = useMemo(() => {
@@ -228,7 +246,19 @@ export function TemplatesPanel({
       </div>
 
       {error && (
-        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">{error}</p>
+        <p className="flex flex-wrap items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setReloadToken((token) => token + 1);
+            }}
+            className="rounded-md border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 font-bold text-rose-200 transition hover:bg-rose-500/20"
+          >
+            تلاش دوباره
+          </button>
+        </p>
       )}
 
       {/* Dynamic category tabs */}

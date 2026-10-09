@@ -18,8 +18,12 @@ export function proxy(request: NextRequest) {
   );
 
   if (isProtected && !token) {
+    // Admin accounts authenticate through the password flow on /admin/login,
+    // and the OTP flow on /login REJECTS admin phones with 403. Sending an
+    // expired admin session to /login was a dead end: the OTP page offers no
+    // link to /admin/login, so the admin had to know the URL by hand.
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = pathname.startsWith("/admin") ? "/admin/login" : "/login";
     return NextResponse.redirect(url);
   }
 

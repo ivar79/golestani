@@ -36,3 +36,5 @@ iran-*.osm.pbf
 # --- local documentation drafts ---
 *.md
 !README.md
+# --- local probe artifacts (may hold live credentials; never commit) ---
+api/storage/probe_*

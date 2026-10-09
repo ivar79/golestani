@@ -27,6 +27,9 @@ const apiMock = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({
   default: apiMock,
   extractApiError: (err: unknown) => (err instanceof Error ? err.message : "خطا"),
+  // retryTransient just forwards to run(); tests exercise the happy path, and
+  // the retry/backoff behaviour has its own coverage in retryTransient.test.ts.
+  retryTransient: <T,>(run: () => Promise<T>) => run(),
 }));
 
 const listBusinessesMock = vi.hoisted(() => vi.fn());

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Globe2, KeyRound, Save } from "lucide-react";
 import { getAdminSettings, saveAdminSetting } from "@/lib/admin";
+import { extractApiError } from "@/lib/api";
 import { neshanKeyPresent, neshanStyle, resolveMapEngine } from "@/lib/mapEngine";
 
 /**
@@ -47,6 +48,7 @@ export default function AdminMapTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -77,6 +79,11 @@ export default function AdminMapTab() {
       setSavedMode(sourceMode);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2500);
+    } catch (err) {
+      // The save used to swallow every error (no catch block): a 422 from a
+      // missing whitelist key looked like a silent no-op. Surface it so the
+      // admin knows the engine choice was NOT stored.
+      setSaveError(extractApiError(err));
     } finally {
       setSaving(false);
     }
@@ -154,6 +161,11 @@ export default function AdminMapTab() {
         {savedFlash && (
           <p className="mt-2 text-[11px] font-semibold text-emerald-300" role="status">
             ✓ منبع نقشه ذخیره شد.
+          </p>
+        )}
+        {saveError && (
+          <p className="mt-2 text-[11px] font-semibold text-rose-300" role="alert">
+            ذخیره منبع نقشه ناموفق بود: {saveError}
           </p>
         )}
       </div>

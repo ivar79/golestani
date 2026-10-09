@@ -76,14 +76,27 @@ export async function retryTransient<T>(run: () => Promise<T>, delays: number[] 
 
 export function extractApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
     const data = error.response?.data as { errors?: Record<string, string[]>; message?: string } | undefined;
     if (data?.errors) {
       const messages = Object.values(data.errors).flat();
       if (messages.length) return messages.join(" • ");
     }
+    // A throttled or crashing server answers with FRAMEWORK strings in English
+    // ("Too Many Attempts.", "Server Error") — verified live: 31×200 then 429
+    // from the `throttle:30,1` bucket on /businesses. Those never reach the UI.
+    if (status === 429) {
+      return "درخواست‌های زیادی در زمان کوتاه ارسال شد؛ حدود یک دقیقه صبر کنید و دوباره تلاش کنید.";
+    }
+    if (status !== undefined && status >= 500) {
+      return "سرور در حال حاضر پاسخ درست نمی‌دهد؛ کمی بعد دوباره تلاش کنید.";
+    }
     if (data?.message) return data.message;
     if (error.code === "ECONNABORTED") return "زمان پاسخ سرور تمام شد؛ قبل از تلاش مجدد اطلاعات را بازخوانی کنید.";
     if (!error.response) return "ارتباط با سرور برقرار نشد.";
+    // An HTTP answer whose body carried no message would otherwise leak axios'
+    // own English text ("Request failed with status code 403").
+    return "درخواست ناموفق بود؛ دوباره تلاش کنید.";
   }
   return error instanceof Error ? error.message : "خطای ناشناخته‌ای رخ داد.";
 }

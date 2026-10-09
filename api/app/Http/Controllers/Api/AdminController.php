@@ -164,6 +164,10 @@ class AdminController extends Controller
         // exactly as before; flipping to '1' enforces designer approval +
         // the designer_studio capability.
         'studio_designer_only' => 'bool',
+        // Map engine selector (admin "زیرساخت نقشه" tab): the key the tab
+        // writes was missing here, so the save always 422'd and (the tab has
+        // no error UI) the failure was invisible to the admin.
+        'map.tile_source' => 'string',
     ];
 
     /** Keys governed by the CMS whitelist (string payloads, pre-existing). */
@@ -446,6 +450,15 @@ return response()->json(Article::create($data), 201);
                 if ($addName === 'designer' && ! $user->hasApprovedDesignerStatus()) {
                     abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
                 }
+                // Self-demotion guard mirrors the multi-role replace branch:
+                // the UI dropdown means "this user's role is X", so picking a
+                // non-admin role for yourself is an attempted demotion even
+                // though attach does not strip admin. Without this an admin
+                // could change their own dropdown to "user" (422 expected by
+                // PhaseSixTest, and a real lockout risk in production).
+                if ($user->is($request->user()) && $addName !== 'admin') {
+                    abort(422, 'مدیر نمی‌تواند نقش مدیریتی خودش را حذف کند.');
+                }
                 $roleId = Role::query()->where('name', $addName)->value('id');
                 abort_if($roleId === null, 422, 'یکی از نقش‌های انتخاب‌شده معتبر نیست.');
                 $user->roles()->syncWithoutDetaching([$roleId]);
@@ -466,6 +479,19 @@ return response()->json(Article::create($data), 201);
                     abort(422, 'آخرین مدیر سامانه قابل تنزل نیست.');
                 }
                 $user->roles()->sync($roleIds->values());
+            }
+        }
+        // SELF-DEACTIVATION GUARD: CheckRole refuses inactive accounts on
+        // every admin route AND loginAdmin rejects inactive admins, so
+        // deactivating your own account is a permanent lockout recoverable
+        // only by direct DB access. Same lockout if the last active admin is
+        // deactivated.
+        if (array_key_exists('is_active', $data) && ! (bool) $data['is_active']) {
+            if ($user->is($request->user())) {
+                abort(422, 'مدیر نمی‌تواند حساب کاربری خودش را غیرفعال کند.');
+            }
+            if ($user->hasRole('admin') && User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->where('is_active', true)->count() <= 1) {
+                abort(422, 'آخرین مدیر فعال سامانه قابل غیرفعال‌کردن نیست.');
             }
         }
         $user->update($data);

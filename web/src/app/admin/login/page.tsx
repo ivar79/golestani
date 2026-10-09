@@ -25,16 +25,34 @@ export default function AdminLoginPage() {
     }
   }, [authLoading, user, router]);
 
-  async function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!identifier || !password) return;
+
+    // Browser / password-manager autofill can fill the DOM WITHOUT firing
+    // React's onChange. Reading only `identifier`/`password` state made the
+    // submit button look "locked" until the user clicked into a field (the
+    // reported bug). Read the live field values as well, then validate here
+    // instead of disabling the button on empty state — a disabled button is
+    // exactly what breaks autofill-driven sign-in.
+    const form = event.currentTarget;
+    const domValue = (name: string): string =>
+      (form.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
+
+    // Persian digits / stray whitespace in a pasted phone or email must not
+    // fail the lookup; normalize on the client (backend does the same).
+    const identifierValue = normalizeIdentifier(identifier || domValue("username"));
+    const passwordValue = password || domValue("password");
+
+    if (!identifierValue || !passwordValue) {
+      setError("برای ورود، شمارهٔ موبایل یا ایمیل مدیر و رمز عبور را وارد کنید.");
+      return;
+    }
+
     setError(null);
     setLoading(true);
 
     try {
-      // Persian digits / stray whitespace in a pasted phone or email must not
-      // fail the lookup; normalize on the client (backend does the same).
-      await loginAdmin(normalizeIdentifier(identifier), password);
+      await loginAdmin(identifierValue, passwordValue);
       router.push("/admin");
     } catch (err) {
       setError(extractApiError(err));
@@ -63,19 +81,29 @@ export default function AdminLoginPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium text-slate-300">
+            <label htmlFor="admin-identifier" className="text-xs font-medium text-slate-300">
               شماره موبایل یا ایمیل مدیر
             </label>
             <div className="relative flex items-center">
+              {/* No placeholder: guidance is to label with <label> only, and a
+                  sample admin credential in the field would advertise a real
+                  identifier format to anyone who loads this page. */}
               <input
+                id="admin-identifier"
+                name="username"
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 disabled={loading}
                 autoFocus
+                required
                 dir="ltr"
-                placeholder="09000000000 یا admin@golestani.ir"
-                className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 pl-10 text-white text-left placeholder-slate-500 focus:border-cyan-400 focus:bg-white/[0.07] focus:ring-1 focus:ring-cyan-400 outline-none transition-all text-sm font-mono"
+                inputMode="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={error !== null}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 pl-10 text-white text-left focus:border-cyan-400 focus:bg-white/[0.07] focus:ring-1 focus:ring-cyan-400 outline-none transition-all text-sm font-mono"
               />
               <UserIcon className="absolute left-3.5 w-4 h-4 text-slate-500 pointer-events-none" />
             </div>
@@ -83,23 +111,29 @@ export default function AdminLoginPage() {
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-slate-300">رمز عبور مدیریت</label>
+              <label htmlFor="admin-password" className="text-xs font-medium text-slate-300">رمز عبور مدیریت</label>
             </div>
             <div className="relative flex items-center">
               <input
+                id="admin-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
+                required
                 dir="ltr"
-                placeholder="••••••••••••"
-                className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 pl-10 text-white text-left placeholder-slate-500 focus:border-cyan-400 focus:bg-white/[0.07] focus:ring-1 focus:ring-cyan-400 outline-none transition-all text-sm font-mono"
+                autoComplete="current-password"
+                aria-invalid={error !== null}
+                className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 pl-10 text-white text-left focus:border-cyan-400 focus:bg-white/[0.07] focus:ring-1 focus:ring-cyan-400 outline-none transition-all text-sm font-mono"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute left-3.5 text-slate-400 hover:text-white transition-colors"
                 title={showPassword ? "مخفی‌سازی رمز" : "نمایش رمز"}
+                aria-label={showPassword ? "مخفی‌سازی رمز عبور" : "نمایش رمز عبور"}
+                aria-pressed={showPassword}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -112,9 +146,12 @@ export default function AdminLoginPage() {
             </div>
           )}
 
+          {/* Enabled unless a request is in flight: a button disabled on empty
+              state blocks autofill-driven sign-in (see handleSubmit). */}
           <button
             type="submit"
-            disabled={loading || !identifier || !password}
+            disabled={loading}
+            aria-busy={loading}
             className="w-full py-3.5 rounded-xl bg-gradient-to-l from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm shadow-[0_10px_20px_-10px_rgba(16,185,129,0.6)] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] mt-1"
           >
             {loading ? "در حال اعتبارسنجی..." : "ورود به پنل مدیریت"}

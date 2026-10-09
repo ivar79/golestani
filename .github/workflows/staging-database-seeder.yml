@@ -314,6 +314,7 @@ jobs:
           DB_URL: ${{ secrets.NEON_STAGING_DATABASE_URL }}
           ADMIN_PHONE: ${{ secrets.STAGING_ADMIN_PHONE }}
           ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+          API_BASE: ${{ secrets.RENDER_API_BASE_URL || 'https://one-ns2s.onrender.com' }}
         run: |
           set -euo pipefail
 
@@ -379,11 +380,14 @@ jobs:
           # cannot break the payload.
           login_payload="$(jq -n --arg identifier "$ADMIN_PHONE" --arg password "$ADMIN_PASSWORD" \
             '{identifier: $identifier, password: $password}')"
+          # Use the same base as the health check above instead of a second
+          # hardcoded host — two sources of truth meant the probes silently
+          # targeted the wrong service when RENDER_API_BASE_URL was rotated.
           status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json' \
             --data "$login_payload" \
-            'https://one-ns2s.onrender.com/api/auth/admin/login')"
+            "${API_BASE%/}/api/auth/admin/login")"
 
           echo "Admin login probe returned HTTP ${status}."
           if [[ "$status" != "200" ]]; then
@@ -392,11 +396,13 @@ jobs:
           fi
 
       - name: Verify public homepage
+        env:
+          API_BASE: ${{ secrets.RENDER_API_BASE_URL || 'https://one-ns2s.onrender.com' }}
         run: |
           set -euo pipefail
 
           homepage="$(curl --fail --silent --show-error --max-time 30 \
-            'https://one-ns2s.onrender.com/api/public/homepage')"
+            "${API_BASE%/}/api/public/homepage")"
 
           if [[ -z "$homepage" ]]; then
             echo "The public homepage response was empty."
