@@ -723,22 +723,19 @@ export default function CardMakerPage() {
     <EntitlementProvider value={entitlements}>
     <main
       dir="rtl"
-      className={`min-h-screen bg-[#050B14] text-white ${
-        // Studio open ⇒ the editor IS the page: reclaim the banner's
-        // top/bottom breathing room so the workspace fits a single screen.
-        // (Outside the studio the original generous padding is untouched.)
-        studioOpen ? "pb-6 pt-32" : "pb-20 pt-28 sm:pt-32"
+      className={`min-h-screen text-white ${
+        studioOpen ? "bg-[#0d0f13] pb-2 pt-24" : "bg-[#050B14] pb-20 pt-28 sm:pt-32"
       }`}
     >
       <AppTaskbar />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className={studioOpen ? "mx-auto w-full max-w-none px-2 sm:px-3" : "mx-auto max-w-7xl px-4 sm:px-6"}>
         {/* Page Header — the full marketing banner outside the studio, one
             compact row inside it (see studioOpen). */}
         {studioOpen ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div className="flex min-w-0 items-center gap-3">
-              <h1 className="truncate text-base font-black text-white">استودیوی طراحی</h1>
+              <h1 className="truncate text-sm font-semibold text-white">کارت‌ساز</h1>
               {selectedBusiness && (
                 <span className="hidden max-w-56 truncate rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-300 sm:inline">
                   {selectedBusiness.name}
@@ -811,8 +808,8 @@ export default function CardMakerPage() {
         )}
 
         {editorMode && editorAllowed && selectedBusiness && !studioBlocked ? (
-          <div className="mt-4 w-full">
-            <div className="rounded-3xl border border-white/10 bg-[#0c1626]/80 p-3 sm:p-4 backdrop-blur-xl">
+          <div className={studioOpen ? "mt-2 w-full" : "mt-4 w-full"}>
+            <div className={studioOpen ? "rounded-lg bg-transparent p-0" : "rounded-3xl border border-white/10 bg-[#0c1626]/80 p-3 sm:p-4 backdrop-blur-xl"}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <button
@@ -820,12 +817,10 @@ export default function CardMakerPage() {
                     onClick={() => setEditorMode(false)}
                   className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-white/20 hover:bg-white/10"
                   >
-                  بازگشت به کارت‌ساز
+                  بازگشت
                   </button>
                 <span className="inline-flex min-w-0 items-center gap-2 text-xs text-slate-400">
-                  <span className="shrink-0 rounded-md border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 font-semibold text-cyan-200">
-                    استودیوی طراحی
-                  </span>
+                  
                   <span className="max-w-48 truncate font-medium text-white sm:max-w-72">
                     {selectedBusiness.name}
                   </span>

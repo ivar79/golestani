@@ -73,8 +73,8 @@ export function CardStudio({
   const state = useCardEditor(engine);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [preview, setPreview] = useState(false);
-  const [activeTab, setActiveTab] = useState<"templates" | "inspector" | "layers" | "bg">("templates");
-  const panelTab = state.editingPathId ? "inspector" : activeTab;
+  const [leftTab, setLeftTab] = useState<"layers" | "templates">("layers");
+  const [rightTab, setRightTab] = useState<"inspector" | "bg">("inspector");
   const saveTimer = useRef<number | null>(null);
   // Saves are SERIALIZED: at most one request on the wire, the newest document
   // always queued next — so an out-of-order response can never write an older
@@ -101,7 +101,7 @@ export function CardStudio({
   const [lastSelected, setLastSelected] = useState<string | null>(state.selection.layerId);
   if (state.selection.layerId !== lastSelected) {
     setLastSelected(state.selection.layerId);
-    if (state.selection.layerId) setActiveTab("inspector");
+    if (state.selection.layerId) setRightTab("inspector");
   }
 
   /**
@@ -223,194 +223,48 @@ export function CardStudio({
   }, [engine]);
 
   return (
-    <div className="space-y-2.5">
-      {/* Studio header: compact (56px), information-dense, no decoration.
-          Save status comes from the REAL persistence state (SaveQueue + dirty flag). */}
-      <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.09] bg-[#101720]/95 p-2 shadow-[0_12px_36px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => engine.undo()}
-            disabled={!state.canUndo}
-            title="واگرد (Ctrl+Z)"
-            aria-label="واگرد"
-            className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 hover:text-white disabled:opacity-40 transition"
-          >
-            <Undo2 className="h-4 w-4" />
+    <div dir="rtl" className="ik-studio flex min-w-0 flex-col gap-2 text-slate-100">
+      <header className="sticky top-0 z-40 flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] bg-[#15171c]/95 px-3 py-2 backdrop-blur-xl">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-300/10 text-[11px] font-black text-cyan-200">IK</span>
+          <span className="max-w-44 truncate text-sm font-semibold text-slate-100">{business.name}</span>
+          <span className="hidden text-xs text-slate-500 sm:inline">· کارت</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => engine.undo()} disabled={!state.canUndo} title="واگرد · Ctrl+Z" aria-label="واگرد" className="flex h-8 w-8 items-center justify-center rounded-md border border-white/[0.08] text-slate-300 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
+          <button type="button" onClick={() => engine.redo()} disabled={!state.canRedo} title="بازانجام · Ctrl+Y" aria-label="بازانجام" className="flex h-8 w-8 items-center justify-center rounded-md border border-white/[0.08] text-slate-300 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
+          <span className="mx-1 hidden h-5 w-px bg-white/10 sm:block" />
+          {saveStatus.kind === "saved" && <span className="flex items-center gap-1 text-[11px] text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> ذخیره شد</span>}
+          {saveStatus.kind === "saving" && <span className="flex items-center gap-1 text-[11px] text-slate-400"><RotateCcw className="h-3.5 w-3.5 animate-spin" /> در حال ذخیره</span>}
+          {saveStatus.kind === "error" && <span className="flex items-center gap-1.5 text-[11px] text-rose-300"><AlertCircle className="h-3.5 w-3.5 shrink-0" /><span className="max-w-44 truncate">{saveStatus.message}</span><button type="button" onClick={() => void persistRef.current()} title="تلاش دوباره برای ذخیره" aria-label="تلاش دوباره برای ذخیره" className="flex h-7 w-7 items-center justify-center rounded-md border border-rose-400/30 hover:bg-rose-500/10"><RotateCcw className="h-3.5 w-3.5" /></button></span>}
+          {state.dirty && saveStatus.kind === "idle" && <span className="hidden text-[11px] text-amber-300 sm:inline">ذخیره‌نشده</span>}
+          <button type="button" onClick={() => setPreview((p) => !p)} title={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش"} aria-label={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش"} className={preview ? "flex h-8 items-center gap-1.5 rounded-md border border-cyan-300/40 bg-cyan-300/10 px-2.5 text-xs text-cyan-100" : "flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-xs text-slate-300 transition hover:bg-white/[0.06] hover:text-white"}>
+            <Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">{preview ? "ویرایش" : "پیش‌نمایش"}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => engine.redo()}
-            disabled={!state.canRedo}
-            title="بازانجام (Ctrl+Y)"
-            aria-label="بازانجام"
-            className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 hover:text-white disabled:opacity-40 transition"
-          >
-            <Redo2 className="h-4 w-4" />
-          </button>
-
-          <div className="mr-1 flex items-center gap-2 text-xs font-medium text-slate-300">
-            <span className="font-bold tracking-tight text-white">استودیوی طراحی اینکارت</span>
-            <span className="hidden h-1 w-1 rounded-full bg-emerald-400/80 sm:block" />
-            <span className="hidden text-[10px] text-slate-500 sm:block">طراحی کارت ویزیت</span>
+          <button type="button" onClick={() => void persistRef.current()} disabled={!state.dirty && saveStatus.kind !== "error"} title="ذخیره · Ctrl+S" className="flex h-8 items-center gap-1.5 rounded-md bg-cyan-300 px-3 text-xs font-bold text-[#101318] transition hover:bg-cyan-200 disabled:opacity-35"><Save className="h-3.5 w-3.5" /><span>ذخیره</span></button>
+        </div>
+      </header>
+      <div dir="ltr" className="relative grid min-w-0 grid-cols-1 gap-2 md:h-[calc(100vh-8.75rem)] md:min-h-[560px] md:grid-cols-[236px_minmax(0,1fr)_292px] xl:grid-cols-[258px_minmax(0,1fr)_316px]">
+        {!preview && <aside dir="rtl" className="order-2 flex min-h-[230px] min-w-0 flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-[#17191f] md:order-1 md:h-full">
+          <div className="flex items-center gap-1 border-b border-white/[0.08] p-2">
+            <button type="button" onClick={() => setLeftTab("layers")} aria-pressed={leftTab === "layers"} className={leftTab === "layers" ? "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-white/[0.09] px-2 text-xs text-white" : "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200"}><Layers className="h-3.5 w-3.5" /> لایه‌ها</button>
+            <button type="button" onClick={() => setLeftTab("templates")} aria-pressed={leftTab === "templates"} className={leftTab === "templates" ? "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-white/[0.09] px-2 text-xs text-white" : "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200"}><Sparkles className="h-3.5 w-3.5" /> قالب‌ها</button>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {saveStatus.kind === "saved" && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
-              <CheckCircle2 className="h-3.5 w-3.5" /> ذخیره شد
-            </span>
-          )}
-          {saveStatus.kind === "saving" && (
-            <span className="flex items-center gap-1 text-[11px] text-slate-400">
-              <RotateCcw className="h-3.5 w-3.5 animate-spin" /> در حال ذخیره…
-            </span>
-          )}
-          {saveStatus.kind === "error" && (
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-300">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {saveStatus.message}
-              <button
-                type="button"
-                onClick={() => void persistRef.current()}
-                title="تلاش دوباره برای ذخیره طرح"
-                className="flex items-center gap-1 rounded-lg border border-rose-400/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-200 hover:bg-rose-500/20 transition"
-              >
-                <RotateCcw className="h-3 w-3" /> تلاش دوباره
-              </button>
-            </span>
-          )}
-          {state.dirty && saveStatus.kind === "idle" && <span className="text-[11px] text-amber-300">تغییرات ذخیره‌نشده…</span>}
-          <button
-            type="button"
-            onClick={() => setPreview((p) => !p)}
-            title={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش کارت"}
-            className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
-              preview ? "border-cyan-400 bg-cyan-500/20 text-cyan-200" : "border-white/10 bg-white/5 text-slate-300 hover:text-white"
-            }`}
-          >
-            <Eye className="h-3.5 w-3.5" />
-            {preview ? "ویرایش" : "پیش‌نمایش"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void persistRef.current()}
-            disabled={!state.dirty && saveStatus.kind !== "error"}
-            title="ذخیره طرح (Ctrl+S)"
-            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 px-4 py-2 text-xs font-bold text-slate-950 hover:from-cyan-300 hover:to-sky-400 shadow-lg shadow-cyan-500/20 disabled:opacity-50 transition"
-          >
-            <Save className="h-3.5 w-3.5" />
-            ذخیره طرح
-          </button>
-        </div>
-      </div>
-
-      {/* STUDIO WORKSPACE — a real three-column editor.
-          The GRID owns one tall height (so the canvas finally gets the space),
-          and every column scrolls inside itself. The old design capped all
-          three columns at `calc(100vh-22rem)` at once, which is what shrank the
-          canvas to a strip and buried the inspector in nested mini-scrollers. */}
-      <div className="relative grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-white/[0.09] bg-[#0a0f16] p-1.5 shadow-[0_18px_54px_rgba(0,0,0,0.32)] md:h-[calc(100vh-9.5rem)] md:min-h-[560px] md:grid-cols-[minmax(0,1fr)_150px_288px] xl:grid-cols-[minmax(0,1fr)_166px_336px]">
-        <div className="min-w-0 rounded-[18px] md:h-full md:min-h-0 md:overflow-y-auto">
-          <EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} onUploadImage={onUploadImage} />
-        </div>
-        {preview ? null : (
-          <>
-            <Toolbox engine={engine} onUploadImage={onUploadImage} qrPayload={business.slug} />
-
-            {/* The inspector owns its own scroll region, exactly like the
-                toolbox — no shared viewport cap, no nested fixed heights. */}
-            <div className="flex min-h-0 min-w-0 flex-col space-y-2 overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#0d131c] p-1.5 md:h-full">
-              <div className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-xl border border-white/[0.08] bg-[#121a25] p-1 backdrop-blur-2xl">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("templates")}
-                  className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    panelTab === "templates"
-                      ? "bg-amber-500/25 text-amber-300 shadow-sm ring-1 ring-amber-400/40"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                  <span>قالب‌ها</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("inspector")}
-                  className={`relative flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    panelTab === "inspector"
-                      ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Sliders className="h-3.5 w-3.5" />
-                  <span>ویژگی‌ها</span>
-                  {state.selection.layerId && (
-                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("layers")}
-                  className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    panelTab === "layers"
-                      ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  <span>لایه‌ها ({state.doc.layers.length})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("bg")}
-                  className={`flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 text-[10px] font-bold transition ${
-                    panelTab === "bg"
-                      ? "bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Palette className="h-3.5 w-3.5" />
-                  <span>پس‌زمینه</span>
-                </button>
-              </div>
-
-              {/* Active Tab Content */}
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
-                {panelTab === "templates" && (
-                  <TemplatesPanel engine={engine} business={business} />
-                )}
-
-                {panelTab === "inspector" && (
-                  <>
-                    {state.selection.layerId ? (
-                      <InspectorPanel engine={engine} onUploadImage={onUploadImage} businessSlug={business.slug} />
-                    ) : (
-                      <div className="rounded-2xl border border-white/10 bg-[#0c1626]/80 p-6 text-center text-slate-400">
-                        <Sliders className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />
-                        <p className="text-xs font-semibold text-white">لایه‌ای انتخاب نشده است</p>
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          برای ویرایش ویژگی‌ها، یک المان را روی بوم یا از لیست لایه‌ها انتخاب کنید.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {panelTab === "layers" && (
-                  <LayersPanel engine={engine} doc={state.doc} />
-                )}
-
-                {panelTab === "bg" && (
-                  <BackgroundPanel engine={engine} />
-                )}
-              </div>
-            </div>
-          </>
-        )}
+          <div className="min-h-0 flex-1 overflow-y-auto p-2.5">{leftTab === "layers" ? <LayersPanel engine={engine} doc={state.doc} /> : <TemplatesPanel engine={engine} business={business} />}</div>
+        </aside>}
+        <section className="order-1 flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-[#111318] md:order-2 md:h-full">
+          {preview ? <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3"><EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} onUploadImage={onUploadImage} /></div> : <div dir="ltr" className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[48px_minmax(0,1fr)]"><Toolbox engine={engine} onUploadImage={onUploadImage} qrPayload={business.slug} /><div className="min-h-[360px] min-w-0 overflow-hidden md:min-h-0"><EditorStage engine={engine} doc={state.doc} exportRef={exportRef} preview={preview} onUploadImage={onUploadImage} /></div></div>}
+        </section>
+        {!preview && <aside dir="rtl" className="order-3 flex min-h-[280px] min-w-0 flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-[#17191f] md:h-full">
+          <div className="flex items-center border-b border-white/[0.08] p-2">
+            <button type="button" onClick={() => setRightTab("inspector")} aria-pressed={rightTab === "inspector"} className={rightTab === "inspector" ? "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-white/[0.09] px-2 text-xs text-white" : "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200"}><Sliders className="h-3.5 w-3.5" /> ویژگی‌ها{state.selection.layerId && <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />}</button>
+            <button type="button" onClick={() => setRightTab("bg")} aria-pressed={rightTab === "bg"} className={rightTab === "bg" ? "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-white/[0.09] px-2 text-xs text-white" : "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200"}><Palette className="h-3.5 w-3.5" /> پس‌زمینه</button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+            {rightTab === "inspector" && (state.selection.layerId ? <InspectorPanel engine={engine} onUploadImage={onUploadImage} businessSlug={business.slug} /> : <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-white/10 px-4 py-6 text-center text-slate-400"><Sliders className="h-6 w-6 text-slate-500" /><p className="text-xs font-medium text-slate-200">ویژگی‌ها</p><p className="text-[11px] leading-5">برای مشاهده تنظیمات، یک لایه را انتخاب کنید.</p></div>)}
+            {rightTab === "bg" && <BackgroundPanel engine={engine} />}
+          </div>
+        </aside>}
       </div>
     </div>
   );

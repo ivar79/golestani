@@ -188,15 +188,15 @@ function BooleanToolbar({ engine, selectedCount }: { engine: EditorEngine; selec
 type ToolboxEntry = LayerKind | "pointer" | "pen" | "curved_line";
 
 const TOOLBOX: { kind: ToolboxEntry; icon: typeof Type; label: string }[] = [
-  { kind: "pointer", icon: MousePointer2, label: "انتخاب و جابه‌جایی" },
-  { kind: "text", icon: Type, label: "افزودن متن" },
-  { kind: "shape", icon: Square, label: "افزودن شکل" },
-  { kind: "curved_line", icon: Waves, label: "خط منحنی آماده" },
-  { kind: "pen", icon: PenTool, label: "رسم مسیر گره‌دار" },
-  { kind: "path", icon: Pencil, label: "قلم آزاد" },
-  { kind: "image", icon: ImagePlus, label: "افزودن تصویر" },
-  { kind: "qr", icon: QrCode, label: "افزودن کد QR" },
-  { kind: "badge", icon: BadgeCheck, label: "افزودن نشان" },
+  { kind: "pointer", icon: MousePointer2, label: "انتخاب" },
+  { kind: "text", icon: Type, label: "متن" },
+  { kind: "shape", icon: Square, label: "شکل" },
+  { kind: "curved_line", icon: Waves, label: "منحنی" },
+  { kind: "pen", icon: PenTool, label: "قلم" },
+  { kind: "path", icon: Pencil, label: "رسم" },
+  { kind: "image", icon: ImagePlus, label: "تصویر" },
+  { kind: "qr", icon: QrCode, label: "QR" },
+  { kind: "badge", icon: BadgeCheck, label: "نشان" },
 ];
 
 const SHAPE_PRESETS: {
@@ -464,21 +464,15 @@ export function Toolbox({
         onClick={() => activate(kind)}
         disabled={disabled}
         title={item.label}
+        aria-label={item.label}
         aria-pressed={isSelected}
-        className={`group flex w-[124px] shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2.5 text-right transition md:w-full ${
+        className={`group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition ${
           isSelected
-            ? "border-cyan-300/50 bg-cyan-400/10 text-white"
-            : "border-transparent bg-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
-        } disabled:opacity-35`}
+            ? "border-cyan-300/35 bg-cyan-300/10 text-cyan-100"
+            : "border-transparent bg-transparent text-slate-400 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
+        } disabled:opacity-30`}
       >
-        {kind === "image" && uploading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
-        ) : (
-          <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-cyan-200" : "text-slate-300 group-hover:text-white"}`} />
-        )}
-        <span className="min-w-0 text-[11px] font-semibold leading-4">
-          {item.label}
-        </span>
+        {kind === "image" && uploading ? <Loader2 className="h-4 w-4 animate-spin text-cyan-300" /> : <Icon className={`h-[18px] w-[18px] ${isSelected ? "text-cyan-200" : "text-slate-400 group-hover:text-white"}`} />}
         {!kindAllowed && <span className="absolute -left-1 -top-1"><PremiumBadge label="" /></span>}
       </button>
     );
@@ -486,17 +480,13 @@ export function Toolbox({
 
   return (
     <div
-      className="relative z-[5000] flex w-full shrink-0 flex-row items-stretch gap-1 overflow-x-auto overflow-y-hidden rounded-[18px] border border-white/[0.09] bg-[#0d131c] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.28)] md:h-full md:w-auto md:flex-col md:overflow-x-hidden md:overflow-y-auto"
+      className="relative z-[5000] flex w-full shrink-0 flex-row items-center justify-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-white/[0.08] bg-[#17191f] p-2 md:h-full md:w-12 md:flex-col md:justify-start md:overflow-x-hidden md:overflow-y-auto md:border-b-0 md:border-r md:border-white/[0.08]"
       role="toolbar"
-      aria-label="ابزارهای استودیو"
+      aria-label="ابزارها"
       ref={toolbarRef}
     >
-      <h3 className="hidden px-1 pb-1 text-right text-[11px] font-bold tracking-tight text-slate-300 md:block">ابزار کار</h3>
-
       {primaryTools.map((kind) => renderToolButton(kind))}
-
-      <div className="mx-1 w-px shrink-0 bg-white/10 md:mx-0 md:my-1 md:h-px md:w-full" />
-      <h3 className="hidden px-1 pb-1 text-right text-[11px] font-bold tracking-tight text-slate-300 md:block">افزودن محتوا</h3>
+      <div className="mx-1 h-px w-4 shrink-0 bg-white/10 md:mx-0 md:my-1 md:h-px md:w-6" />
       {addTools.map((kind) => renderToolButton(kind))}
 
       {showShapePicker && shapePickerPos
