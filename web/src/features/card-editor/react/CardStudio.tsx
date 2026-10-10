@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Redo2, Undo2, Save, AlertCircle, CheckCircle2, Eye, RotateCcw, Layers, Palette, Sliders, Sparkles } from "lucide-react";
+import { Redo2, Undo2, Save, AlertCircle, CheckCircle2, Eye, RotateCcw, Layers, Palette, Sliders, Sparkles, Keyboard, X } from "lucide-react";
 import type { Business } from "@/lib/businesses";
 import { EditorEngine } from "../engine/EditorEngine";
 import { createDocumentFromBusiness, type TemplateKey } from "../domain/factory";
@@ -73,6 +73,7 @@ export function CardStudio({
   const state = useCardEditor(engine);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [preview, setPreview] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [leftTab, setLeftTab] = useState<"layers" | "templates">("layers");
   const [rightTab, setRightTab] = useState<"inspector" | "bg">("inspector");
   const saveTimer = useRef<number | null>(null);
@@ -199,13 +200,32 @@ export function CardStudio({
     return () => window.removeEventListener("beforeunload", handler);
   }, [state.dirty]);
 
-  // Keyboard shortcuts (topbar tooltip contract). Guard: no modifier
-  // conflicts with plain typing; Ctrl/Cmd+S is browser-default-prevented.
+  // Don't hijack text-editing shortcuts while focus is inside an editable field.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const editable = !!target && (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+      if (editable || target?.closest?.("[data-shortcut-dialog]")) return;
       const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
       const key = e.key.toLowerCase();
+
+      if (showShortcuts) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowShortcuts(false);
+        }
+        return;
+      }
+      if (e.key === "?" || (mod && e.code === "Slash")) {
+        e.preventDefault();
+        setShowShortcuts(true);
+        return;
+      }
+      if (!mod) return;
       if (key === "z") {
         e.preventDefault();
         if (e.shiftKey) engine.redo();
@@ -220,7 +240,7 @@ export function CardStudio({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [engine]);
+  }, [engine, showShortcuts]);
 
   return (
     <div dir="rtl" className="ik-studio flex min-w-0 flex-col gap-2 text-slate-100">
@@ -238,12 +258,82 @@ export function CardStudio({
           {saveStatus.kind === "saving" && <span className="flex items-center gap-1 text-[11px] text-slate-400"><RotateCcw className="h-3.5 w-3.5 animate-spin" /> در حال ذخیره</span>}
           {saveStatus.kind === "error" && <span className="flex items-center gap-1.5 text-[11px] text-rose-300"><AlertCircle className="h-3.5 w-3.5 shrink-0" /><span className="max-w-44 truncate">{saveStatus.message}</span><button type="button" onClick={() => void persistRef.current()} title="تلاش دوباره برای ذخیره" aria-label="تلاش دوباره برای ذخیره" className="flex h-7 w-7 items-center justify-center rounded-md border border-rose-400/30 hover:bg-rose-500/10"><RotateCcw className="h-3.5 w-3.5" /></button></span>}
           {state.dirty && saveStatus.kind === "idle" && <span className="hidden text-[11px] text-amber-300 sm:inline">ذخیره‌نشده</span>}
+          <button type="button" onClick={() => setShowShortcuts(true)} title="میانبرهای صفحه‌کلید · ?" aria-label="راهنمای میانبرهای صفحه‌کلید" className="flex h-8 w-8 items-center justify-center rounded-md border border-white/[0.08] text-slate-300 transition hover:bg-white/[0.07] hover:text-white"><Keyboard className="h-4 w-4" /></button>
           <button type="button" onClick={() => setPreview((p) => !p)} title={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش"} aria-label={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش"} className={preview ? "flex h-8 items-center gap-1.5 rounded-md border border-cyan-300/40 bg-cyan-300/10 px-2.5 text-xs text-cyan-100" : "flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-xs text-slate-300 transition hover:bg-white/[0.06] hover:text-white"}>
             <Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">{preview ? "ویرایش" : "پیش‌نمایش"}</span>
           </button>
           <button type="button" onClick={() => void persistRef.current()} disabled={!state.dirty && saveStatus.kind !== "error"} title="ذخیره · Ctrl+S" className="flex h-8 items-center gap-1.5 rounded-md bg-cyan-300 px-3 text-xs font-bold text-[#101318] transition hover:bg-cyan-200 disabled:opacity-35"><Save className="h-3.5 w-3.5" /><span>ذخیره</span></button>
         </div>
       </header>
+      {showShortcuts && (
+        <div
+          data-shortcut-dialog=""
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onPointerDown={(event) => { if (event.target === event.currentTarget) setShowShortcuts(false); }}
+          onKeyDownCapture={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setShowShortcuts(false); } }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="card-studio-shortcuts-title" className="max-h-[min(82vh,680px)] w-full max-w-2xl overflow-y-auto rounded-xl border border-white/10 bg-[#17191f] p-4 shadow-2xl shadow-black/60 sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><Keyboard className="h-4 w-4" /></span>
+                <div>
+                  <h2 id="card-studio-shortcuts-title" className="text-sm font-bold text-white">میانبرهای صفحه‌کلید</h2>
+                  <p className="mt-0.5 text-[11px] text-slate-400">برای ویندوز از Ctrl و برای مک از ⌘ استفاده کنید.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowShortcuts(false)} aria-label="بستن راهنمای میانبرها" className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <h3 className="mb-2 text-xs font-bold text-cyan-200">فایل و تاریخچه</h3>
+                <div className="space-y-2">
+                  {[
+                    ["واگرد", "Ctrl / ⌘ + Z"],
+                    ["بازانجام", "Ctrl / ⌘ + Shift + Z"],
+                    ["بازانجام", "Ctrl / ⌘ + Y"],
+                    ["ذخیره", "Ctrl / ⌘ + S"],
+                    ["تکثیر لایهٔ انتخاب‌شده", "Ctrl / ⌘ + D"],
+                    ["کپی / جای‌گذاری لایه", "Ctrl / ⌘ + C / V"],
+                  ].map(([label, keys]) => <div key={label + keys} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-300">{label}</span><kbd dir="ltr" className="shrink-0 rounded border border-white/10 bg-black/20 px-2 py-1 font-mono text-[10px] text-slate-200">{keys}</kbd></div>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="mb-2 text-xs font-bold text-cyan-200">ابزارها</h3>
+                <div className="space-y-2">
+                  {[
+                    ["انتخاب", "V"],
+                    ["متن", "T"],
+                    ["شکل‌ها", "R"],
+                    ["قلم برداری / مسیر", "P"],
+                    ["قلم آزاد", "B"],
+                    ["تصویر", "I"],
+                    ["کد QR", "Q"],
+                  ].map(([label, keys]) => <div key={label} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-300">{label}</span><kbd dir="ltr" className="min-w-8 rounded border border-white/10 bg-black/20 px-2 py-1 text-center font-mono text-[10px] text-slate-200">{keys}</kbd></div>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="mb-2 text-xs font-bold text-cyan-200">انتخاب و جابه‌جایی</h3>
+                <div className="space-y-2">
+                  {[
+                    ["جابه‌جایی یک پیکسل", "← ↑ → ↓"],
+                    ["جابه‌جایی ۱۰ پیکسل", "Shift + Arrow"],
+                    ["حذف لایه / گره انتخاب‌شده", "Delete / Backspace"],
+                    ["ورود به ویرایش مسیر", "Enter"],
+                    ["لغو / خروج از حالت فعلی", "Esc"],
+                    ["نمایش / مخفی گره‌ها", "H (ویرایش مسیر)"],
+                    ["انتخاب همهٔ گره‌های مسیر", "Ctrl / ⌘ + A"],
+                  ].map(([label, keys]) => <div key={label} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-300">{label}</span><kbd dir="ltr" className="shrink-0 rounded border border-white/10 bg-black/20 px-2 py-1 font-mono text-[10px] text-slate-200">{keys}</kbd></div>)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-white/[0.07] bg-black/10 p-3 text-[11px] leading-5 text-slate-400">
+                <p className="mb-1 font-semibold text-slate-200">انتخاب منطقه‌ای</p>
+                از ابزار انتخاب استفاده کنید؛ سپس از فضای خالی روی بوم کلیک کنید و موس را بکشید تا یک یا چند لایه انتخاب شوند. با Shift می‌توانید انتخاب فعلی را تغییر دهید.
+                <p className="mt-3"><kbd dir="ltr" className="rounded border border-white/10 px-1.5 py-0.5 font-mono">?</kbd> بازکردن راهنما · <kbd dir="ltr" className="rounded border border-white/10 px-1.5 py-0.5 font-mono">Esc</kbd> بستن</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
       <div dir="ltr" className="relative grid min-w-0 grid-cols-1 gap-2 md:h-[calc(100vh-8.75rem)] md:min-h-[560px] md:grid-cols-[236px_minmax(0,1fr)_292px] xl:grid-cols-[258px_minmax(0,1fr)_316px]">
         {!preview && <aside dir="rtl" className="order-2 flex min-h-[230px] min-w-0 flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-[#17191f] md:order-1 md:h-full">
           <div className="flex items-center gap-1 border-b border-white/[0.08] p-2">

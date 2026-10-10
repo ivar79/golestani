@@ -56,7 +56,7 @@ describe("Toolbox — QR tool produces a code, not a placeholder", () => {
     const engine = new EditorEngine(doc([]));
     render(<Toolbox engine={engine} qrPayload="golestani" />);
 
-    fireEvent.click(screen.getByTitle("افزودن کد QR"));
+    fireEvent.click(screen.getByRole("button", { name: "QR" }));
 
     const layers = engine.getState().doc.layers;
     expect(layers).toHaveLength(1);
@@ -67,8 +67,25 @@ describe("Toolbox — QR tool produces a code, not a placeholder", () => {
   it("keeps the layer honest when no business slug is known (empty, never fake)", () => {
     const engine = new EditorEngine(doc([]));
     render(<Toolbox engine={engine} />);
-    fireEvent.click(screen.getByTitle("افزودن کد QR"));
+    fireEvent.click(screen.getByRole("button", { name: "QR" }));
     expect((engine.getState().doc.layers[0] as QrLayer).payload).toBe("");
+  });
+});
+
+describe("Toolbox — keyboard tool shortcuts", () => {
+  it("activates tools through V, P, B and Q without bypassing the engine", () => {
+    const engine = new EditorEngine(doc([]));
+    render(<Toolbox engine={engine} qrPayload="golestani" />);
+
+    fireEvent.keyDown(window, { key: "p" });
+    expect(engine.getState().tool).toBe("pen");
+    fireEvent.keyDown(window, { key: "b" });
+    expect(engine.getState().tool).toBe("draw");
+    fireEvent.keyDown(window, { key: "v" });
+    expect(engine.getState().tool).toBe("select");
+    fireEvent.keyDown(window, { key: "q" });
+    expect(engine.getState().doc.layers).toHaveLength(1);
+    expect((engine.getState().doc.layers[0] as QrLayer).payload).toBe("golestani");
   });
 });
 

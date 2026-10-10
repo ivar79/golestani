@@ -187,15 +187,15 @@ function BooleanToolbar({ engine, selectedCount }: { engine: EditorEngine; selec
 /** Toolbox entries: a layer kind, or one of the two DRAWING tools or direct curved line. */
 type ToolboxEntry = LayerKind | "pointer" | "pen" | "curved_line";
 
-const TOOLBOX: { kind: ToolboxEntry; icon: typeof Type; label: string }[] = [
-  { kind: "pointer", icon: MousePointer2, label: "انتخاب" },
-  { kind: "text", icon: Type, label: "متن" },
-  { kind: "shape", icon: Square, label: "شکل" },
+const TOOLBOX: { kind: ToolboxEntry; icon: typeof Type; label: string; shortcut?: string }[] = [
+  { kind: "pointer", icon: MousePointer2, label: "انتخاب", shortcut: "V" },
+  { kind: "text", icon: Type, label: "متن", shortcut: "T" },
+  { kind: "shape", icon: Square, label: "شکل", shortcut: "R" },
   { kind: "curved_line", icon: Waves, label: "منحنی" },
-  { kind: "pen", icon: PenTool, label: "قلم" },
-  { kind: "path", icon: Pencil, label: "رسم" },
-  { kind: "image", icon: ImagePlus, label: "تصویر" },
-  { kind: "qr", icon: QrCode, label: "QR" },
+  { kind: "pen", icon: PenTool, label: "قلم", shortcut: "P" },
+  { kind: "path", icon: Pencil, label: "رسم", shortcut: "B" },
+  { kind: "image", icon: ImagePlus, label: "تصویر", shortcut: "I" },
+  { kind: "qr", icon: QrCode, label: "QR", shortcut: "Q" },
   { kind: "badge", icon: BadgeCheck, label: "نشان" },
 ];
 
@@ -394,6 +394,30 @@ export function Toolbox({
     engine.addLayer(kind as LayerKind);
   }
 
+  // Keyboard tool selection calls the latest capability-aware activate() path,
+  // so shortcuts never bypass layer limits or entitlement checks.
+  const activateRef = useRef(activate);
+  useEffect(() => { activateRef.current = activate; }, [activate]);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (!target || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      if (target.closest?.("[data-shortcut-dialog]")) return;
+      const root = toolbarRef.current?.closest(".ik-studio");
+      if (!root || !root.contains(target)) return;
+      const map: Record<string, ToolboxEntry> = {
+        v: "pointer", t: "text", r: "shape", p: "pen", b: "path", i: "image", q: "qr",
+      };
+      const kind = map[event.key.toLowerCase()];
+      if (!kind) return;
+      event.preventDefault();
+      activateRef.current(kind);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   async function onImagePicked(file: File | null) {
     if (imageInputRef.current) imageInputRef.current.value = "";
     if (!file || !onUploadImage) return;
@@ -463,8 +487,9 @@ export function Toolbox({
         ref={kind === "shape" ? shapeTriggerRef as RefObject<HTMLButtonElement> : kind === "curved_line" ? curveTriggerRef as RefObject<HTMLButtonElement> : undefined}
         onClick={() => activate(kind)}
         disabled={disabled}
-        title={item.label}
+        title={item.shortcut ? item.label + " · " + item.shortcut : item.label}
         aria-label={item.label}
+        aria-keyshortcuts={item.shortcut}
         aria-pressed={isSelected}
         className={`group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition ${
           isSelected
