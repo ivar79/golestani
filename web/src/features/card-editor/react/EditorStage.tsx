@@ -834,6 +834,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     }
   }, [preview, onUploadImage, dropping, engine, pointerPos]);
 
+  const isDrawingTool = state.tool === "pen" || state.tool === "draw";
+
   const editingLayer = useMemo(
     () => (editingTextId ? (doc.layers.find((l) => l.id === editingTextId) as TextLayer | undefined) : undefined),
     [editingTextId, doc.layers],
@@ -1151,31 +1153,42 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         </div>
       )}
 
-      {/* Floating Toolbar for Pen and Drawing tools */}
-      {(state.tool === "pen" || state.tool === "draw") && !preview && (
+      {/* Figma-style active-tool micro bar.
+          Pinned to the BOTTOM-CENTER of the workspace, below the artboard, so it
+          never covers the canvas it controls — the old top-anchored popover sat
+          directly on top of the card it was editing.
+          It stays MOUNTED while the studio is editable and only toggles
+          opacity/translate: unmounting would kill the exit transition and make
+          the bar pop out of existence. `w-fit` + the max-width keep it clear of
+          the align bar (bottom-left) and the zoom controls (bottom-right), and
+          it is `pointer-events-none` while hidden so a fade-out never swallows
+          a click meant for the canvas. */}
+      {!preview && (
         <div
           dir="rtl"
-          className="absolute top-4 inset-x-0 mx-auto z-[3500] flex max-w-md items-center justify-between gap-3 rounded-2xl border border-cyan-400/50 bg-[#0c1626]/95 px-4 py-2.5 shadow-2xl backdrop-blur"
+          data-tool-settings-bar=""
+          aria-hidden={!isDrawingTool}
+          className={`absolute inset-x-0 bottom-3 z-[3500] mx-auto flex w-fit max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-white/10 bg-zinc-900/90 px-2 py-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-200 ease-out ${isDrawingTool ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"}`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {state.tool === "pen" ? (
-              <PenToolIcon className="h-4 w-4 text-cyan-400" />
+              <PenToolIcon className="h-3.5 w-3.5 text-cyan-400" />
             ) : (
-              <PencilIcon className="h-4 w-4 text-cyan-400" />
+              <PencilIcon className="h-3.5 w-3.5 text-cyan-400" />
             )}
-            <span className="text-xs font-bold text-white">
-              {state.tool === "pen" ? "ابزار رسم منحنی (Curvature)" : "قلم آزاد"}
+            <span className="text-[11px] font-bold text-white">
+              {state.tool === "pen" ? "منحنی (Curvature)" : "قلم آزاد"}
             </span>
           </div>
 
           {state.tool === "pen" && (
-            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+            <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-white/5 p-0.5">
               <button
                 type="button"
                 onClick={() => engine.setPenMode("curvature")}
-                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition ${
                   state.penMode === "curvature"
-                    ? "bg-cyan-500/30 text-cyan-200 shadow-sm"
+                    ? "bg-cyan-500/25 text-cyan-200 shadow-sm"
                     : "text-slate-400 hover:text-white"
                 }`}
                 title="حالت انحنای روان: هر کلیک یک قوس نرم و زیبا ایجاد می‌کند"
@@ -1185,9 +1198,9 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
               <button
                 type="button"
                 onClick={() => engine.setPenMode("corner")}
-                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition ${
                   state.penMode === "corner"
-                    ? "bg-cyan-500/30 text-cyan-200 shadow-sm"
+                    ? "bg-cyan-500/25 text-cyan-200 shadow-sm"
                     : "text-slate-400 hover:text-white"
                 }`}
                 title="حالت گوشه‌دار: خطوط مستقیم و چندضلعی"
@@ -1198,7 +1211,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           )}
 
           {state.tool === "draw" && (
-            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-0.5">
+            <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-white/5 p-0.5">
               {([
                 ["free", "آزاد"],
                 ["straight", "خط دقیق"],
@@ -1208,8 +1221,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
                   key={mode}
                   type="button"
                   onClick={() => engine.setFreehandMode(mode)}
-                  className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
-                    state.freehandMode === mode ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition ${
+                    state.freehandMode === mode ? "bg-cyan-500/25 text-cyan-200" : "text-slate-400 hover:text-white"
                   }`}
                   title={mode === "free" ? "قلم آزاد با Bezier قابل ویرایش" : mode === "straight" ? "خط دقیق با زاویه قابل تنظیم" : "قلم آزاد با قفل زاویه و Snap"}
                 >
@@ -1220,7 +1233,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           )}
 
           {state.tool === "draw" && (
-            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1">
+            <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
               <label className="flex items-center gap-1 text-[10px] text-slate-400">
                 گام
                 <input
@@ -1230,13 +1243,14 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
                   step={0.1}
                   value={state.freehandTuning.angleIncrements[0] ?? 45}
                   onChange={(e) => engine.setFreehandAngleSnapping([Number(e.target.value) || 45])}
-                  className="w-12 rounded-md border border-white/10 bg-black/20 px-1 py-0.5 text-center text-[10px] text-white outline-none"
-                />°
+                  className="w-10 rounded-md border border-white/10 bg-black/20 px-1 py-0.5 text-center text-[10px] text-white outline-none"
+                />
+                °
               </label>
               <button
                 type="button"
                 onClick={() => engine.setFreehandTuning({ axisLock: !state.freehandTuning.axisLock })}
-                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${state.freehandTuning.axisLock ? "bg-cyan-500/20 text-cyan-200" : "text-slate-500"}`}
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${state.freehandTuning.axisLock ? "bg-cyan-500/20 text-cyan-200" : "text-slate-500"}`}
                 title="قفل افقی/عمودی"
               >
                 محور
@@ -1244,20 +1258,23 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">ضخامت:</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-slate-400">ضخامت</span>
             <input
               type="range"
               min={2}
               max={24}
               value={state.brushWidth}
               onChange={(e) => engine.setBrushWidth(Number(e.target.value))}
-              className="w-16 accent-cyan-400 h-1 bg-white/20 rounded cursor-pointer"
+              className="h-1 w-14 cursor-pointer rounded bg-white/20 accent-cyan-400"
+              aria-label="ضخامت قلم"
             />
-            <span className="font-mono text-[11px] text-cyan-300">{state.brushWidth}px</span>
+            <span className="font-mono text-[10px] text-cyan-300">{state.brushWidth}px</span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-4 w-px bg-white/10" />
+
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => {
@@ -1265,7 +1282,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
                 engine.setTool("select");
               }}
               title="اتمام و ذخیره ترسیم (Enter)"
-              className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition shadow-sm"
+              className="flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[11px] font-bold text-slate-950 shadow-sm transition hover:bg-emerald-400"
             >
               <Check className="h-3.5 w-3.5" />
               <span>اتمام</span>
@@ -1277,7 +1294,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
                 engine.setTool("select");
               }}
               title="انصراف و لغو ترسیم (Esc)"
-              className="flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-rose-500/20 hover:text-rose-300 transition"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/10 text-slate-300 transition hover:bg-rose-500/20 hover:text-rose-300"
             >
               <X className="h-3.5 w-3.5" />
             </button>

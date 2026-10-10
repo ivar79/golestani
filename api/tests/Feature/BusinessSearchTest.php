@@ -285,4 +285,155 @@ class BusinessSearchTest extends TestCase
             $this->assertNotNull($distances[0]);
         }
     }
+
+    /**
+     * Requirement (owner-reported): a business registered from the owner
+     * dashboard and placed on the map must be findable in the search menu once
+     * an admin approves it. Exercises the whole chain through the real
+     * endpoints: create (pending) → treated as undiscoverable → admin
+     * moderate() → discoverable by free text, city, category and facet chips.
+     */
+    public function test_business_becomes_findable_in_search_after_admin_approval(): void
+    {
+        $owner = User::factory()->create(['phone' => '09'.fake()->numerify('#########'), 'is_active' => true]);
+        $owner->assignRole('business_owner');
+        $this->actingAs($owner);
+
+        $created = $this->postJson('/api/businesses', [
+            'name' => 'آرایشگاه نمونه ونک',
+            'category' => 'آرایشگاه',
+            'city' => 'تهران',
+            'neighborhood' => 'ونک',
+            'latitude' => 35.7575,
+            'longitude' => 51.4100,
+        ])->assertCreated()->assertJsonPath('status', 'pending');
+
+        $id = (int) $created->json('id');
+        $slug = (string) $created->json('slug');
+
+        // Before approval it is not a result — the moderation gate holds.
+        $this->getJson('/api/search/businesses?q='.urlencode('آرایشگاه نمونه'))
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        $admin = User::factory()->create(['phone' => '09'.fake()->numerify('#########'), 'is_active' => true]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin)
+            ->patchJson('/api/admin/businesses/'.$id.'/moderate', ['status' => 'approved'])
+            ->assertOk()->assertJsonPath('status', 'approved');
+
+        // 1) Free-text search — exactly what the header search menu sends.
+        $byName = $this->getJson('/api/search/businesses?q='.urlencode('آرایشگاه نمونه'))->assertOk();
+        $byName->assertJsonCount(1, 'data');
+        $this->assertSame($id, $byName->json('data.0.id'));
+        $this->assertSame($slug, $byName->json('data.0.slug'));
+
+        // 2) City filter (city landing pages / filter chips).
+        $byCity = $this->getJson('/api/search/businesses?city='.urlencode('تهران'))->assertOk();
+        $this->assertContains($id, collect($byCity->json('data'))->pluck('id')->all());
+
+        // 3) Category filter.
+        $byCategory = $this->getJson('/api/search/businesses?category='.urlencode('آرایشگاه'))->assertOk();
+        $this->assertContains($id, collect($byCategory->json('data'))->pluck('id')->all());
+
+        // 4) Facets feed the filter chips — the approved city/category must be
+        //    listed (moderate() invalidates the 5-minute facets cache).
+        $facets = $this->getJson('/api/search/facets')->assertOk()->json();
+        $this->assertContains('تهران', $facets['cities']);
+        $this->assertContains('آرایشگاه', $facets['categories']);
+    }
+
+    /**
+     * Security counterpart to the discoverability test above: the moderation
+     * gate is a leak gate. A row that is not `approved` must never surface on
+     * ANY public surface — not as a result card and not as a map pin — and
+     * nothing about it may appear anywhere in the response body. The whole
+     * payload is asserted so a future field that starts leaking a row fails
+     * here instead of silently shipping.
+     */
+    public function test_unapproved_businesses_never_leak_into_results_or_map_pins(): void
+    {
+        $owner = User::factory()->create(['phone' => '09'.fake()->numerify('#########')]);
+        $owner->assignRole('business_owner');
+
+        $visible = $owner->businesses()->create([
+            'name' => 'نمونه قابل جستجو', 'slug' => 'visible-approved', 'status' => 'approved',
+        ]);
+        $visiblePin = $owner->businesses()->create([
+            'name' => 'نمونه سرد قابل رویت', 'slug' => 'visible-pin-unclaimed',
+            'status' => 'approved', 'is_claimed' => false,
+        ]);
+
+        // Every non-approved status, on BOTH the listable and the map-only side.
+        $hidden = [];
+        foreach (['draft', 'pending', 'rejected', 'suspended'] as $status) {
+            $hidden[] = $owner->businesses()->create([
+                'name' => 'نمونه پنهان', 'slug' => "hidden-{$status}", 'status' => $status,
+            ])->slug;
+        }
+        $hidden[] = $owner->businesses()->create([
+            'name' => 'نمونه پنهان سرد', 'slug' => 'hidden-pending-pin',
+            'status' => 'pending', 'is_claimed' => false,
+        ])->slug;
+
+        $res = $this->getJson('/api/search/businesses?q='.urlencode('نمونه'))->assertOk();
+
+        // The listable set holds exactly the approved/claimed row, and the
+        // map-only set exactly the approved/unclaimed pin.
+        $this->assertSame([$visible->id], collect($res->json('data'))->pluck('id')->all());
+        $this->assertSame([$visiblePin->id], collect($res->json('unclaimed'))->pluck('id')->all());
+
+        // No trace of any unapproved row — slug, name or id — in the payload.
+        foreach ($hidden as $slug) {
+            $this->assertStringNotContainsString($slug, $res->getContent(), "{$slug} leaked into the response");
+        }
+        $this->assertStringNotContainsString('نمونه پنهان', $res->getContent(), 'an unapproved business name leaked');
+
+        // Counts describe the approved set only, in both sets.
+        $res->assertJsonPath('pagination.total', 1)->assertJsonPath('pagination.unclaimed_total', 1);
+    }
+
+    /**
+     * Security: approval is a server-side decision. `status` is not an
+     * owner-writable field, so it cannot be smuggled through create/update
+     * mass assignment, the moderation endpoint is admin-only, and an owner
+     * edit can never hold a business live.
+     */
+    public function test_owner_cannot_self_approve_and_moderation_is_admin_only(): void
+    {
+        $owner = User::factory()->create(['phone' => '09'.fake()->numerify('#########'), 'is_active' => true]);
+        $owner->assignRole('business_owner');
+        $this->actingAs($owner);
+
+        // An owner echoing status=approved in the create body is ignored.
+        $created = $this->postJson('/api/businesses', [
+            'name' => 'نمونه خودتایید', 'status' => 'approved',
+        ])->assertCreated()->assertJsonPath('status', 'pending');
+
+        $id = (int) $created->json('id');
+
+        // A non-admin cannot approve it either — the endpoint is admin-only.
+        $this->patchJson('/api/admin/businesses/'.$id.'/moderate', ['status' => 'approved'])
+            ->assertForbidden();
+        $this->assertSame('pending', Business::findOrFail($id)->status);
+
+        // An admin approves it and it becomes discoverable.
+        $admin = User::factory()->create(['phone' => '09'.fake()->numerify('#########'), 'is_active' => true]);
+        $admin->assignRole('admin');
+        $this->actingAs($admin)
+            ->patchJson('/api/admin/businesses/'.$id.'/moderate', ['status' => 'approved'])
+            ->assertOk();
+        $this->assertSame('approved', Business::findOrFail($id)->status);
+
+        // …but the owner's next edit — still trying to force status=approved —
+        // sends it back to review: owner input can never keep a business live.
+        $this->actingAs($owner)
+            ->putJson('/api/businesses/'.$id, ['name' => 'نمونه خودتایید ویرایش‌شده', 'status' => 'approved'])
+            ->assertOk()->assertJsonPath('status', 'pending');
+        $this->assertSame('pending', Business::findOrFail($id)->status);
+
+        // So it disappears from public search again until re-approved.
+        $this->getJson('/api/search/businesses?q='.urlencode('نمونه خودتایید'))
+            ->assertOk()->assertJsonCount(0, 'data');
+    }
 }

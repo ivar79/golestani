@@ -10,6 +10,19 @@ import Image from "next/image";
 import SiteFooter from "@/components/layout/SiteFooter";
 import PublicCardView from "@/features/card-editor/react/PublicCardView";
 import { fetchPublicCard, resolveCardRender } from "@/lib/publicCard";
+import {
+  ArrowUpRight,
+  BadgeCheck,
+  Globe,
+  Images,
+  Mail,
+  MapPin,
+  Phone,
+  QrCode,
+  ShieldCheck,
+  Sparkles,
+  Store,
+} from "lucide-react";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{slug:string}> };
 /** "unpublished": the business exists but is awaiting (re-)review — not a missing page. */
@@ -32,49 +45,64 @@ export async function generateMetadata({params}:Props):Promise<Metadata> {
 }
 
 /* ============================================================
-   Tailwind-only restyle (پشته فنی مصوب — فایل CSS module قبلی حذف شد).
+   Public business profile — THE night shell.
 
-   Public business profile: light editorial sheet on the night shell.
-   The oklch palette of the old CSS module maps to the nearest Tailwind
-   emerald/slate scale:
-     --ink    oklch(25%)  ≈ text-slate-800      (title/body)
-     --muted  oklch(46%)  ≈ text-slate-500
-     --line   oklch(87%)  ≈ border-slate-200
-     --surface oklch(98%) ≈ bg-white
-     --accent oklch(40%,.09,163) ≈ emerald-800 (links/primary buttons)
-   All touch targets stay ≥44px (min-h-11 / size-11) as before.
+   This page is the end-user surface a QR scan lands on, so it carries the
+   SAME visual system as the design studio (`EditorStage` / `CardStudio`)
+   instead of the previous light editorial sheet:
+
+     studio shell        → here
+     #060b12 backdrop    → `bg-[#060b12]` + the same radial cyan/emerald glows
+     #0c1626 panels      → `bg-[#0c1626]/80` glass sections
+     white/[0.07] border → identical hairline borders
+     cyan-400 / emerald  → accents on icons, chips and the primary action
+
+   Structure: identity band → the digital card as the HERO → supporting
+   profile detail. The card is the reason the visitor scanned, so it is the
+   largest, brightest element on the page, centred in its own stage panel the
+   way it sits on the studio artboard.
+
+   All data contracts, links, sanitising and the moderation gate are
+   unchanged — this is a presentation-layer refactor only.
    ============================================================ */
 
 /** Page column — was `.page` */
-const page = "mx-auto mt-24 min-h-[80vh] max-w-[1200px] rounded-2xl bg-white px-6 py-10 pb-20 text-base leading-[1.7] text-slate-800 sm:px-10 md:mt-[100px] md:rounded-3xl";
-/** Section spacing — was `.section` */
-const section = "mt-9 min-w-0 border-t border-slate-200 pt-7";
-/** Heading — was `.page h2` */
-const h2 = "mb-4 text-xl font-bold";
-/** Flexible toolbar row — was `.toolbar` */
-const toolbar = "my-6 flex flex-wrap items-center gap-3 [&>*]:max-w-full";
-/** 2-col info grid — was `.grid` */
-const grid = "grid grid-cols-1 gap-x-6 gap-y-5 min-[640px]:grid-cols-2";
-/** Full-width cell — was `.full` */
-const full = "col-span-full";
-/** Pill badge — was `.status` */
-const status = "inline-block rounded-full border border-slate-200 px-3 py-1 text-sm";
+const shell = "relative mx-auto w-full max-w-[1180px] px-4 pb-24 pt-28 sm:px-6";
+/** Glass section — was `.section` */
+const panel = "relative overflow-hidden rounded-[26px] border border-white/[0.07] bg-[#0c1626]/80 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-8";
+/** Section heading — was `.page h2` */
+const h2 = "flex items-center gap-2 text-sm font-bold text-white";
+/** Chip — was `.status` */
+const chip = "inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300";
 /** Muted meta text — was `.muted` */
-const muted = "text-slate-500";
+const muted = "text-sm text-slate-400";
 /** Link — was `.page a` */
-const link = "text-emerald-800 underline decoration-2 underline-offset-4 [overflow-wrap:anywhere] transition hover:text-emerald-700";
-/** Gallery — was `.gallery` */
-const gallery = "my-5 flex flex-wrap gap-4";
-/** Image frame for next/image fill — was `.frame` (180×140) */
-const frame = "relative block h-[140px] w-[180px] overflow-hidden rounded-lg border border-slate-200";
-/** Plain <img> in gallery (QR + hero/logo fallbacks) — was `.gallery img`/`.logo`/`.hero` */
-const imgBox = "rounded-lg border border-slate-200";
+const link = "text-cyan-300 underline decoration-cyan-400/40 underline-offset-4 transition hover:text-cyan-200";
+/** 2-col info grid — was `.grid` */
+const grid = "grid grid-cols-1 gap-3 sm:grid-cols-2";
+/** Contact tile */
+const tile = "rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4";
+/** Media frame for next/image fill — was `.frame` */
+const frame = "relative block overflow-hidden rounded-xl border border-white/10 bg-black/30";
+/** Ambient studio glow used by the shell and the hero stage */
+const glow =
+  "radial-gradient(circle at 50% 0%, rgba(34,211,238,0.10), transparent 55%), radial-gradient(circle at 85% 100%, rgba(16,185,129,0.08), transparent 45%)";
 
 export default async function PublicBusinessPage({params}:Props) {
   const {slug}=await params;const b=await fetchBusiness(slug);if(!b)notFound();
-  if(b==="unpublished")return <><AppTaskbar/><main className={page} dir="rtl">
-    <h1 className="text-2xl font-extrabold">این صفحه در انتظار تأیید است</h1>
-    <p className={`${muted} mt-3 max-w-[70ch]`}>صفحه‌ی این کسب‌وکار هنوز منتشر نشده یا پس از ویرایش برای بررسی مجدد به مدیر ارسال شده است. پس از تأیید، دوباره با همین لینک در دسترس خواهد بود.</p>
+  if(b==="unpublished")return <><AppTaskbar/><main dir="rtl" className="relative min-h-screen bg-[#060b12] text-slate-200">
+    <div className={shell}>
+      <section className={panel}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: glow }} />
+        <div className="relative flex flex-col items-center gap-4 py-8 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-400/25 bg-amber-400/10">
+            <ShieldCheck className="h-7 w-7 text-amber-300" />
+          </span>
+          <h1 className="text-2xl font-extrabold text-white sm:text-3xl">این صفحه در انتظار تأیید است</h1>
+          <p className={`${muted} max-w-[60ch] leading-7`}>صفحه‌ی این کسب‌وکار هنوز منتشر نشده یا پس از ویرایش برای بررسی مجدد به مدیر ارسال شده است. پس از تأیید، دوباره با همین لینک در دسترس خواهد بود.</p>
+        </div>
+      </section>
+    </div>
   </main><SiteFooter/></>;
   // Published card. The design/legacy decision is made here once (pure), so the
   // client view only renders: design_json valid → layered projection, absent →
@@ -84,40 +112,146 @@ export default async function PublicBusinessPage({params}:Props) {
   const cardFellBack=cardPlan.mode==="legacy"&&Boolean(card?.design_json);
   let showcases:Showcase[]=[];
   try { showcases=await getPublicShowcases(slug); } catch { /* Optional paid module must not hide the profile. */ }
-  const socials=Array.isArray(b.social_links)?b.social_links.map((url,i)=>[`link${i+1}`,url]):Object.entries(b.social_links||{});
+  const socials=Array.isArray(b.social_links)?b.social_links.map((url,i)=>[`لینک ${i+1}`,url]):Object.entries(b.social_links||{});
   const cover=mediaUrl(b.cover_image),logo=mediaUrl(b.logo);
   const map=b.latitude!=null&&b.longitude!=null&&Number.isFinite(Number(b.latitude))&&Number.isFinite(Number(b.longitude))?`https://www.openstreetmap.org/?mlat=${Number(b.latitude)}&mlon=${Number(b.longitude)}#map=16/${Number(b.latitude)}/${Number(b.longitude)}`:null;
   const phone=b.phone?.replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-1776)).replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-1632)).replace(/[^0-9+]/g,"");
   const email=b.email&&/^[^\s<>@]+@[^\s<>@]+$/.test(b.email)?`mailto:${encodeURIComponent(b.email)}`:null;
-  return <><AppTaskbar/><main className={page} dir="rtl">
-    {cover&&<div className={`${frame} h-auto max-h-[320px] w-full`}><Image src={cover} alt={`کاور ${b.name}`} width={1200} height={320} className="h-auto max-h-[320px] w-full object-cover" sizes="100vw"/></div>}
-    <header className="border-t-0 pt-0">
-      {logo&&<div className={`${frame} size-24`}><Image src={logo} alt={`لوگوی ${b.name}`} width={96} height={96} className="size-24 object-contain" sizes="96px"/></div>}
-      <p className={muted}>{[b.category,b.city,b.neighborhood].filter(Boolean).join(" • ")}</p>
-      <h1 className="mt-3 text-[clamp(1.75rem,4vw,2.5rem)] font-extrabold leading-[1.3]">{b.name}</h1>
-      <span className={`${status} mt-3`}>انتشار با تأیید مدیر</span>
-      <div className={toolbar}>{(b.badges||[]).filter(x=>badgeLabel[x]).map(x=><span className={status} key={x}>{badgeLabel[x]}</span>)}</div>
-    </header>
-    <section className={section}>
-      <h2 className={h2}>کارت ویزیت دیجیتال</h2>
-      {cardFellBack&&<p className="max-w-[70ch]">طرح سفارشی این کارت در حال حاضر قابل نمایش نیست؛ قالب استاندارد نمایش داده می‌شود.</p>}
-      <div className="mx-auto w-full max-w-[560px]">
-        <PublicCardView business={b} plan={cardPlan}/>
-      </div>
-    </section>
-    {b.description&&<p className="max-w-[70ch] whitespace-pre-wrap">{b.description}</p>}
-    {!!b.services?.length&&<section className={section}><h2 className={h2}>خدمات</h2><ul>{b.services.map((x,i)=><li key={i}>{x}</li>)}</ul></section>}
-    <section className={section}><h2 className={h2}>تماس و نشانی</h2><div className={grid}>
-      {b.phone&&<div><strong>شماره تماس</strong><p dir="ltr" className="max-w-[70ch]">{phone?<a href={`tel:${phone}`} className={link}>{b.phone}</a>:b.phone}</p></div>}
-      {b.email&&<div><strong>ایمیل</strong><p dir="ltr" className="max-w-[70ch]">{email?<a href={email} className={link}>{b.email}</a>:b.email}</p></div>}
-      {(b.address||b.city||b.neighborhood)&&<div className={full}><strong>نشانی</strong><p className="max-w-[70ch]">{[b.city,b.neighborhood,b.address].filter(Boolean).join("، ")}</p></div>}
-      {map&&<a href={map} target="_blank" rel="noopener noreferrer" className={link}>مشاهده موقعیت روی نقشه</a>}
-    </div></section>
-    {socials.some(([,url])=>safeHttpUrl(url))&&<section className={section}><h2 className={h2}>شبکه‌های اجتماعی</h2><div className={toolbar}>{socials.map(([key,raw])=>{const url=safeHttpUrl(raw);return url?<a key={key} href={url} target="_blank" rel="noopener noreferrer nofollow" className={link}>{key}</a>:null;})}</div></section>}
-    {!!b.images?.length&&<section className={section}><h2 className={h2}>تصاویر کسب‌وکار</h2><div className={gallery}>{b.images.map(image=>{const src=mediaUrl(image.path);return src?<figure key={image.id} className="m-0 w-[180px]"><a href={src} target="_blank" rel="noopener noreferrer"><span className={frame}><Image src={src} alt={image.alt||b.name} fill sizes="180px" className="object-cover"/></span></a></figure>:null;})}</div></section>}
-    {!!showcases.length&&<section className={section}><h2 className={h2}>ویترین</h2><div className={gallery}>{showcases.map(item=>{const src=mediaUrl(item.image_path);return src?<figure key={item.id} className="m-0 w-[180px]"><span className={frame}><Image src={src} alt={item.title} fill sizes="180px" className="object-cover"/></span><figcaption className="mt-2">{item.title}{item.price!=null&&<p className="max-w-[70ch]">{Number(item.price).toLocaleString("fa-IR")} تومان</p>}</figcaption></figure>:null;})}</div></section>}
-    <section className={section}><h2 className={h2}>QR اختصاصی</h2><p className="max-w-[70ch]">این کد به لینک ثابت همین کسب‌وکار می‌رسد.</p><div className={toolbar}>{/* QR endpoint serves SVG; next/image cannot optimize SVG without enabling dangerouslyAllowSVG globally. */}
-{/* eslint-disable-next-line @next/next/no-img-element */}
-<img src={getQrUrl(b.slug)} alt={`QR ${b.name}`} width={160} height={160} className={imgBox}/><a href={getQrUrl(b.slug)} target="_blank" rel="noopener noreferrer" className={link}>بازکردن و ذخیره QR (SVG)</a></div></section>
+  const badges=(b.badges||[]).filter(x=>badgeLabel[x]);
+  const meta=[b.category,b.city,b.neighborhood].filter(Boolean) as string[];
+  const hasContact=Boolean(b.phone||b.email||b.address||b.city||b.neighborhood||map);
+
+  return <><AppTaskbar/>
+  <main dir="rtl" className="relative min-h-screen bg-[#060b12] text-slate-200">
+    {/* Fixed ambient studio glow behind every section (matches the stage bg). */}
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0" style={{ background: "radial-gradient(circle at 50% 12%, rgba(49,70,92,0.22), transparent 34%), radial-gradient(circle at 10% 90%, rgba(16,185,129,0.05), transparent 28%)" }} />
+    <div className={shell}>
+
+      {/* ── Identity band ─────────────────────────────────────────────── */}
+      <header className="relative">
+        <div className="relative h-40 w-full overflow-hidden rounded-[26px] border border-white/[0.07] bg-[#0c1626] sm:h-52">
+          {cover
+            ? <Image src={cover} alt={`کاور ${b.name}`} fill sizes="100vw" priority className="object-cover opacity-90" />
+            : null}
+          {/* Keeps the identity text legible over any cover image. */}
+          <div aria-hidden="true" className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(6,11,18,0.35) 0%, rgba(6,11,18,0.85) 100%)" }} />
+          <div aria-hidden="true" className="absolute inset-0" style={{ background: glow }} />
+        </div>
+
+        <div className="relative -mt-14 flex flex-col items-center gap-4 px-2 text-center sm:-mt-16 sm:flex-row sm:items-end sm:gap-6 sm:px-6 sm:text-right">
+          <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-[#0a1220] shadow-[0_18px_40px_rgba(0,0,0,0.5)]">
+            {logo
+              ? <Image src={logo} alt={`لوگوی ${b.name}`} width={96} height={96} className="size-24 object-contain" sizes="96px" />
+              : <Store className="size-9 text-cyan-400/80" />}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            {meta.length>0&&<p className="text-xs font-semibold tracking-wide text-cyan-300/90">{meta.join(" · ")}</p>}
+            <h1 className="mt-1.5 text-balance text-[clamp(1.75rem,4.4vw,2.75rem)] font-extrabold leading-[1.25] text-white">{b.name}</h1>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-300">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                انتشار با تأیید مدیر
+              </span>
+              {badges.map(x=><span key={x} className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/25 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold text-cyan-200">
+                <Sparkles className="h-3.5 w-3.5" />
+                {badgeLabel[x]}
+              </span>)}
+            </div>
+          </div>
+
+          {phone&&<a href={`tel:${phone}`} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-500 px-5 text-sm font-bold text-slate-950 shadow-[0_10px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400">
+            <Phone className="h-4 w-4" />
+            تماس
+          </a>}
+        </div>
+      </header>
+
+      {/* ── Digital card — the hero ───────────────────────────────────── */}
+      <section className={`${panel} mt-8`}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: glow }} />
+        <div className="relative">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h2 className={h2}>
+              <Sparkles className="h-4 w-4 text-cyan-400" />
+              کارت ویزیت دیجیتال
+            </h2>
+            {cardFellBack&&<span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-3 py-1.5 text-[11px] text-amber-200">طرح سفارشی این کارت قابل نمایش نیست؛ قالب استاندارد نمایش داده می‌شود.</span>}
+          </div>
+          {/* Stage pad: the same inset/rounded treatment the studio gives the
+              artboard, so the published card reads as a finished design. */}
+          <div className="mx-auto w-full max-w-[880px] rounded-[22px] border border-white/10 bg-black/25 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-5">
+            <PublicCardView business={b} plan={cardPlan}/>
+          </div>
+        </div>
+      </section>
+
+      {b.description&&<section className={`${panel} mt-6`}>
+        <h2 className={h2}><Store className="h-4 w-4 text-cyan-400" />درباره کسب‌وکار</h2>
+        <p className="mt-4 max-w-[75ch] whitespace-pre-wrap text-sm leading-7 text-slate-300">{b.description}</p>
+      </section>}
+
+      {!!b.services?.length&&<section className={`${panel} mt-6`}>
+        <h2 className={h2}><Sparkles className="h-4 w-4 text-cyan-400" />خدمات</h2>
+        <div className="mt-4 flex flex-wrap gap-2">{b.services.map((x,i)=><span key={i} className={chip}>{x}</span>)}</div>
+      </section>}
+
+      {hasContact&&<section className={`${panel} mt-6`}>
+        <h2 className={h2}><Phone className="h-4 w-4 text-cyan-400" />تماس و نشانی</h2>
+        <div className={`${grid} mt-4`}>
+          {b.phone&&<div className={tile}>
+            <span className="flex items-center gap-2 text-[11px] font-bold text-slate-400"><Phone className="h-3.5 w-3.5 text-cyan-400" />شماره تماس</span>
+            <p dir="ltr" className="mt-2 text-left text-sm">{phone?<a href={`tel:${phone}`} className={link}>{b.phone}</a>:b.phone}</p>
+          </div>}
+          {b.email&&<div className={tile}>
+            <span className="flex items-center gap-2 text-[11px] font-bold text-slate-400"><Mail className="h-3.5 w-3.5 text-cyan-400" />ایمیل</span>
+            <p dir="ltr" className="mt-2 text-left text-sm">{email?<a href={email} className={link}>{b.email}</a>:b.email}</p>
+          </div>}
+          {(b.address||b.city||b.neighborhood)&&<div className={tile}>
+            <span className="flex items-center gap-2 text-[11px] font-bold text-slate-400"><MapPin className="h-3.5 w-3.5 text-cyan-400" />نشانی</span>
+            <p className="mt-2 max-w-[60ch] text-sm leading-7 text-slate-300">{[b.city,b.neighborhood,b.address].filter(Boolean).join("، ")}</p>
+          </div>}
+          {map&&<a href={map} target="_blank" rel="noopener noreferrer" className={`${tile} flex min-h-11 items-center justify-between gap-3 transition hover:border-white/20 hover:bg-white/[0.06]`}>
+            <span className="flex items-center gap-2 text-[11px] font-bold text-slate-400"><MapPin className="h-3.5 w-3.5 text-cyan-400" />موقعیت روی نقشه</span>
+            <ArrowUpRight className="h-4 w-4 text-cyan-300" />
+          </a>}
+        </div>
+      </section>}
+
+      {socials.some(([,url])=>safeHttpUrl(url))&&<section className={`${panel} mt-6`}>
+        <h2 className={h2}><Globe className="h-4 w-4 text-cyan-400" />شبکه‌های اجتماعی</h2>
+        <div className="mt-4 flex flex-wrap gap-2">{socials.map(([key,raw])=>{const url=safeHttpUrl(raw);return url?<a key={key} href={url} target="_blank" rel="noopener noreferrer nofollow" className={`${chip} min-h-11 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200`}>{key}<ArrowUpRight className="h-3.5 w-3.5" /></a>:null;})}</div>
+      </section>}
+
+      {!!b.images?.length&&<section className={`${panel} mt-6`}>
+        <h2 className={h2}><Images className="h-4 w-4 text-cyan-400" />تصاویر کسب‌وکار</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{b.images.map(image=>{const src=mediaUrl(image.path);return src?<figure key={image.id} className={`${frame} m-0 aspect-[4/3]`}><Image src={src} alt={image.alt||b.name} fill sizes="(max-width:640px) 50vw, 280px" className="object-cover"/></figure>:null;})}</div>
+      </section>}
+
+      {!!showcases.length&&<section className={`${panel} mt-6`}>
+        <h2 className={h2}><Store className="h-4 w-4 text-cyan-400" />ویترین</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{showcases.map(item=>{const src=mediaUrl(item.image_path);return src?<figure key={item.id} className="m-0">
+          <span className={`${frame} aspect-[4/3]`}><Image src={src} alt={item.title} fill sizes="(max-width:640px) 50vw, 280px" className="object-cover"/></span>
+          <figcaption className="mt-2 text-xs font-semibold text-slate-200">{item.title}{item.price!=null&&<p className="mt-0.5 font-mono text-[11px] text-cyan-300">{Number(item.price).toLocaleString("fa-IR")} تومان</p>}</figcaption>
+        </figure>:null;})}</div>
+      </section>}
+
+      <section className={`${panel} mt-6`}>
+        <h2 className={h2}><QrCode className="h-4 w-4 text-cyan-400" />QR اختصاصی</h2>
+        <div className="mt-4 flex flex-col items-center gap-5 sm:flex-row sm:items-center">
+          {/* QR endpoint serves SVG; next/image cannot optimize SVG without enabling dangerouslyAllowSVG globally. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={getQrUrl(b.slug)} alt={`QR ${b.name}`} width={160} height={160} className="size-[160px] rounded-2xl border border-white/10 bg-white p-2"/>
+          <div className="text-center sm:text-right">
+            <p className={`${muted} max-w-[60ch] leading-7`}>این کد به لینک ثابت همین کسب‌وکار می‌رسد.</p>
+            <a href={getQrUrl(b.slug)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 text-sm font-bold text-slate-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200">
+              بازکردن و ذخیره QR (SVG)
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </div>
+        </div>
+      </section>
+
+    </div>
   </main><SiteFooter/></>;
 }
