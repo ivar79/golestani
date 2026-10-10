@@ -724,10 +724,10 @@ export default function CardMakerPage() {
     <main
       dir="rtl"
       className={`min-h-screen text-white ${
-        studioOpen ? "bg-[#0d0f13] pb-2 pt-24" : "bg-[#050B14] pb-20 pt-28 sm:pt-32"
+        studioOpen ? "bg-[#0d0f13] pb-2 pt-2" : "bg-[#050B14] pb-20 pt-28 sm:pt-32"
       }`}
     >
-      <AppTaskbar />
+      {!studioOpen && <AppTaskbar />}
 
       <div className={studioOpen ? "mx-auto w-full max-w-none px-2 sm:px-3" : "mx-auto max-w-7xl px-4 sm:px-6"}>
         {/* Page Header — the full marketing banner outside the studio, one
