@@ -133,4 +133,39 @@ class SendOtpTest extends TestCase
             ->once()
             ->withArgs(fn (string $message): bool => $message === 'OTP request sent.');
     }
+
+    public function test_demo_code_reaches_the_stderr_stream_render_captures(): void
+    {
+        // Regression: the demo line used to be written ONLY to
+        // storage/logs/otp-demo.log, which the Render Logs tab cannot read
+        // (ephemeral container filesystem), so a client reviewing the Preview
+        // had no way to see the code. The otp_demo channel must therefore also
+        // mirror the line into stderr — the same stream the default stderr
+        // channel already reaches on Render.
+        $stream = tempnam(sys_get_temp_dir(), 'otp-stderr-');
+
+        config([
+            'sms.otp_demo_mode' => true,
+            'app.env' => 'preview',
+            'logging.channels.stderr.handler_with.stream' => $stream,
+        ]);
+
+        // Channels may already be resolved (with php://stderr opened) earlier
+        // in this process — rebuild them against the captured stream.
+        Log::forgetChannel('stderr');
+        Log::forgetChannel('otp_demo');
+
+        try {
+            $this->assertTrue((new LogSmsDriver())->send('09123456789', 'کد تأیید شما: 12345'));
+
+            $logged = (string) file_get_contents($stream);
+
+            $this->assertStringContainsString('OTP code (demo/preview only)', $logged);
+            $this->assertStringContainsString('12345', $logged);
+        } finally {
+            @unlink($stream);
+            Log::forgetChannel('stderr');
+            Log::forgetChannel('otp_demo');
+        }
+    }
 }

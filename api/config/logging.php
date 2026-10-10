@@ -65,7 +65,18 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Demo OTP visibility (written only under LogSmsDriver's guard:
+        // OTP_DEMO_MODE=true AND a non-production APP_ENV). A stack keeps the
+        // local workflow intact — storage/logs/otp-demo.log — while stderr
+        // surfaces the same line in Render's log stream, where the deployed
+        // container's filesystem cannot be read from the dashboard.
         'otp_demo' => [
+            'driver' => 'stack',
+            'channels' => ['otp_demo_file', 'stderr'],
+            'ignore_exceptions' => false,
+        ],
+
+        'otp_demo_file' => [
             'driver' => 'single',
             'path' => storage_path('logs/otp-demo.log'),
             'level' => 'info',
