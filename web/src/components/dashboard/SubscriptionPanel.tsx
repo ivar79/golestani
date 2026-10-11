@@ -12,6 +12,7 @@ import {
   type Subscription,
 } from "@/lib/subscriptions";
 import { formatRemaining, remainingMsFromSnapshot, serverTimeSnapshot, type ServerTimeSnapshot } from "@/lib/subscriptionTime";
+import { initPayment } from "@/lib/payments";
 
 const statusLabels: Record<Subscription["status"] | "scheduled", string> = {
   pending_receipt: "در انتظار بررسی رسید",
@@ -48,6 +49,7 @@ export function SubscriptionPanel({ businessId }: { businessId?: number }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Display-only countdown anchor: the SERVER snapshot (expires_at /
@@ -179,6 +181,28 @@ export function SubscriptionPanel({ businessId }: { businessId?: number }) {
     }
   }
 
+  async function startOnlinePayment() {
+    if (!businessId || !selectedPlan) return;
+    setPaying(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await initPayment(businessId, Number(selectedPlan));
+      const destination = new URL(result.redirect_url);
+      const allowedHosts = new Set(["sandbox.zarinpal.com", "payment.zarinpal.com"]);
+      if (destination.protocol !== "https:" || !allowedHosts.has(destination.hostname.toLowerCase()) || !destination.pathname.startsWith("/pg/StartPay/")) {
+        throw new Error("آدرس بازگشت درگاه معتبر نیست؛ برای حفظ امنیت پرداخت متوقف شد.");
+      }
+      window.location.assign(destination.href);
+    } catch (requestError) {
+      setError(requestError instanceof Error && requestError.message.includes("معتبر نیست")
+        ? requestError.message
+        : extractApiError(requestError));
+    } finally {
+      setPaying(false);
+    }
+  }
+
   async function downloadReceipt(subscription: Subscription) {
     setDownloadingId(subscription.id);
     setError(null);
@@ -204,7 +228,7 @@ export function SubscriptionPanel({ businessId }: { businessId?: number }) {
             <CreditCard className="h-5 w-5 text-ik-accent" /> اشتراک و امکانات
           </h2>
           <p className="mt-1 text-xs leading-6 text-ik-muted">
-            پلن را انتخاب کنید، شماره پیگیری را وارد کرده و (اختیاری) تصویر یا PDF رسید پرداخت را پیوست کنید.
+            پلن را انتخاب کنید و از طریق درگاه امن پرداخت کنید؛ روش ثبت دستی رسید نیز به‌عنوان مسیر جایگزین در دسترس است.
           </p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-lg p-2 text-ik-muted hover:bg-ik-wash hover:text-ik-text" title="بازخوانی">
@@ -226,7 +250,23 @@ export function SubscriptionPanel({ businessId }: { businessId?: number }) {
       </div>
 
       {plans.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-ik-text">پرداخت آنلاین از طریق زرین‌پال</p>
+              <p className="mt-1 text-[11px] leading-5 text-ik-muted">مبلغ و مشخصات پلن در سرور بررسی می‌شود؛ وضعیت اشتراک پس از تأیید سمت سرور به‌روزرسانی خواهد شد.</p>
+            </div>
+            <button type="button" onClick={() => void startOnlinePayment()} disabled={paying || !selectedPlan} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-ik-accent px-5 py-3 text-sm font-bold text-ik-accent-contrast disabled:cursor-not-allowed disabled:opacity-50">
+              {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              {paying ? "در حال اتصال به درگاه…" : "پرداخت آنلاین"}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-ik-border bg-ik-wash p-3">
+            <p className="text-xs font-bold text-ik-text">روش جایگزین: ثبت رسید دستی</p>
+            <p className="mt-1 text-[11px] leading-5 text-ik-muted">در صورت پرداخت خارج از درگاه، شماره پیگیری را وارد کنید و در صورت نیاز فایل رسید را پیوست کنید.</p>
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <input value={receipt} onChange={(event) => setReceipt(event.target.value)} maxLength={160} placeholder="شماره رسید یا کد پیگیری" className="ik-field min-w-0 flex-1 rounded-xl border border-ik-border bg-ik-wash px-4 py-3 text-sm text-ik-text outline-none focus:border-ik-accent" />
             <button type="button" onClick={() => void submit()} disabled={submitting || !selectedPlan} className="inline-flex items-center justify-center gap-2 rounded-xl bg-ik-accent px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
