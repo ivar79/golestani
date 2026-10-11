@@ -842,6 +842,7 @@ export function InspectorPanel({
   const selected = state.doc.layers.find((l) => l.id === state.selection.layerId) ?? null;
   const [qrSearch, setQrSearch] = useState("");
   const [qrResults, setQrResults] = useState<Business[]>([]);
+  const [qrResultsQuery, setQrResultsQuery] = useState("");
   const [qrSearching, setQrSearching] = useState(false);
   const [qrSearchError, setQrSearchError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -870,12 +871,7 @@ export function InspectorPanel({
   // The selected canonical slug still goes through the existing QR endpoint.
   useEffect(() => {
     const query = qrSearch.trim();
-    if (selected?.kind !== "qr" || query.length < 2) {
-      setQrResults([]);
-      setQrSearching(false);
-      setQrSearchError(null);
-      return;
-    }
+    if (selected?.kind !== "qr" || query.length < 2) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -890,11 +886,13 @@ export function InspectorPanel({
             result.push(business);
           }
           setQrResults(result.slice(0, 8));
+          setQrResultsQuery(query);
           setQrSearchError(null);
         })
         .catch(() => {
           if (!controller.signal.aborted) {
             setQrResults([]);
+            setQrResultsQuery(query);
             setQrSearchError("جست‌وجوی کسب‌وکارهای عمومی ناموفق بود؛ دوباره تلاش کنید.");
           }
         })
@@ -1154,7 +1152,13 @@ export function InspectorPanel({
               <input
                 dir="rtl"
                 value={qrSearch}
-                onChange={(event) => setQrSearch(event.target.value)}
+                onChange={(event) => {
+                  setQrSearch(event.target.value);
+                  setQrResults([]);
+                  setQrResultsQuery("");
+                  setQrSearching(false);
+                  setQrSearchError(null);
+                }}
                 placeholder="نام کسب‌وکار، دسته‌بندی یا شهر"
                 className="w-full rounded-lg border border-white/15 bg-white/5 p-2 text-xs text-white outline-none focus:border-cyan-400"
               />
@@ -1162,7 +1166,7 @@ export function InspectorPanel({
             {qrSearching && <p role="status" className="text-[10px] text-slate-400">در حال جست‌وجو…</p>}
             {qrSearchError && <p role="alert" className="text-[10px] text-rose-300">{qrSearchError}</p>}
             {qrSearch.trim().length >= 2 && !qrSearching && !qrSearchError && qrResults.length === 0 && <p className="text-[10px] text-slate-400">کسب‌وکار عمومی‌ای پیدا نشد.</p>}
-            {qrResults.length > 0 && (
+            {qrResults.length > 0 && qrResultsQuery === qrSearch.trim() && (
               <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-white/[0.08] bg-black/15 p-1">
                 {qrResults.map((business) => (
                   <button
@@ -1172,6 +1176,9 @@ export function InspectorPanel({
                       engine.updateLayer(selected.id, { payload: business.slug } as never);
                       setQrSearch("");
                       setQrResults([]);
+                      setQrResultsQuery("");
+                      setQrSearching(false);
+                      setQrSearchError(null);
                     }}
                     className={"flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-right transition hover:bg-white/[0.07] " + ((selected as QrLayer).payload === business.slug ? "bg-cyan-400/10 text-cyan-100" : "text-slate-200")}
                   >
