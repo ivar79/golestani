@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import AppTaskbar from "@/components/layout/AppTaskbar";
 import HomeHero from "@/components/home/HomeHero";
 import HomeFeatures from "@/components/home/HomeFeatures";
+import FeaturedBusinesses from "@/components/home/FeaturedBusinesses";
+import PublicAdSlot from "@/components/ads/PublicAdSlot";
 import DigitalCardShowcase from "@/components/home/DigitalCardShowcase";
 import HowItWorks from "@/components/home/HowItWorks";
 import HomeCta from "@/components/home/HomeCta";
@@ -91,6 +93,8 @@ export default async function Home() {
         <AppTaskbar />
         <HomeHero />
         <HomeFeatures content={content} />
+        <FeaturedBusinesses />
+        <PublicAdSlot slot="home_banner" />
         <section id="showcase" className="mx-auto mt-24 w-full px-[clamp(1.25rem,5vw,6rem)]">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             <DigitalCardShowcase content={content} />

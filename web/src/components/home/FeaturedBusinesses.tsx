@@ -3,20 +3,20 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Sparkles, Store } from "lucide-react";
-import { searchBusinesses, type Business } from "@/lib/businesses";
+import api from "@/lib/api";
+
+type FeaturedBusiness = { id: number; name: string; slug: string; category?: string | null; city?: string | null; neighborhood?: string | null; logo?: string | null; cover_image?: string | null; description?: string | null; is_promoted: boolean };
 import { resolveMediaUrl } from "@/lib/businessSafety";
 
 export default function FeaturedBusinesses() {
-  const [items, setItems] = useState<Business[]>([]);
+  const [items, setItems] = useState<FeaturedBusiness[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      void searchBusinesses({ limit: 20, page: 1 })
-        .then((result) => {
-          if (!cancelled) {
-            setItems(result.data.filter((business) => business.is_promoted === true && business.is_claimed !== false).slice(0, 4));
-          }
+      void api.get<FeaturedBusiness[]>("/public/businesses/featured")
+        .then((response) => {
+          if (!cancelled) setItems(Array.isArray(response.data) ? response.data.slice(0, 4) : []);
         })
         .catch(() => {
           if (!cancelled) setItems([]);
@@ -50,7 +50,7 @@ export default function FeaturedBusinesses() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {items.map((business) => {
-          const image = resolveMediaUrl(process.env.NEXT_PUBLIC_API_URL ?? "", business.logo);
+          const image = resolveMediaUrl(process.env.NEXT_PUBLIC_API_URL ?? "", business.logo || business.cover_image);
           return (
             <Link
               key={business.id}

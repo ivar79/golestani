@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { LayoutList, Map as MapIcon } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/map/MapView";
+import PublicAdSlot from "@/components/ads/PublicAdSlot";
 
 /**
  * SearchResultsSplitView — task 10.
@@ -93,6 +94,7 @@ export default function SearchResultsSplitView({
 
   const listPane = (
     <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-4 p-4">
+      <PublicAdSlot slot="search_side" />
       {!loading && cards.length === 0 && (emptyState ?? null)}
       {cards.map((card) => (
         <div

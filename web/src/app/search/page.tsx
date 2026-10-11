@@ -16,6 +16,7 @@ import { ThemeProvider, useTheme } from "@/components/dashboard/ThemeProvider";
 import { useLocationPick } from "@/hooks/useLocationPick";
 import LocationChip from "@/components/search/LocationChip";
 import MiniCard from "@/components/search/MiniCard";
+import PublicAdSlot from "@/components/ads/PublicAdSlot";
 import { formatDistance } from "@/lib/format";
 import SearchFilters, {
   DEFAULT_FILTERS,
@@ -330,6 +331,8 @@ function SearchPageContent() {
             hasLocation={!!location}
           />
         </div>
+
+        <PublicAdSlot slot="search_top" />
 
         {/* Split view: list + sticky map with two-way sync + mobile toggle */}
         <div className="mt-6">
