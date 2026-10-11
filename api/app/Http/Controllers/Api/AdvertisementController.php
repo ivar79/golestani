@@ -19,7 +19,7 @@ class AdvertisementController extends Controller {
    ->orderByDesc('starts_at')
    ->orderByDesc('id')
    ->limit(4)
-   ->get(['id', 'business_id', 'slot', 'title', 'target_url', 'image_path', 'starts_at', 'ends_at']);
+   ->get(['id', 'business_id', 'slot', 'title', 'target_url', 'image_path', 'status', 'starts_at', 'ends_at']);
 
   return response()->json($ads)->header('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=120');
  }
