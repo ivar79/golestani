@@ -34,6 +34,7 @@ import {
   snapLayerPosition,
   type SnapGuide,
 } from "../domain/geometry";
+import { selectLayerIdsByMarquee } from "../domain/selectionMarquee";
 
 type Props = {
   engine: EditorEngine;
@@ -74,8 +75,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const [editValue, setEditValue] = useState("");
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
-  /** Node marquee in progress (artboard coords) — multi-node rubber band. */
+  /** Rubber bands in artboard coordinates; node and layer selection are separate gestures. */
   const [nodeMarquee, setNodeMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const [layerMarquee, setLayerMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const layerMarqueeRef = useRef<{ x0: number; y0: number } | null>(null);
+  const layerMarqueeEndRef = useRef<{ x: number; y: number } | null>(null);
+  const layerMarqueeShiftRef = useRef(false);
   const nodeMarqueeRef = useRef<{ x0: number; y0: number } | null>(null);
   const marqueeEndRef = useRef<{ x: number; y: number } | null>(null);
   const marqueeShiftRef = useRef(false);
@@ -558,7 +563,22 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
       return;
     }
-    // Empty-canvas press outside point-editing is a plain deselect.
+    // In selection mode, a press on empty artboard space arms a layer marquee.
+    // If the pointer never crosses the click threshold, pointer-up remains a
+    // plain deselect (or leaves the existing selection intact with Shift).
+    if (state.tool === "select" && !preview) {
+      const pos = pointerPos(event);
+      const insideArtboard =
+        pos.x >= 0 && pos.y >= 0 &&
+        pos.x <= doc.artboard.width && pos.y <= doc.artboard.height;
+      if (insideArtboard) {
+        layerMarqueeRef.current = { x0: pos.x, y0: pos.y };
+        layerMarqueeEndRef.current = null;
+        layerMarqueeShiftRef.current = event.shiftKey;
+        (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+        return;
+      }
+    }
     engine.select(null);
   };
 
@@ -623,6 +643,22 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       if (!brushRafRef.current) {
         brushRafRef.current = requestAnimationFrame(renderLiveBrush);
       }
+      return;
+    }
+    // Whole-layer marquee. Clamp to the artboard so dragging beyond its edge
+    // does not produce negative/out-of-board selection coordinates.
+    if (layerMarqueeRef.current) {
+      const origin = layerMarqueeRef.current;
+      const current = {
+        x: Math.max(0, Math.min(doc.artboard.width, pos.x)),
+        y: Math.max(0, Math.min(doc.artboard.height, pos.y)),
+      };
+      if (layerMarqueeEndRef.current === null &&
+          !exceedsClickThreshold({ x: origin.x0, y: origin.y0 }, current, zoom)) {
+        return;
+      }
+      layerMarqueeEndRef.current = current;
+      setLayerMarquee({ x0: origin.x0, y0: origin.y0, x1: current.x, y1: current.y });
       return;
     }
     // NODE MARQUEE tracking: sample the pointer while the rubber band is live
@@ -695,6 +731,29 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   };
 
   const onStagePointerUp = () => {
+    if (layerMarqueeRef.current) {
+      const start = layerMarqueeRef.current;
+      const end = layerMarqueeEndRef.current;
+      const additive = layerMarqueeShiftRef.current;
+      layerMarqueeRef.current = null;
+      layerMarqueeEndRef.current = null;
+      setLayerMarquee(null);
+
+      if (end === null) {
+        if (!additive) engine.select(null);
+        return;
+      }
+
+      const newlySelected = selectLayerIdsByMarquee(doc.layers, start, end);
+      const merged = [...new Set([...(additive ? engine.selectedIds() : []), ...newlySelected])];
+      if (merged.length === 0) {
+        engine.select(null);
+      } else {
+        engine.select(merged[0]);
+        for (const id of merged.slice(1)) engine.select(id, true);
+      }
+      return;
+    }
     if (panRef.current) {
       panRef.current = null;
       return;
@@ -1495,6 +1554,19 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           ))}
         </div>
 
+        {/* Layer marquee — drag from empty space to select multiple visible layers. */}
+        {layerMarquee && !preview ? (
+          <div
+            data-layer-marquee=""
+            className="pointer-events-none absolute z-[1700] border border-cyan-300/90 bg-cyan-400/10"
+            style={{
+              left: Math.min(layerMarquee.x0, layerMarquee.x1),
+              top: Math.min(layerMarquee.y0, layerMarquee.y1),
+              width: Math.abs(layerMarquee.x1 - layerMarquee.x0),
+              height: Math.abs(layerMarquee.y1 - layerMarquee.y0),
+            }}
+          />
+        ) : null}
         {/* Node marquee — the rubber band while catching nodes (view state). */}
         {nodeMarquee && !preview ? (
           <div
