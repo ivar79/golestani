@@ -3,8 +3,9 @@ import type { ShapeLayer } from "../document";
 import { selectLayerIdsByMarquee } from "../selectionMarquee";
 
 function shapeLayer(overrides: Partial<ShapeLayer> & { id: string }): ShapeLayer {
+  const { id, ...properties } = overrides;
   return {
-    id: overrides.id,
+    id,
     kind: "shape",
     shape: "rect",
     x: 10,
@@ -20,7 +21,7 @@ function shapeLayer(overrides: Partial<ShapeLayer> & { id: string }): ShapeLayer
     radius: 0,
     stroke: null,
     strokeWidth: 0,
-    ...overrides,
+    ...properties,
   };
 }
 

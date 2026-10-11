@@ -744,7 +744,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         return;
       }
 
-      const newlySelected = selectLayerIdsByMarquee(doc.layers, start, end);
+      const newlySelected = selectLayerIdsByMarquee(doc.layers, { x: start.x0, y: start.y0 }, end);
       const merged = [...new Set([...(additive ? engine.selectedIds() : []), ...newlySelected])];
       if (merged.length === 0) {
         engine.select(null);
