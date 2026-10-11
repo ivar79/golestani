@@ -46,6 +46,7 @@ import {
   SquareStack,
 } from "lucide-react";
 import type { CardDocument, CardLayer, BadgeLayer, LayerKind, QrLayer, ShapeKind } from "../domain/document";
+import { searchBusinesses, type Business } from "@/lib/businesses";
 import { LAYER_KIND_LABELS, SHAPE_KIND_LABELS } from "../domain/document";
 import { EDITOR_PALETTE } from "../domain/palette";
 import type { CurveKind } from "../domain/curveGeometry";
@@ -839,6 +840,10 @@ export function InspectorPanel({
 }) {
   const state = useCardEditor(engine);
   const selected = state.doc.layers.find((l) => l.id === state.selection.layerId) ?? null;
+  const [qrSearch, setQrSearch] = useState("");
+  const [qrResults, setQrResults] = useState<Business[]>([]);
+  const [qrSearching, setQrSearching] = useState(false);
+  const [qrSearchError, setQrSearchError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [replacing, setReplacing] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -860,6 +865,49 @@ export function InspectorPanel({
     }
     return filtered;
   })();
+
+  // Search the public search API, which returns approved public businesses.
+  // The selected canonical slug still goes through the existing QR endpoint.
+  useEffect(() => {
+    const query = qrSearch.trim();
+    if (selected?.kind !== "qr" || query.length < 2) {
+      setQrResults([]);
+      setQrSearching(false);
+      setQrSearchError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setQrSearching(true);
+      void searchBusinesses({ q: query, limit: 8, page: 1 }, { signal: controller.signal })
+        .then((response) => {
+          const seen = new Set<string>();
+          const result: Business[] = [];
+          for (const business of [...(response.data ?? []), ...(response.unclaimed ?? [])]) {
+            if (!business.slug || seen.has(business.slug)) continue;
+            seen.add(business.slug);
+            result.push(business);
+          }
+          setQrResults(result.slice(0, 8));
+          setQrSearchError(null);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setQrResults([]);
+            setQrSearchError("جست‌وجوی کسب‌وکارهای عمومی ناموفق بود؛ دوباره تلاش کنید.");
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setQrSearching(false);
+        });
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [qrSearch, selected?.kind]);
 
   async function onImageFilePicked(file: File | null) {
     if (imageInputRef.current) imageInputRef.current.value = "";
@@ -1099,9 +1147,46 @@ export function InspectorPanel({
       )}
 
       {selected.kind === "qr" && (
-        <div className="space-y-2 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.05] p-3">
+        <div className="space-y-3 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.05] p-3">
+          <div className="space-y-1.5">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold text-slate-200">جست‌وجوی کسب‌وکار مقصد</span>
+              <input
+                dir="rtl"
+                value={qrSearch}
+                onChange={(event) => setQrSearch(event.target.value)}
+                placeholder="نام کسب‌وکار، دسته‌بندی یا شهر"
+                className="w-full rounded-lg border border-white/15 bg-white/5 p-2 text-xs text-white outline-none focus:border-cyan-400"
+              />
+            </label>
+            {qrSearching && <p role="status" className="text-[10px] text-slate-400">در حال جست‌وجو…</p>}
+            {qrSearchError && <p role="alert" className="text-[10px] text-rose-300">{qrSearchError}</p>}
+            {qrSearch.trim().length >= 2 && !qrSearching && !qrSearchError && qrResults.length === 0 && <p className="text-[10px] text-slate-400">کسب‌وکار عمومی‌ای پیدا نشد.</p>}
+            {qrResults.length > 0 && (
+              <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-white/[0.08] bg-black/15 p-1">
+                {qrResults.map((business) => (
+                  <button
+                    key={business.slug}
+                    type="button"
+                    onClick={() => {
+                      engine.updateLayer(selected.id, { payload: business.slug } as never);
+                      setQrSearch("");
+                      setQrResults([]);
+                    }}
+                    className={"flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-right transition hover:bg-white/[0.07] " + ((selected as QrLayer).payload === business.slug ? "bg-cyan-400/10 text-cyan-100" : "text-slate-200")}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[11px] font-semibold">{business.name}</span>
+                      <span className="mt-0.5 block truncate text-[10px] text-slate-500">{[business.category, business.city].filter(Boolean).join(" · ") || business.slug}</span>
+                    </span>
+                    <span dir="ltr" className="shrink-0 text-[10px] text-cyan-200">/{business.slug}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-200">مقصد کد QR (نامک کسب‌وکار)</span>
+            <span className="mb-1 block text-[11px] font-semibold text-slate-200">نامک عمومی مقصد</span>
             <input
               dir="ltr"
               value={(selected as QrLayer).payload}
@@ -1118,7 +1203,7 @@ export function InspectorPanel({
             />
           </label>
           <p className="text-[10px] leading-4 text-slate-400">
-            کد QR از نشانی رسمی همان کسب‌وکار ساخته می‌شود (صفحهٔ <span dir="ltr">/b/{businessSlug ?? "…"}</span>) و روی بوم، پیش‌نمایش و خروجی یکسان است.
+            می‌توانید QR هر کسب‌وکار عمومیِ تأییدشده را انتخاب کنید؛ لازم نیست مقصد متعلق به کسب‌وکار فعلی باشد. برای ورود دستی، نامک مقصد را وارد کنید. بوم و خروجی از همان QR واقعی استفاده می‌کنند.
           </p>
           {!(selected as QrLayer).payload ? (
             <p className="rounded-lg border border-amber-400/30 bg-amber-400/[0.08] px-2 py-1.5 text-[10px] leading-4 text-amber-200">
