@@ -245,4 +245,43 @@ class PhaseFiveTest extends TestCase
             ->assertJsonPath('0.title', 'Visible ad');
     }
 
+
+    public function test_owner_can_edit_an_ad_but_edit_resets_approval_and_other_owners_are_forbidden(): void
+    {
+        $owner = $this->owner();
+        $business = $owner->businesses()->create(['name' => 'Ad Editor', 'slug' => 'ad-editor', 'status' => 'approved']);
+        $plan = Plan::create(['name' => 'Ad Plan', 'price' => 100, 'duration_days' => 30, 'features' => ['ads' => true]]);
+        $business->subscriptions()->create([
+            'plan_id' => $plan->id,
+            'status' => 'active',
+            'start_date' => now()->subDay(),
+            'end_date' => now()->addDays(29),
+        ]);
+        $ad = Advertisement::create([
+            'business_id' => $business->id,
+            'slot' => 'home_banner',
+            'title' => 'Old ad',
+            'target_url' => 'https://example.com/old',
+            'status' => 'approved',
+            'admin_note' => 'Approved before edit',
+        ]);
+
+        $this->actingAs($owner)->putJson('/api/advertisements/'.$ad->id, [
+            'slot' => 'search_top',
+            'title' => 'Updated ad',
+            'target_url' => 'https://example.com/new',
+        ])->assertOk()
+          ->assertJsonPath('slot', 'search_top')
+          ->assertJsonPath('title', 'Updated ad')
+          ->assertJsonPath('status', 'pending')
+          ->assertJsonPath('admin_note', null);
+
+        $other = $this->owner();
+        $this->actingAs($other)->putJson('/api/advertisements/'.$ad->id, [
+            'slot' => 'search_side',
+            'title' => 'IDOR attempt',
+            'target_url' => 'https://example.com/forbidden',
+        ])->assertForbidden();
+    }
+
 }

@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Megaphone, RefreshCw, Lock, Trash2 } from "lucide-react";
+import { Loader2, Megaphone, RefreshCw, Lock, Trash2, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { extractApiError } from "@/lib/api";
 import type { EntitlementPayload } from "@/lib/entitlements";
@@ -49,6 +49,7 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
   const [items, setItems] = useState<Advertisement[]>([]);
   const [slot, setSlot] = useState(SLOTS[0].key);
   const [targetUrl, setTargetUrl] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -95,6 +96,20 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
     }
   }
 
+  function resetForm() {
+    setEditingId(null);
+    setTargetUrl("");
+    setSlot(SLOTS[0].key);
+  }
+
+  function startEditing(ad: Advertisement) {
+    setEditingId(ad.id);
+    setSlot(ad.slot);
+    setTargetUrl(ad.target_url ?? "");
+    setError(null);
+    setMessage(null);
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!businessId) return;
@@ -103,13 +118,19 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
     setError(null);
     try {
       const { default: api } = await import("@/lib/api");
-      await api.post(`/businesses/${businessId}/advertisements`, {
+      const payload = {
         slot,
         title: `آگهی ${SLOTS.find((option) => option.key === slot)?.label ?? slot}`,
         target_url: targetUrl.trim() || undefined,
-      });
-      setTargetUrl("");
-      setMessage("آگهی ثبت شد و پس از تأیید مدیریت در جایگاه انتخابی نمایش داده می‌شود.");
+      };
+      if (editingId !== null) {
+        await api.put(`/advertisements/${editingId}`, payload);
+        setMessage("تغییرات آگهی ذخیره شد و برای نمایش مجدد باید تأیید مدیریت را دریافت کند.");
+      } else {
+        await api.post(`/businesses/${businessId}/advertisements`, payload);
+        setMessage("آگهی ثبت شد و پس از تأیید مدیریت در جایگاه انتخابی نمایش داده می‌شود.");
+      }
+      resetForm();
       await load();
     } catch (requestError) {
       setError(extractApiError(requestError));
@@ -154,7 +175,7 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
         </div>
       )}
 
-      {adsAllowed && !limitReached && (
+      {adsAllowed && (!limitReached || editingId !== null) && (
         <form onSubmit={submit} className="space-y-3 rounded-2xl border border-ik-border bg-ik-wash p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
@@ -170,10 +191,13 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
               <input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} required type="url" dir="ltr" placeholder="https://" className="ik-field w-full rounded-xl border border-ik-border bg-ik-panel px-3 py-2.5 text-sm text-ik-text outline-none focus:border-ik-accent" />
             </label>
           </div>
-          <button type="submit" disabled={submitting} className="inline-flex items-center gap-2 rounded-xl bg-ik-accent px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-            ثبت درخواست آگهی
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" disabled={submitting || !targetUrl.trim()} className="inline-flex items-center gap-2 rounded-xl bg-ik-accent px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId !== null ? <Pencil className="h-4 w-4" /> : <Megaphone className="h-4 w-4" />}
+              {editingId !== null ? "ذخیره و ارسال برای تأیید مجدد" : "ثبت درخواست آگهی"}
+            </button>
+            {editingId !== null && <button type="button" onClick={resetForm} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-ik-border px-4 py-2.5 text-sm font-semibold text-ik-muted hover:text-ik-text disabled:opacity-50"><X className="h-4 w-4" /> لغو ویرایش</button>}
+          </div>
         </form>
       )}
 
@@ -194,9 +218,14 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
                   {statusLabels[item.status] ?? item.status}
                 </span>
                 {item.admin_note && <span className="basis-full text-ik-danger">یادداشت مدیر: {item.admin_note}</span>}
-                <button type="button" onClick={() => void remove(item)} className="mr-auto inline-flex items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-400/10 px-2.5 py-1.5 text-[10px] font-bold text-rose-400 hover:bg-rose-400/20" aria-label={`حذف آگهی ${item.id}`}>
-                  <Trash2 className="h-3.5 w-3.5" /> حذف آگهی
-                </button>
+                <div className="mr-auto flex items-center gap-1.5">
+                  <button type="button" onClick={() => startEditing(item)} className="inline-flex items-center gap-1 rounded-lg border border-ik-accent/30 bg-ik-accent/10 px-2.5 py-1.5 text-[10px] font-bold text-ik-accent hover:bg-ik-accent/20" aria-label={`ویرایش آگهی ${item.id}`}>
+                    <Pencil className="h-3.5 w-3.5" /> ویرایش
+                  </button>
+                  <button type="button" onClick={() => void remove(item)} className="inline-flex items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-400/10 px-2.5 py-1.5 text-[10px] font-bold text-rose-400 hover:bg-rose-400/20" aria-label={`حذف آگهی ${item.id}`}>
+                    <Trash2 className="h-3.5 w-3.5" /> حذف
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
