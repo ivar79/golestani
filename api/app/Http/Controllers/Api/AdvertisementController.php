@@ -25,6 +25,33 @@ class AdvertisementController extends Controller {
  }
  public function index(Request $request,Business $business): JsonResponse { $this->authorizeOwner($request,$business); return response()->json($business->advertisements()->latest()->get()); }
  public function store(AdvertisementRequest $request,Business $business,FeatureGate $gate): JsonResponse { $this->authorizeOwner($request,$business); abort_unless($gate->allows($business,'ads'),403,'تبلیغات نیازمند اشتراک فعال است.'); $adLimit=$gate->limit($business,'max_ads'); $totalAds=(int)$business->advertisements()->whereIn('status',['pending','approved'])->count(); if($adLimit!==null && $totalAds>=$adLimit){ throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['message'=>"سقف آگهی فعال برای پلن شما {$adLimit} عدد است.",'entitlement_errors'=>['max_ads'=>'limit_reached'],'entitlements'=>$gate->payload($business)],403)); } abort_if(Advertisement::where('business_id',$business->id)->where('slot',$request->validated('slot'))->whereIn('status',['pending','approved'])->count()>=4,422,'حداکثر چهار آگهی در هر جایگاه مجاز است.'); $ad=$business->advertisements()->create($request->validated()+['status'=>'pending']); return response()->json($ad,201); }
+ public function update(AdvertisementRequest $request, Advertisement $advertisement, FeatureGate $gate): JsonResponse
+ {
+  $business = $advertisement->business;
+  $user = $request->user();
+  abort_unless($business && ($user?->hasRole('admin') || (int) $business->user_id === (int) $user?->id), 403);
+  $isAdmin = (bool) $user?->hasRole('admin');
+  if (! $isAdmin) {
+   abort_unless($gate->allows($business, 'ads'), 403, 'ویرایش تبلیغات نیازمند اشتراک فعال است.');
+  }
+  $data = $request->validated();
+  if ($data['slot'] !== $advertisement->slot) {
+   $slotCount = Advertisement::query()
+    ->where('business_id', $business->id)
+    ->where('slot', $data['slot'])
+    ->whereIn('status', ['pending', 'approved'])
+    ->where('id', '!=', $advertisement->id)
+    ->count();
+   abort_if($slotCount >= 4, 422, 'حداکثر چهار آگهی در هر جایگاه مجاز است.');
+  }
+  // Owner changes invalidate the prior moderation approval.
+  if (! $isAdmin) {
+   $data['status'] = 'pending';
+   $data['admin_note'] = null;
+  }
+  $advertisement->update($data);
+  return response()->json($advertisement->fresh());
+ }
  public function destroy(Request $request, Advertisement $advertisement): JsonResponse
  {
   $business = $advertisement->business;

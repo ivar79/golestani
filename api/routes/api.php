@@ -117,6 +117,7 @@ Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin'])->
     Route::delete('/showcases/{showcase}', [ShowcaseController::class, 'destroy']);
     Route::get('/businesses/{business}/advertisements', [AdvertisementController::class, 'index']);
     Route::post('/businesses/{business}/advertisements', [AdvertisementController::class, 'store']);
+    Route::put('/advertisements/{advertisement}', [AdvertisementController::class, 'update']);
     Route::delete('/advertisements/{advertisement}', [AdvertisementController::class, 'destroy']);
 });
 Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/subscriptions/{subscription}/moderate', [SubscriptionController::class, 'moderate']);
