@@ -83,6 +83,11 @@ export const uploadShowcase = (businessId: number, data: FormData) =>
     headers: { "Content-Type": "multipart/form-data" },
   }).then((r) => r.data);
 
+export const updateShowcase = (id: number, data: FormData) =>
+  api.put<Showcase>(`/showcases/${id}`, data, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+
 export const deleteShowcase = (id: number) =>
   api.delete<{ message: string }>(`/showcases/${id}`).then((r) => r.data);
 

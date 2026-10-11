@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Megaphone, RefreshCw, Lock } from "lucide-react";
+import { Loader2, Megaphone, RefreshCw, Lock, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { extractApiError } from "@/lib/api";
 import type { EntitlementPayload } from "@/lib/entitlements";
@@ -80,6 +80,20 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  async function remove(ad: Advertisement) {
+    if (!window.confirm("این آگهی حذف شود؟")) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const { default: api } = await import("@/lib/api");
+      await api.delete(`/advertisements/${ad.id}`);
+      setMessage("آگهی حذف شد.");
+      await load();
+    } catch (requestError) {
+      setError(extractApiError(requestError));
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -180,6 +194,9 @@ export function AdsPanel({ businessId, entitlements }: { businessId?: number; en
                   {statusLabels[item.status] ?? item.status}
                 </span>
                 {item.admin_note && <span className="basis-full text-ik-danger">یادداشت مدیر: {item.admin_note}</span>}
+                <button type="button" onClick={() => void remove(item)} className="mr-auto inline-flex items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-400/10 px-2.5 py-1.5 text-[10px] font-bold text-rose-400 hover:bg-rose-400/20" aria-label={`حذف آگهی ${item.id}`}>
+                  <Trash2 className="h-3.5 w-3.5" /> حذف آگهی
+                </button>
               </li>
             ))}
           </ul>

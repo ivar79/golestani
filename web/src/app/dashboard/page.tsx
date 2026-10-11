@@ -22,6 +22,7 @@ import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { SubscriptionPanel } from "@/components/dashboard/SubscriptionPanel";
 import { ShowcasePanel } from "@/components/dashboard/ShowcasePanel";
 import { AdsPanel } from "@/components/dashboard/AdsPanel";
+import NotificationsPanel from "@/components/dashboard/NotificationsPanel";
 import LocationSearch, { type LocationSearchResult } from "@/components/dashboard/LocationSearch";
 import { ThemeProvider, useTheme } from "@/components/dashboard/ThemeProvider";
 import MapView from "@/components/map/MapView";
@@ -679,6 +680,7 @@ function DashboardInner() {
           )}
 
           {currentTab === "subscriptions" && <SubscriptionPanel businessId={editing?.id} />}
+          {currentTab === "notifications" && <NotificationsPanel />}
 
           {/* PAYMENT RESULT RETURN: the tab bar shows the live plan chip so a
               user coming back from the result page SEES the applied plan

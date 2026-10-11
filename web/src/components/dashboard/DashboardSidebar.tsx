@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   QrCode,
   CreditCard,
+  Bell,
   Package,
   Megaphone,
   Home,
@@ -20,7 +21,7 @@ import { useTheme } from "./ThemeProvider";
 import { ThemeToggle } from "./ThemeToggle";
 import CmsBrandLogo from "@/components/brand/CmsBrandLogo";
 
-export type DashboardTab = "overview" | "info" | "location" | "media" | "qr" | "subscriptions" | "showcase" | "ads";
+export type DashboardTab = "overview" | "info" | "location" | "media" | "qr" | "notifications" | "subscriptions" | "showcase" | "ads";
 
 interface DashboardSidebarProps {
   currentTab: DashboardTab;
@@ -78,6 +79,11 @@ export function DashboardSidebar({
       id: "qr" as DashboardTab,
       label: "لینک عمومی و QR",
       icon: QrCode,
+    },
+    {
+      id: "notifications" as DashboardTab,
+      label: "اعلان‌ها",
+      icon: Bell,
     },
     {
       id: "subscriptions" as DashboardTab,
