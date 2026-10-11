@@ -226,7 +226,7 @@ describe("card-maker Studio UI gate", () => {
     fireEvent.click(toggle);
 
     expect(await screen.findByTestId("card-studio")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "استودیوی طراحی" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "کارت‌ساز" })).toBeTruthy();
   });
 
   it("approved designer with an existing layered card: the studio auto-opens (authorized flow preserved)", async () => {

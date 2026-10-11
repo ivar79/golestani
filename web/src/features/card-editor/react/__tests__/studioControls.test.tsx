@@ -75,15 +75,17 @@ describe("Toolbox — QR tool produces a code, not a placeholder", () => {
 describe("Toolbox — keyboard tool shortcuts", () => {
   it("activates tools through V, P, B and Q without bypassing the engine", () => {
     const engine = new EditorEngine(doc([]));
-    render(<Toolbox engine={engine} qrPayload="golestani" />);
+    const { container } = render(<div className="ik-studio"><Toolbox engine={engine} qrPayload="golestani" /></div>);
+    const studioRoot = container.firstElementChild;
+    if (!studioRoot) throw new Error("expected the studio keyboard scope");
 
-    fireEvent.keyDown(window, { key: "p" });
+    fireEvent.keyDown(studioRoot, { key: "p" });
     expect(engine.getState().tool).toBe("pen");
-    fireEvent.keyDown(window, { key: "b" });
+    fireEvent.keyDown(studioRoot, { key: "b" });
     expect(engine.getState().tool).toBe("draw");
-    fireEvent.keyDown(window, { key: "v" });
+    fireEvent.keyDown(studioRoot, { key: "v" });
     expect(engine.getState().tool).toBe("select");
-    fireEvent.keyDown(window, { key: "q" });
+    fireEvent.keyDown(studioRoot, { key: "q" });
     expect(engine.getState().doc.layers).toHaveLength(1);
     expect((engine.getState().doc.layers[0] as QrLayer).payload).toBe("golestani");
   });
@@ -125,8 +127,8 @@ describe("Toolbox — image upload flow", () => {
 
   it("disables the image tool when the host provides no upload flow (honest disabled state)", () => {
     const engine = new EditorEngine(doc([]));
-    render(<Toolbox engine={engine} />);
-    expect(screen.getByTitle("افزودن تصویر").hasAttribute("disabled")).toBe(true);
+    render(<div className="ik-studio"><Toolbox engine={engine} /></div>);
+    expect(screen.getByRole("button", { name: "تصویر" }).hasAttribute("disabled")).toBe(true);
   });
 });
 
