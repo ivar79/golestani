@@ -117,6 +117,7 @@ Route::middleware(['auth:sanctum', 'role:business_owner,user,designer,admin'])->
     Route::delete('/showcases/{showcase}', [ShowcaseController::class, 'destroy']);
     Route::get('/businesses/{business}/advertisements', [AdvertisementController::class, 'index']);
     Route::post('/businesses/{business}/advertisements', [AdvertisementController::class, 'store']);
+    Route::delete('/advertisements/{advertisement}', [AdvertisementController::class, 'destroy']);
 });
 Route::middleware(['auth:sanctum', 'role:admin'])->patch('/admin/subscriptions/{subscription}/moderate', [SubscriptionController::class, 'moderate']);
 Route::middleware(['auth:sanctum', 'role:admin'])->get('/admin/subscriptions', [SubscriptionController::class, 'adminIndex']);
@@ -182,6 +183,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 Route::get('/search/businesses', [BusinessController::class, 'search'])->middleware('throttle:public-search');
 // M1 (Phase 3): distinct filter values for the search UI (cached 5 min).
 Route::get('/search/facets', [BusinessController::class, 'facets'])->middleware('throttle:public-search');
+Route::get('/public/businesses/featured', [PublicBusinessController::class, 'featured'])->middleware('throttle:public-search');
 Route::get('/public/businesses/{slug}', [PublicBusinessController::class, 'show']);
 Route::get('/public/businesses/{slug}/card', [PublicBusinessController::class, 'card']);
 Route::get('/public/businesses/{slug}/qr', [PublicBusinessController::class, 'qr']);

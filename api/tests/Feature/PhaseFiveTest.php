@@ -81,14 +81,19 @@ class PhaseFiveTest extends TestCase
                 'title' => 'Ad '.$number,
                 'target_url' => 'https://example.com/'.$number,
                 'status' => 'approved',
+                'admin_note' => 'private moderation note',
                 'starts_at' => now()->subDay(),
                 'ends_at' => now()->addDay(),
             ]);
         }
 
-        $this->getJson('/api/public/advertisements/homepage')
+        $response = $this->getJson('/api/public/advertisements/homepage')
             ->assertOk()
             ->assertJsonCount(4);
+
+        foreach ($response->json() as $ad) {
+            $this->assertArrayNotHasKey('admin_note', $ad, 'Public ad responses must not expose moderation notes.');
+        }
     }
 
     public function test_expired_subscription_cannot_create_advertisement(): void
@@ -211,4 +216,33 @@ class PhaseFiveTest extends TestCase
         $unusedPlan = Plan::create(['name' => 'Unused', 'price' => 0, 'duration_days' => 1, 'features' => []]);
         $this->actingAs($admin)->deleteJson('/api/admin/plans/'.$unusedPlan->id)->assertOk();
     }
+
+    public function test_public_advertisements_exclude_unapproved_businesses(): void
+    {
+        $approvedOwner = $this->owner();
+        $approvedBusiness = $approvedOwner->businesses()->create([
+            'name' => 'Approved Ad Business', 'slug' => 'approved-ad-business', 'status' => 'approved',
+        ]);
+        $pendingOwner = $this->owner();
+        $pendingBusiness = $pendingOwner->businesses()->create([
+            'name' => 'Pending Ad Business', 'slug' => 'pending-ad-business', 'status' => 'pending',
+        ]);
+
+        Advertisement::create([
+            'business_id' => $approvedBusiness->id, 'slot' => 'home_banner', 'title' => 'Visible ad',
+            'target_url' => 'https://example.com/visible', 'status' => 'approved',
+            'starts_at' => now()->subDay(), 'ends_at' => now()->addDay(),
+        ]);
+        Advertisement::create([
+            'business_id' => $pendingBusiness->id, 'slot' => 'home_banner', 'title' => 'Hidden ad',
+            'target_url' => 'https://example.com/hidden', 'status' => 'approved',
+            'starts_at' => now()->subDay(), 'ends_at' => now()->addDay(),
+        ]);
+
+        $this->getJson('/api/public/advertisements/home_banner')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.title', 'Visible ad');
+    }
+
 }

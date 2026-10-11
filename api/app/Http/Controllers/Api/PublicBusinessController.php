@@ -11,6 +11,36 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 class PublicBusinessController extends Controller
 {
+    /** Homepage list of admin-promoted, approved businesses; never serialize the full model. */
+    public function featured(): JsonResponse
+    {
+        $businesses = Business::query()
+            ->where('status', 'approved')
+            ->where('is_promoted', true)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit(4)
+            ->get(['id', 'name', 'slug', 'category', 'city', 'neighborhood', 'description', 'logo', 'cover_image', 'is_promoted'])
+            ->map(fn (Business $business): array => [
+                'id' => $business->id,
+                'name' => $business->name,
+                'slug' => $business->slug,
+                'category' => $business->category,
+                'city' => $business->city,
+                'neighborhood' => $business->neighborhood,
+                'description' => $business->description,
+                'logo' => $business->logo,
+                'cover_image' => $business->cover_image,
+                'is_promoted' => (bool) $business->is_promoted,
+            ])
+            ->values();
+
+        return response()->json($businesses)->header(
+            'Cache-Control',
+            'public, max-age=0, s-maxage=60, stale-while-revalidate=120'
+        );
+    }
+
     public function show(Request $request, string $slug): JsonResponse
     {
         $b = Business::where('slug', $slug)->firstOrFail();
