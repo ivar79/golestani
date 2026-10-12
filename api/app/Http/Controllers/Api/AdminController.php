@@ -23,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 
@@ -450,6 +451,23 @@ return response()->json(Article::create($data), 201);
                 if ($addName === 'designer' && ! $user->hasApprovedDesignerStatus()) {
                     abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
                 }
+                // PRIVILEGE-ESCALATION GUARD: the admin role is provisioned OUT
+                // OF BAND only (`php artisan admin:provision` /
+                // `admin:provision-from-env`). The admin API may manage every
+                // other role, but it must never mint a NEW administrator:
+                // otherwise an already-privileged account could silently create
+                // extra admin identities that no inventory, provisioning log or
+                // operator review ever sees. Existing admins are unaffected
+                // (re-sending their own admin role stays a no-op).
+                if ($addName === 'admin' && ! $user->hasRole('admin')) {
+                    Log::warning('admin.role_grant_blocked', [
+                        'actor_id' => $request->user()?->id,
+                        'target_user_id' => $user->id,
+                        'mode' => 'attach',
+                    ]);
+
+                    abort(422, 'نقش مدیر فقط از طریق دستور اپراتور (admin:provision) قابل تخصیص است.');
+                }
                 // Self-demotion guard mirrors the multi-role replace branch:
                 // the UI dropdown means "this user's role is X", so picking a
                 // non-admin role for yourself is an attempted demotion even
@@ -466,6 +484,19 @@ return response()->json(Article::create($data), 201);
                 // Explicit multi-role payload: full replace, all guards.
                 if (in_array('designer', $roleNames, true) && ! $user->hasApprovedDesignerStatus()) {
                     abort(422, 'نقش طراح فقط پس از تأیید رسمی قابل تخصیص است.');
+                }
+                // Same privilege-escalation guard as the attach branch above:
+                // a multi-role replace cannot introduce a new administrator
+                // either (removing admin from an existing one is still handled
+                // by the last-admin guard below).
+                if (in_array('admin', $roleNames, true) && ! $user->hasRole('admin')) {
+                    Log::warning('admin.role_grant_blocked', [
+                        'actor_id' => $request->user()?->id,
+                        'target_user_id' => $user->id,
+                        'mode' => 'replace',
+                    ]);
+
+                    abort(422, 'نقش مدیر فقط از طریق دستور اپراتور (admin:provision) قابل تخصیص است.');
                 }
                 if ($user->hasApprovedDesignerStatus() && ! in_array('designer', $roleNames, true)) {
                     $roleNames[] = 'designer';

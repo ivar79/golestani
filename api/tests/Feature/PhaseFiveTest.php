@@ -69,7 +69,15 @@ class PhaseFiveTest extends TestCase
         $this->actingAs($owner)->postJson('/api/businesses/'.$business->id.'/showcases', ['title' => 'Item'])->assertForbidden();
     }
 
-    public function test_public_advertisements_are_limited_to_four(): void
+    /**
+     * PDF Phase 5: «حداکثر ۴ کسب‌وکار تبلیغاتی در جایگاه تعیین‌شده» — the cap
+     * counts DISTINCT BUSINESSES, not ad rows. A single advertiser holding five
+     * approved ads therefore occupies exactly ONE of the four positions (the
+     * ad-row cap this test originally pinned was replaced by the business cap
+     * in AdvertisementController::PLACEMENT_BUSINESS_LIMIT; the exhaustive
+     * matrix lives in AdvertisementPlacementBusinessCapTest).
+     */
+    public function test_public_advertisements_are_limited_to_four_distinct_businesses(): void
     {
         $owner = $this->owner();
         $business = $owner->businesses()->create(['name' => 'Ad Business', 'slug' => 'ad-business', 'status' => 'approved']);
@@ -87,11 +95,36 @@ class PhaseFiveTest extends TestCase
             ]);
         }
 
+        // One advertiser, however many ads: one position.
+        $single = $this->getJson('/api/public/advertisements/homepage')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->json();
+
+        // Four more eligible advertisers fill the placement — never a fifth.
+        foreach (range(1, 4) as $index) {
+            $competitor = $this->owner()->businesses()->create([
+                'name' => "Ad Business {$index}", 'slug' => "ad-business-{$index}", 'status' => 'approved',
+            ]);
+            Advertisement::create([
+                'business_id' => $competitor->id,
+                'slot' => 'homepage',
+                'title' => "Ad {$index}",
+                'target_url' => 'https://example.com/c'.$index,
+                'status' => 'approved',
+                'admin_note' => 'private moderation note',
+                'starts_at' => now()->subHours($index),
+                'ends_at' => now()->addDay(),
+            ]);
+        }
+
         $response = $this->getJson('/api/public/advertisements/homepage')
             ->assertOk()
             ->assertJsonCount(4);
 
-        foreach ($response->json() as $ad) {
+        $this->assertCount(4, array_unique(collect($response->json())->pluck('business_id')->all()));
+
+        foreach (array_merge($single, $response->json()) as $ad) {
             $this->assertArrayNotHasKey('admin_note', $ad, 'Public ad responses must not expose moderation notes.');
         }
     }

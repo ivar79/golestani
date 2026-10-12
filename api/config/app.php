@@ -118,6 +118,21 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | External scheduler token
+    |--------------------------------------------------------------------------
+    |
+    | Shared secret for POST /api/internal/cron/expire-subscriptions — the
+    | HTTP trigger an outside timer (Vercel Cron / GitHub Actions) uses to run
+    | the subscription expiry sweep on the deployed API, which has no process
+    | running Laravel's scheduler. Empty (the default) DISABLES the endpoint
+    | (404), so a deployment that never sets it exposes nothing.
+    |
+    */
+
+    'cron_token' => env('CRON_TOKEN'),
+
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),

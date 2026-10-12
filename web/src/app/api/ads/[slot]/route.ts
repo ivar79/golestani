@@ -12,8 +12,11 @@ import { NextResponse, type NextRequest } from "next/server";
  * sees one request per TTL window.
  */
 
-// Ad data changes rarely; five minutes of edge cache is plenty fresh.
-const REVALIDATE_SECONDS = 300;
+// PHASE 5 moderation freshness: five minutes of edge cache meant a rejected,
+// unpublished or expired ad could keep being served long after moderation —
+// the SERVER filter was correct, but the cached response was not. One minute
+// bounds that staleness while still absorbing the Render cold start.
+const REVALIDATE_SECONDS = 60;
 
 export async function GET(
   request: NextRequest,
@@ -54,7 +57,7 @@ export async function GET(
     const data = await upstream.json();
     return NextResponse.json(data, {
       headers: {
-        "Cache-Control": `public, s-maxage=${REVALIDATE_SECONDS}, stale-while-revalidate=600`,
+        "Cache-Control": `public, s-maxage=${REVALIDATE_SECONDS}, stale-while-revalidate=120`,
       },
     });
   } catch {

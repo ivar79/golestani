@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Megaphone } from "lucide-react";
-import { getPublicAds, type Advertisement } from "@/lib/ads";
+import { getPublicAds, visibleAdsFor, type Advertisement } from "@/lib/ads";
 import { resolveMediaUrl, safeHttpUrl } from "@/lib/businessSafety";
 
 type PublicAdSlotName = "home_banner" | "search_top" | "search_side";
@@ -16,8 +16,11 @@ export default function PublicAdSlot({ slot }: { slot: PublicAdSlotName }) {
     const timer = window.setTimeout(() => {
       void getPublicAds(slot)
         .then((ads) => {
+          // Defence-in-depth: re-check eligibility (moderation status, slot,
+          // schedule window, one position per business) so a STALE cached
+          // payload can never render an ad the server already stopped serving.
           if (!cancelled) {
-            setItems(ads.filter((ad) => ad.status === "approved" && ad.slot === slot).slice(0, 4));
+            setItems(visibleAdsFor(ads, slot));
           }
         })
         .catch(() => {

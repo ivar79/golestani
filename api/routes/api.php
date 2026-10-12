@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\PrivateAssetController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\BusinessEntitlementController;
 use App\Http\Controllers\Api\BusinessReportController;
+use App\Http\Controllers\Api\InternalCronController;
 use App\Http\Controllers\Api\Designer\DesignerController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PublicBusinessController;
@@ -22,6 +23,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
 });
+
+// External scheduler trigger (Phase 5 finding A): the deployed Render web
+// service has no process that runs Laravel's scheduler, so the subscription
+// expiry sweep is also reachable over HTTP for a FREE outside timer (Vercel
+// Cron / GitHub Actions). Shared-secret guarded (X-Cron-Token => CRON_TOKEN),
+// POST-only, throttled, and fail-closed (404 when no token is configured).
+// See api/app/Http/Controllers/Api/InternalCronController.php.
+Route::post('/internal/cron/expire-subscriptions', [InternalCronController::class, 'expireSubscriptions'])
+    ->middleware('throttle:6,1');
 
 // NOTE: map basemap tiles are no longer served by Laravel. The frontend uses
 // the Neshan Maps Platform SDK (hosted tiles + API key) with a public OSM

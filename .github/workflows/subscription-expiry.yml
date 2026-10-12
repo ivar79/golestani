@@ -1,0 +1,108 @@
+name: Subscription expiry sweep
+
+# FREE EXTERNAL SCHEDULER (Phase 5 finding A).
+#
+# The API runs on Render's free web-service plan, which has no process running
+# Laravel's scheduler, and Render Cron Job services start at $1/month. This
+# workflow is the outside timer: once a day it POSTs to the token-guarded
+# endpoint on the deployed API, which runs the SAME sweep as
+# `php artisan subscriptions:expire` (App\Services\SubscriptionSweep).
+#
+# The sweep is idempotent, so running it more/less often (or twice) can never
+# double-expire a subscription or duplicate an owner notification:
+#  - App\Services\SubscriptionLifecycle::markExpired() re-reads the row under a
+#    lock and only the first caller transitions it and pays the notification.
+#  - FeatureGate ALSO settles past-due rows lazily on read, so expiry
+#    correctness never depends on this workflow running at all.
+#
+# ONE-TIME SETUP (repository → Settings → Secrets and variables → Actions):
+#   CRON_TOKEN            required — must equal CRON_TOKEN on the Render API
+#                         service (generate once: openssl rand -hex 32)
+#   RENDER_API_BASE_URL   optional — deployed API base URL, e.g.
+#                         https://one-ns2s.onrender.com
+#                         (defaults to that host when unset)
+# Without CRON_TOKEN this workflow exits with a clear warning instead of
+# failing the repository's CI signal.
+
+on:
+  schedule:
+    # 00:10 UTC daily — right after the day boundary the sweep compares against.
+    # GitHub may delay scheduled runs by a few minutes under load; irrelevant
+    # here because the sweep only settles rows whose boundary has already passed.
+    - cron: '10 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-expiry-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Trigger expiry sweep on the deployed API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run the token-guarded sweep
+        env:
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+          API_BASE: ${{ secrets.RENDER_API_BASE_URL || 'https://one-ns2s.onrender.com' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CRON_TOKEN:-}" ]]; then
+            echo "::warning::CRON_TOKEN is not configured; skipping. Expiry is still enforced lazily on read (FeatureGate), so no subscription keeps paid capabilities past its boundary — only the batch settlement + notification are deferred."
+            exit 0
+          fi
+
+          case "$API_BASE" in
+            https://*) ;;
+            *) echo "RENDER_API_BASE_URL must be an https URL."; exit 1 ;;
+          esac
+
+          url="${API_BASE%/}/api/internal/cron/expire-subscriptions"
+          echo "Triggering the subscription expiry sweep."
+
+          # Retry a couple of times: the free Render instance may be cold
+          # starting (~50s) and is idempotent to re-trigger.
+          for attempt in 1 2 3; do
+            body="$(curl --silent --show-error --max-time 120 \
+              --request POST "$url" \
+              --header "X-Cron-Token: $CRON_TOKEN" \
+              --header 'Accept: application/json' \
+              --write-out '\n%{http_code}' || true)"
+            # The sweep itself is idempotent, so re-running on a 5xx is safe.
+            http_code="$(printf '%s' "$body" | tail -n 1)"
+            payload="$(printf '%s' "$body" | sed '$d')"
+
+            # 404 => CRON_TOKEN is not configured on the API service (endpoint
+            # deliberately disabled); 403 => the two tokens differ. Both are
+            # configuration problems, not transient, so report and stop.
+            case "$http_code" in
+              200)
+                if printf '%s' "$payload" | jq -e '.ok == true' >/dev/null 2>&1; then
+                  echo "Sweep completed: $(printf '%s' "$payload" | jq -c '{expired}')"
+                  exit 0
+                fi
+                echo "Unexpected 200 payload: $payload"
+                exit 1
+                ;;
+              401|403)
+                echo "Authentication failed (HTTP $http_code). CRON_TOKEN in this repository must equal CRON_TOKEN on the API service."
+                exit 1
+                ;;
+              404)
+                echo "The endpoint answered 404: CRON_TOKEN is not set on the API service, so the trigger is disabled by design."
+                exit 1
+                ;;
+              *)
+                echo "Attempt $attempt failed (HTTP $http_code)."
+                sleep 20
+                ;;
+            esac
+          done
+
+          echo "The sweep could not be triggered after 3 attempts."
+          exit 1

@@ -85,6 +85,12 @@ export const FREE_TIER_FALLBACK: EntitlementPayload = {
     max_cards: 1,
     max_showcases: 0,
     max_ads: 0,
+    // Phase 5 content limits (mirror config/entitlements.php free tier): the
+    // gallery cap and the showcase description length are PLAN entitlements
+    // now. Keeping the free values here means the loading placeholder shows
+    // the same numbers a free account actually gets — never "unlimited".
+    max_images: 5,
+    max_description_length: 500,
     showcase: false,
     ads: false,
   },

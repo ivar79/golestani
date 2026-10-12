@@ -83,10 +83,17 @@ export const uploadShowcase = (businessId: number, data: FormData) =>
     headers: { "Content-Type": "multipart/form-data" },
   }).then((r) => r.data);
 
-export const updateShowcase = (id: number, data: FormData) =>
-  api.put<Showcase>(`/showcases/${id}`, data, {
+export const updateShowcase = (id: number, data: FormData) => {
+  // PHP parses multipart bodies ONLY for POST (see lib/api.ts). A multipart
+  // PUT reaches Laravel with an empty payload, so the update failed with
+  // "title field is required" (422) and edits were never saved. Spoof the
+  // verb the same way the card-maker upload does: POST + _method=PUT keeps the
+  // multipart body parsable and the route/verb contract intact.
+  data.set("_method", "PUT");
+  return api.post<Showcase>(`/showcases/${id}`, data, {
     headers: { "Content-Type": "multipart/form-data" },
   }).then((r) => r.data);
+};
 
 export const deleteShowcase = (id: number) =>
   api.delete<{ message: string }>(`/showcases/${id}`).then((r) => r.data);

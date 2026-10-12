@@ -52,6 +52,10 @@ function adminRow(id: number, name: string, phone: string) {
   };
 }
 
+// SECURITY: never use a real administrator's phone number as a fixture. The
+// test only needs two DISTINCT, obviously synthetic numbers (the production
+// admin is provisioned out-of-band with `php artisan admin:provision <PHONE>`;
+// no real admin identity belongs in the repository, tests included).
 const SELF = adminRow(1, "مدیر سامانه", "09120000001");
 const OTHER = adminRow(2, "مدیر دوم", "09120000002");
 

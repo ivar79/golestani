@@ -44,7 +44,17 @@ if (! $plan) {
     exit(1);
 }
 
-$owner = User::where('phone', '09330000001')->first() ?? User::role('business_owner')->first();
+// The E2E owner identity comes from the environment (never a literal in
+// source — see the SECURITY RULES in storage/e2e_setup.php). Failing closed
+// also prevents "pick any business owner" from targeting an unrelated,
+// real account on a shared database.
+$ownerPhone = trim((string) getenv('E2E_OWNER_PHONE'));
+if (preg_match('/^09[0-9]{9}$/', $ownerPhone) !== 1) {
+    echo "REFUSED: set E2E_OWNER_PHONE (09xxxxxxxxx) for the E2E owner.".PHP_EOL;
+    exit(1);
+}
+
+$owner = User::where('phone', $ownerPhone)->first();
 if (! $owner) {
     echo "MISSING: E2E owner (run storage/e2e_setup.php first).".PHP_EOL;
     exit(1);

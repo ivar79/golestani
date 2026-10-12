@@ -70,6 +70,16 @@ services:
       # Lock CORS to the deployed Vercel origin (config/cors.php reads this)
       - key: CORS_ALLOWED_ORIGINS
         sync: false                # set to https://<your-app>.vercel.app in dashboard
+      # Shared secret for the external scheduler trigger
+      # (POST /api/internal/cron/expire-subscriptions). Set the SAME value as
+      # the GitHub repository secret CRON_TOKEN (see
+      # .github/workflows/subscription-expiry.yml) and as CRON_TOKEN on the
+      # Vercel project (see web/vercel.json + web/src/app/api/cron/).
+      # Unset => the endpoint answers 404 (fail-closed). Expiry still works
+      # without it: api/docker/start.sh sweeps on every boot and FeatureGate
+      # settles past-due rows lazily on read.
+      - key: CRON_TOKEN
+        sync: false
 
 # NOTE ON THE MAP:
 # Basemap tiles are no longer served by Laravel or any local tile server.
@@ -98,5 +108,19 @@ services:
 # so the DB must be PostGIS-capable. Render's managed PostgreSQL does NOT
 # include PostGIS — use a Neon PostGIS database (or Render PostGIS plan) and
 # paste its connection URL into DATABASE_URL in the Render dashboard.
+#
+# NOTE ON SCHEDULED TASKS (Phase 5 — automatic subscription expiry):
+# Laravel registers `subscriptions:expire` on a daily schedule
+# (api/bootstrap/app.php), but this plan runs on FREE compute: nothing here
+# executes Laravel's scheduler, and Render Cron Job services start at $1/month
+# (render.com/docs/cronjobs). Three FREE triggers therefore cover it:
+#   1. api/docker/start.sh runs the idempotent sweep on every deploy/restart;
+#   2. FeatureGate settles a past-due subscription lazily on the first read, so
+#      entitlements and the stored status can never lag behind the clock;
+#   3. an outside timer (Vercel Cron in web/vercel.json, or the GitHub Actions
+#      workflow .github/workflows/subscription-expiry.yml) POSTs to
+#      /api/internal/cron/expire-subscriptions with CRON_TOKEN set above.
+# If this service ever moves to a paid plan (or a Render Cron Job is added),
+# the same sweep is available as `php artisan subscriptions:expire`.
 # A plain Render Postgres instance is intentionally NOT defined here so the
 # blueprint doesn't silently create an incompatible database.

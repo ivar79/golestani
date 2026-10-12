@@ -84,3 +84,42 @@ Monorepo با دو بخش مستقل:
 - `api/` یک اپ استاندارد Laravel است (`composer.json` + `composer.lock` سالم) و document root آن `public/` است.
 - ارتباط فرانت و بک **فقط** از طریق `NEXT_PUBLIC_API_URL` است (وابستگی مسیری ندارند) → تفکیک پوشه‌ها مشکلی برای دیپلای ایجاد نمی‌کند.
 - CORS سمت Laravel با متغیر محیطی کنترل می‌شود — حتماً دامنه‌ی Vercel را تنظیم کنید.
+
+---
+
+## ۴. انقضای خودکار اشتراک روی محیط مستقر (Phase 5)
+
+Render در پلن **free** هیچ پردازشی برای اجرای scheduler لاراول ندارد و Cron Job سرویس Render از **۱ دلار در ماه** شروع می‌شود (`render.com/docs/cronjobs`)، بنابراین پلن فعلی نمی‌تواند فقط به `bootstrap/app.php` تکیه کند. سه مکانیزم مکمل و **رایگان** پیاده‌سازی شده است:
+
+1. **در زمان بوت**: `api/docker/start.sh` پس از مایگریشن، `php artisan subscriptions:expire` را (به‌صورت غیرمخرب و idempotent) اجرا می‌کند؛ یعنی هر دیپلوی/ری‌استارت باقیمانده‌های منقضی را تسویه می‌کند. خطای این دستور بوت را متوقف نمی‌کند.
+2. **به‌صورت Lazy روی هر خواندن**: `FeatureGate::settleLifecycle()` هنگام خواندن entitlement، ردیف‌های سررسیدشده‌ی همان کسب‌وکار را با قفل ردیف به `expired` می‌برد و اعلان `subscription_expired` را دقیقاً **یک‌بار** می‌سازد. پس حتی اگر هیچ زمان‌بندی بیرونی اجرا نشود، دسترسی پلنی بعد از مرز انقضا قطع می‌شود.
+3. **زمان‌بندی بیرونی (اختیاری ولی توصیه‌شده)**: endpoint توکن‌محافظ
+   `POST /api/internal/cron/expire-subscriptions` همین sweep را اجرا می‌کند. دو تریگر آماده است:
+
+   - **Vercel Cron** — `web/vercel.json` (روزانه ۰۰:۱۰ UTC) + هندلر `web/src/app/api/cron/expire-subscriptions/route.ts`.
+     متغیرهای لازم در پروژه‌ی Vercel: `CRON_SECRET` (خود Vercel هدر `Authorization: Bearer` را می‌فرستد) و `CRON_TOKEN` (همان راز مشترک سمت API).
+   - **GitHub Actions** — `.github/workflows/subscription-expiry.yml` (روزانه ۰۰:۱۰ UTC + اجرای دستی).
+     Secrets لازم: `CRON_TOKEN` (اجباری) و `RENDER_API_BASE_URL` (اختیاری؛ پیش‌فرض `https://one-ns2s.onrender.com`).
+
+### فعال‌سازی (۲ دقیقه)
+
+```bash
+# ۱) ساخت راز مشترک
+openssl rand -hex 32        # مقدار را در سه جا با نام CRON_TOKEN یکسان بگذارید
+```
+
+1. Render → سرویس `golestani-api` → Environment → `CRON_TOKEN` = مقدار بالا.
+2. GitHub → Settings → Secrets and variables → Actions → `CRON_TOKEN` = همان مقدار (و در صورت نیاز `RENDER_API_BASE_URL`).
+3. (اختیاری) Vercel → Project → Settings → Environment Variables → `CRON_TOKEN` = همان مقدار و `CRON_SECRET` = یک راز تازه (این یکی فقط برای خود Vercel است).
+
+بدون تنظیم `CRON_TOKEN`، endpoint عمداً **۴۰۴** برمی‌گرداند (fail-closed) و مسیرهای ۱ و ۲ همچنان انقضا را تضمین می‌کنند.
+
+### بررسی دستی
+
+```bash
+curl -sS -X POST "$API_BASE/api/internal/cron/expire-subscriptions" \
+     -H "X-Cron-Token: $CRON_TOKEN" -H 'Accept: application/json'
+# → {"ok":true,"expired":0}
+```
+
+اجرای دوباره باید همان `expired` را تغییر ندهد یا عدد کوچک‌تری برگرداند؛ اعلان تکراری ساخته نمی‌شود (قفل ردیف + `firstOrCreate`).

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ingress Static Check</title>
+  <style>
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      margin: 2rem;
+      background: #0b1220;
+      color: #e6edf7;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    p { margin: 0.25rem 0; color: #9aa8c7; }
+    code { background: #16202f; padding: 0.15rem 0.4rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Ingress static file serving: OK</h1>
+  <p>This file is served directly from <code>web/public/ingress-check.html</code>.</p>
+  <p>If you see this, nginx/Caddy/static hosting is configured for the <code>/web</code> (or equivalent) document root.</p>
+</body>
+</html>

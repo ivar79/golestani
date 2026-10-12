@@ -159,6 +159,13 @@ function DashboardInner() {
     refresh: refreshEntitlements,
   } = useEntitlements(editing?.id);
   const entitlements: EntitlementPayload = liveEntitlements;
+  // PDF Phase 5 «گالری تصاویر بیشتر»: the gallery cap is a PLAN entitlement
+  // (max_images) — it used to be a hard-coded 5 for every plan. `null` means
+  // unlimited. The server enforces the same number; this is the UX mirror.
+  const galleryImageLimit =
+    typeof entitlements.capabilities.max_images === "number"
+      ? entitlements.capabilities.max_images
+      : null;
   const entitlementsStatus = entitlementsError ? (
     <div role="alert" className="rounded-xl border border-ik-danger/30 bg-ik-danger/10 p-3 text-xs text-ik-danger">
       <span>دریافت وضعیت اشتراک ناموفق بود: {entitlementsError}</span>
@@ -1285,12 +1292,14 @@ function DashboardInner() {
                       <span>گالری تصاویر نمونه‌کارها و محیط کسب‌وکار</span>
                     </h2>
                     <p className="text-xs text-ik-muted mt-1">
-                      می‌توانید تا سقف ۵ تصویر باکیفیت برای جذب بیشتر مشتریان بارگذاری کنید.
+                      {galleryImageLimit === null
+                        ? "می‌توانید تصاویر باکیفیت را برای جذب بیشتر مشتریان بارگذاری کنید (بدون محدودیت تعداد در پلن فعلی)."
+                        : `می‌توانید تا سقف ${galleryImageLimit} تصویر باکیفیت برای جذب بیشتر مشتریان بارگذاری کنید.`}
                     </p>
                   </div>
 
                   <span className="text-xs font-semibold text-ik-muted">
-                    {images.length} از ۵ تصویر
+                    {images.length} از {galleryImageLimit === null ? "∞" : galleryImageLimit} تصویر
                   </span>
                 </div>
 
@@ -1300,17 +1309,19 @@ function DashboardInner() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {images.length < 5 && (
+                    {(galleryImageLimit === null || images.length < galleryImageLimit) && (
                       <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-ik-border bg-ik-panel-soft/40 p-6 text-center cursor-pointer transition-all hover:border-ik-accent/50">
                         <UploadCloud className="h-6 w-6 text-ik-accent mb-2" />
                         <span className="text-xs sm:text-sm font-semibold text-ik-text">
                           انتخاب یا رهاسازی تصاویر در این قسمت
                         </span>
                         <span className="mt-1 text-[11px] text-ik-muted">
-                          فرمت‌های JPG، PNG یا WebP تا سقف ۵ مگابایت
+                          {galleryImageLimit === null
+                            ? "فرمت‌های JPG، PNG یا WebP تا سقف ۵ مگابایت"
+                            : `فرمت‌های JPG، PNG یا WebP تا سقف ۵ مگابایت — سقف تعداد در پلن شما: ${galleryImageLimit}`}
                         </span>
                         <input
-                          disabled={busy || galleryLoading || images.length >= 5}
+                          disabled={busy || galleryLoading || (galleryImageLimit !== null && images.length >= galleryImageLimit)}
                           type="file"
                           multiple
                           accept="image/jpeg,image/png,image/webp"

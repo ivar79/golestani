@@ -40,6 +40,13 @@ export function ShowcasePanel({ businessId, entitlements }: { businessId?: numbe
   const showcaseAllowed = entitlements.capabilities.showcase === true;
   const maxShowcases = entitlements.capabilities.max_showcases;
   const limitReached = typeof maxShowcases === "number" && items.length >= maxShowcases && maxShowcases > 0;
+  // PDF Phase 5 «توضیحات کامل‌تر خدمات»: the description length is a plan
+  // entitlement (max_description_length). Higher plans get more room; the
+  // SERVER enforces the same number, so this is only the editor's mirror.
+  const maxDescriptionLength =
+    typeof entitlements.capabilities.max_description_length === "number"
+      ? entitlements.capabilities.max_description_length
+      : null;
 
   const refresh = useCallback(async () => {
     if (!businessId) {
@@ -182,7 +189,25 @@ export function ShowcasePanel({ businessId, entitlements }: { businessId?: numbe
             <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} placeholder="عنوان آیتم" className="ik-field rounded-xl border border-ik-border bg-ik-panel px-3 py-2.5 text-sm text-ik-text outline-none focus:border-ik-accent" />
             <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" min={0} placeholder="قیمت (تومان — اختیاری)" className="ik-field rounded-xl border border-ik-border bg-ik-panel px-3 py-2.5 text-sm text-ik-text outline-none focus:border-ik-accent" />
           </div>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} placeholder="توضیح کوتاه (اختیاری)" className="ik-field w-full rounded-xl border border-ik-border bg-ik-panel px-3 py-2.5 text-sm text-ik-text outline-none focus:border-ik-accent" />
+          <div className="space-y-1">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={maxDescriptionLength ?? undefined}
+              rows={3}
+              placeholder={
+                maxDescriptionLength === null
+                  ? "توضیح خدمات و محصولات (اختیاری — بدون محدودیت طول در پلن فعلی)"
+                  : `توضیح خدمات و محصولات (اختیاری — حداکثر ${maxDescriptionLength} کاراکتر در پلن فعلی)`
+              }
+              className="ik-field w-full rounded-xl border border-ik-border bg-ik-panel px-3 py-2.5 text-sm text-ik-text outline-none focus:border-ik-accent"
+            />
+            {maxDescriptionLength !== null && (
+              <p className="text-[11px] text-ik-muted" aria-live="polite">
+                {description.length} از {maxDescriptionLength} کاراکتر
+              </p>
+            )}
+          </div>
           <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-ik-text">
             <ImagePlus className="h-4 w-4 text-ik-accent" />
             {file ? file.name : editingId !== null ? "تصویر جدید (اختیاری؛ تصویر فعلی حفظ می‌شود)" : "انتخاب تصویر (JPEG، PNG، WebP — حداکثر ۵MB)"}

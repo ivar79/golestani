@@ -8,17 +8,39 @@ use App\Services\FeatureGate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 class AdvertisementController extends Controller {
+ /** PDF Phase 5: at most FOUR DISTINCT BUSINESSES may appear in one placement. */
+ public const PLACEMENT_BUSINESS_LIMIT = 4;
+
+ /**
+  * Public listing for ONE placement.
+  *
+  * CONTRACT (PDF Phase 5): "حداکثر ۴ کسب‌وکار تبلیغاتی در جایگاه تعیین‌شده".
+  * The cap counts BUSINESSES, not raw ad rows: only ONE eligible ad per
+  * business may occupy one of the four visible positions, so a single
+  * advertiser that owns several approved ads can never fill the placement
+  * (or displace other advertisers). The eligible-ad rules themselves are
+  * unchanged: approved ad + approved business + inside its schedule window.
+  *
+  * MAX(id) = the newest eligible ad of that business, which makes the choice
+  * deterministic and stable however many ads the business owns; the outer
+  * ordering (starts_at, then id) is unchanged.
+  */
  public function public(string $slot): JsonResponse
  {
-  $ads = Advertisement::query()
+  $newestEligibleAdPerBusiness = Advertisement::query()
+   ->selectRaw('MAX(id) as id')
    ->where('slot', $slot)
    ->where('status', 'approved')
    ->whereHas('business', fn ($query) => $query->where('status', 'approved'))
    ->where(fn ($query) => $query->whereNull('starts_at')->orWhereDate('starts_at', '<=', now()))
    ->where(fn ($query) => $query->whereNull('ends_at')->orWhereDate('ends_at', '>=', now()))
+   ->groupBy('business_id');
+
+  $ads = Advertisement::query()
+   ->whereIn('id', $newestEligibleAdPerBusiness)
    ->orderByDesc('starts_at')
    ->orderByDesc('id')
-   ->limit(4)
+   ->limit(self::PLACEMENT_BUSINESS_LIMIT)
    ->get(['id', 'business_id', 'slot', 'title', 'target_url', 'image_path', 'status', 'starts_at', 'ends_at']);
 
   return response()->json($ads)->header('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=120');

@@ -72,6 +72,26 @@ return [
         'max_showcases' => ['int', 'حداکثر آیتم ویترین', 'محدودیت‌ها', 0],
         'max_ads' => ['int', 'حداکثر آگهی', 'محدودیت‌ها', 0],
 
+        // PDF Phase 5 «گالری تصاویر بیشتر» — the business gallery used to be
+        // capped by the hard-coded config('business.gallery_limit') = 5 for
+        // EVERY plan, so "more gallery images" was not a plan capability at
+        // all. It is now an entitlement: the FREE value below mirrors the
+        // previous behaviour exactly (5), which means nothing changes until
+        // the admin sets a different number per plan. TYPE DECISION STILL
+        // NEEDED (business, not engineering): whether a higher plan means more
+        // images PER BUSINESS (this counter) or more images per showcase ITEM
+        // (the item carries a single image column today).
+        'max_images' => ['int', 'حداکثر تصاویر گالری', 'محدودیت‌ها', 5],
+
+        // PDF Phase 5 «توضیحات کامل‌تر خدمات» — the showcase description was
+        // limited by the dashboard editor (500 chars) and, more loosely, by the
+        // request rule (3000). The FREE value below is the limit users
+        // actually experience today, so free behaviour is unchanged; longer
+        // descriptions become a real, server-enforced plan benefit once the
+        // admin configures a higher number for a paid plan. TYPE DECISION
+        // STILL NEEDED (business): the final per-plan numbers.
+        'max_description_length' => ['int', 'حداکثر طول توضیحات (کاراکتر)', 'محدودیت‌ها', 500],
+
         'showcase' => ['bool', 'ویترین محصولات و خدمات', 'بازاریابی', false],
         'ads' => ['bool', 'تبلیغات ویژه در جایگاه‌ها', 'بازاریابی', false],
     ],
@@ -99,6 +119,9 @@ return [
             'max_cards' => 1,
             'max_showcases' => 0,
             'max_ads' => 0,
+            // Phase 5 additions — free-tier values preserve today's limits.
+            'max_images' => 5,
+            'max_description_length' => 500,
             'showcase' => false,
             'ads' => false,
         ],

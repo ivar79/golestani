@@ -15,10 +15,15 @@ use Illuminate\Support\Facades\DB;
  *
  * Evolution of the Phase 5 boolean gate:
  *   activeSubscription() — unchanged contract (latest active, non-expired);
- *                          now also LAZILY PROMOTES a due `scheduled`
- *                          subscription the instant its start time passes
- *                          (downgrade activates exactly at expires_at of the
- *                          superseded plan — no cron needed for correctness)
+ *                          also LAZILY SETTLES the lifecycle the instant the
+ *                          clock makes it due: past-due rows are flipped to
+ *                          `expired` (with the one-time owner notification,
+ *                          via SubscriptionLifecycle) and a due `scheduled`
+ *                          subscription is promoted (downgrade activates
+ *                          exactly at expires_at of the superseded plan).
+ *                          Neither depends on an external scheduler;
+ *                          subscriptions:expire stays as the batch sweep and
+ *                          shares the very same transition code.
  *   allows()             — same signature; reads the ENTITLEMENT SNAPSHOT
  *                          (POLICY snapshot_entitlements) with a live-resolve
  *                          fallback for legacy rows that predate snapshots.
@@ -94,8 +99,12 @@ class FeatureGate
     {
         $now = Carbon::now();
 
-        // Lazy promotion first (cheap existence probe; locks only when due).
-        $this->promoteDueScheduled($business, $now);
+        // Lazy lifecycle settlement first (cheap, deduped probe; locks only
+        // when something is actually due). This is what makes the STORED
+        // status and the `subscription_expired` notification independent of
+        // any external scheduler: the first read after the boundary settles
+        // the row, and repeated/replayed reads stay idempotent.
+        $this->settleLifecycle($business, $now);
 
         return $business->subscriptions()->with('plan')
             ->where('status', 'active')
@@ -122,6 +131,39 @@ class FeatureGate
             // business's current plan.
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * Settle everything this business owes the clock right now:
+     *   1. past-due ACTIVE rows become `expired` (+ one owner notification);
+     *   2. a due `scheduled` row (downgrade) is promoted to active.
+     *
+     * Both steps live in shared services so the artisan sweep and this lazy
+     * path behave identically. Cost: one indexed EXISTS probe per window
+     * (deduped below) — the write path only runs when something is due.
+     */
+    private function settleLifecycle(Business $business, Carbon $now): void
+    {
+        // Dedupe scope = the CURRENT REQUEST (a request attribute is created
+        // and discarded with the request itself, so tests, long-lived workers
+        // and repeat calls can never inherit a stale "already settled" mark).
+        // A request settles a business at most once; the next request probes
+        // again, which is what keeps a missed boundary self-healing.
+        $key = 'feature_gate.settled.'.$business->getKey();
+        $request = app()->bound('request') ? app('request') : null;
+        if ($request instanceof \Illuminate\Http\Request) {
+            if ($request->attributes->has($key)) {
+                return;
+            }
+            $request->attributes->set($key, true);
+        }
+
+        $lifecycle = app(\App\Services\SubscriptionLifecycle::class);
+        if ($lifecycle->hasSettlementDue($business, $now)) {
+            $lifecycle->expirePastDueFor($business, $now);
+        }
+
+        $this->promoteDueScheduled($business, $now);
     }
 
     /**
