@@ -31,7 +31,7 @@ class AuditAdminsTest extends TestCase
         // operator still sees enough to recognise the account.
         $this->artisan('admin:audit')
             ->expectsOutputToContain('Administrator accounts: 1')
-            ->expectsOutputToContain('093****6800')
+            ->expectsOutputToContain('091****0001')
             ->doesntExpectOutputToContain('09120000001')
             ->assertSuccessful();
     }

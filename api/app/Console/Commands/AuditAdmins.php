@@ -84,7 +84,7 @@ class AuditAdmins extends Command
         return self::SUCCESS;
     }
 
-    /** 09120000001 => 093****6800 (enough for an operator, useless in a leaked log). */
+    /** 09120000001 => 091****0001 (enough for an operator, useless in a leaked log). */
     private function mask(string $phone): string
     {
         if (mb_strlen($phone) < 8) {
