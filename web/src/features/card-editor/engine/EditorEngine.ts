@@ -105,6 +105,19 @@ import {
   type SnapIndex,
   type SnapResult,
 } from "../domain/snapping";
+import {
+  ANGLE_ASSIST_DEFAULT,
+  addAngledGuide,
+  addGuide,
+  angledGuideLines,
+  axisAlignedGuideLines,
+  moveGuide,
+  normalizeAngleAssist,
+  removeGuide,
+  rotateGuide,
+  type GuideAxis,
+  type UserGuide,
+} from "../domain/guides";
 import { parseNumericInput } from "../domain/numericInput";
 import { rotatePoint } from "../domain/rotation";
 import {
@@ -273,6 +286,22 @@ export type EngineState = {
    */
   snapGuides: Guide[];
   /**
+   * RULERS + USER GUIDES + ANGLE ASSIST — the drawing aids (domain/guides.ts).
+   *
+   * All three are VIEW STATE: they live next to `snapping`/`snapGuides` and are
+   * never written into the document, the save payload, the export or the public
+   * card view. `rulers` only controls whether the strips are DRAWN — it does not
+   * delete the guides, because hiding a ruler is not the same as throwing the
+   * user's lines away.
+   */
+  rulers: boolean;
+  /** Persistent user guides. `[]` when the user has none. */
+  guides: UserGuide[];
+  /** The "set-square": lock drawing angles to `angleAssistIncrement`. */
+  angleAssist: boolean;
+  /** Angular grid in degrees when `angleAssist` is on (45 by default). */
+  angleAssistIncrement: number;
+  /**
    * The path layer whose POINTS are being edited (double-click a curve, or the
    * "ویرایش نقاط" button). View state — never in history. Only one path can be
    * point-edited at a time, which is why this is an id and not a flag.
@@ -290,6 +319,12 @@ export class EditorEngine {
   private listeners = new Set<() => void>();
   /** Tier-aware save budget (defaults to the CAPPED policy; host injects the real one). */
   private savePolicy: SavePolicy = { budget: budgetForTier(60), unlimited: false };
+  /**
+   * JSON of the document as of the last successful save (null = never saved).
+   * Undo/redo compare against it so the header can say the TRUTH after the user
+   * steps back to the saved revision instead of keeping a permanent "unsaved".
+   */
+  private savedJson: string | null = null;
   private state: EngineState;
 
   /**
@@ -326,6 +361,10 @@ export class EditorEngine {
       anchorSelection: [],
       snapping: true,
       snapGuides: [],
+      rulers: false,
+      guides: [],
+      angleAssist: false,
+      angleAssistIncrement: ANGLE_ASSIST_DEFAULT,
       editingPathId: null,
       showNodes: true,
       curveRangeStart: null,
@@ -379,6 +418,16 @@ export class EditorEngine {
   }
 
   /**
+   * The truth of "is this document different from what is persisted?" — used
+   * after a history restore (undo/redo), where the pre-state recording cannot
+   * know the save state. Null `savedJson` means nothing was ever saved, so any
+   * document counts as changed.
+   */
+  private isDirtyAgainstSaved(json: string = this.currentJson()): boolean {
+    return this.savedJson === null || this.savedJson !== json;
+  }
+
+  /**
    * Record the PRE-change state once per semantic action. Callers invoke
    * this BEFORE mutating the document, so undo restores exactly the state
    * before the action (one action = one history record).
@@ -390,6 +439,16 @@ export class EditorEngine {
       canRedo: this.history.canRedo,
       dirty: this.state.dirty || changed,
     });
+  }
+
+  /**
+   * End the current history-coalescing run (e.g. the user left a text field or
+   * released a slider). The next edit with the same group key starts a NEW
+   * history record instead of merging into the previous one — so a typing run
+   * is one undo step, and two separate runs are two.
+   */
+  breakHistoryGroup(): void {
+    this.history.sealGroup();
   }
 
   /* ------------------------------ selection ------------------------------ */
@@ -1144,22 +1203,61 @@ export class EditorEngine {
    * Uniform-scale transform for one layer, anchored at its center. Used by the
    * numeric fields path and by the arrow-key scaling shortcuts.
    */
-  setLayerBox(layerId: string, box: { x: number; y: number; width: number; height: number; angle?: number }): void {
+  /**
+   * Update a layer's box (position, size, rotation).
+   *
+   * `box` is PARTIAL by contract: the transform panel's rotation controls are
+   * angle-only — "صاف کردن" commits `{ angle: 0 }` and the quick slider commits
+   * `{ angle: n }` — so a missing `width`/`height` is a normal, expected shape.
+   *
+   * Path anchors are stored in LAYER-LOCAL units, so a path must be rescaled
+   * exactly when its SIZE changes, and only then. Reading a missing size as a
+   * scale factor produced `NaN` for every anchor (`undefined / width`), which
+   * the renderer then wrote into the path's `d` and into the anchor/handle
+   * `cx`/`cy`, blanking the drawing and firing "Received NaN" console errors.
+   * Non-finite box values are refused here, at the single boundary every box
+   * edit crosses, so malformed geometry can never reach the document.
+   */
+  setLayerBox(
+    layerId: string,
+    box: Partial<{ x: number; y: number; width: number; height: number; angle: number }>,
+  ): void {
     const target = this.state.doc.layers.find((layer) => layer.id === layerId);
     if (!target || target.locked) return;
-    const patch: Partial<CardLayer> = { ...box } as Partial<CardLayer>;
+
+    const patch: Partial<CardLayer> = {};
+    for (const field of ["x", "y", "width", "height", "angle"] as const) {
+      const value = box[field];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        (patch as Record<string, number>)[field] = value;
+      }
+    }
+    if (Object.keys(patch).length === 0) return;
+
     if (target.kind === "path") {
-      const sx = box.width / Math.max(1, target.width);
-      const sy = box.height / Math.max(1, target.height);
-      if (target.rawD) {
-        (patch as Partial<PathLayer>).rawD = scalePathD(target.rawD, sx, sy);
-      } else if (target.points.length > 0) {
-        (patch as Partial<PathLayer>).points = target.points.map((point) => ({
-          x: point.x * sx,
-          y: point.y * sy,
-          hIn: point.hIn ? { x: point.hIn.x * sx, y: point.hIn.y * sy } : point.hIn ?? null,
-          hOut: point.hOut ? { x: point.hOut.x * sx, y: point.hOut.y * sy } : point.hOut ?? null,
-        }));
+      const { width, height } = box;
+      const resizes =
+        typeof width === "number" &&
+        typeof height === "number" &&
+        Number.isFinite(width) &&
+        Number.isFinite(height);
+      if (resizes) {
+        const sx = width / Math.max(1, target.width);
+        const sy = height / Math.max(1, target.height);
+        // A malformed CURRENT box (a non-finite stored size) must leave the
+        // valid anchors alone instead of rescaling them into NaN.
+        if (Number.isFinite(sx) && Number.isFinite(sy)) {
+          if (target.rawD) {
+            (patch as Partial<PathLayer>).rawD = scalePathD(target.rawD, sx, sy);
+          } else if (target.points.length > 0) {
+            (patch as Partial<PathLayer>).points = target.points.map((point) => ({
+              x: point.x * sx,
+              y: point.y * sy,
+              hIn: point.hIn ? { x: point.hIn.x * sx, y: point.hIn.y * sy } : point.hIn ?? null,
+              hOut: point.hOut ? { x: point.hOut.x * sx, y: point.hOut.y * sy } : point.hOut ?? null,
+            }));
+          }
+        }
       }
     }
     this.updateLayer(layerId, patch);
@@ -3475,7 +3573,80 @@ export class EditorEngine {
 
   /** Every snap target in the document (anchors, box edges/centres, artboard). */
   snapIndex(excludeIds: string[] = []): SnapIndex {
-    return buildSnapIndex(this.state.doc, { excludeIds });
+    // User guides join the index as ordinary lines: a guide that cannot snap is
+    // a decoration, and the whole point of placing one is to align to it.
+    return buildSnapIndex(this.state.doc, {
+      excludeIds,
+      guides: axisAlignedGuideLines(this.state.guides, this.state.doc.artboard),
+    });
+  }
+
+  /* --------------------- rulers, guides & the set-square --------------------- */
+
+  /** Show/hide the ruler strips. Guides survive the toggle. */
+  setRulers(enabled: boolean): void {
+    if (this.state.rulers === enabled) return;
+    this.emit({ rulers: enabled });
+  }
+
+  /**
+   * Place a guide (dragging out of a ruler). Adding onto an existing guide of
+   * the same axis MOVES it — see `domain/guides.addGuide`.
+   */
+  addGuide(axis: GuideAxis, at: number): void {
+    const next = addGuide(this.state.guides, axis, at, this.state.doc.artboard);
+    if (next === this.state.guides) return;
+    this.emit({ guides: next });
+  }
+
+  /**
+   * Place a guide at ANY angle — the diagonal a ruler drag cannot express.
+   * `point` is where the line passes; the angle is in degrees (0 = horizontal).
+   */
+  addAngledGuide(angle: number, point: { x: number; y: number }): void {
+    const next = addAngledGuide(this.state.guides, { angle, ...point }, this.state.doc.artboard);
+    if (next === this.state.guides) return;
+    this.emit({ guides: next });
+  }
+
+  /** Move one guide while it is dragged (its anchor point follows the pointer). */
+  moveGuide(id: string, point: { x: number; y: number }): void {
+    const next = moveGuide(this.state.guides, id, point, this.state.doc.artboard);
+    if (next === this.state.guides) return;
+    this.emit({ guides: next });
+  }
+
+  /** Spin a guide around its own anchor — how a horizontal guide becomes diagonal. */
+  rotateGuide(id: string, angle: number): void {
+    const next = rotateGuide(this.state.guides, id, angle, this.state.doc.artboard);
+    if (next === this.state.guides) return;
+    this.emit({ guides: next });
+  }
+
+  /** Remove one guide (double-click, or dropping it back onto the ruler). */
+  removeGuide(id: string): boolean {
+    const next = removeGuide(this.state.guides, id);
+    if (next.length === this.state.guides.length) return false;
+    this.emit({ guides: next });
+    return true;
+  }
+
+  clearGuides(): void {
+    if (this.state.guides.length === 0) return;
+    this.emit({ guides: [] });
+  }
+
+  /** Turn the angle-assist grid on/off (the "set-square"). */
+  setAngleAssist(enabled: boolean): void {
+    if (this.state.angleAssist === enabled) return;
+    this.emit({ angleAssist: enabled });
+  }
+
+  /** Pick the angular grid: 45 (default), 30, 15 or 90 degrees. */
+  setAngleAssistIncrement(degrees: number): void {
+    const next = normalizeAngleAssist(degrees);
+    if (this.state.angleAssistIncrement === next) return;
+    this.emit({ angleAssistIncrement: next });
   }
 
   /**
@@ -3492,6 +3663,7 @@ export class EditorEngine {
       tolerance: options.tolerance ?? this.snapTolerance,
       grid: options.grid,
       axisLock: options.axisLock,
+      angledGuides: angledGuideLines(this.state.guides, this.state.doc.artboard),
       artboard: this.state.doc.artboard,
     });
   }
@@ -3781,12 +3953,17 @@ export class EditorEngine {
       selection: this.withSelection(primary, surviving),
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
-      dirty: true,
+      // A history restore can land EXACTLY on the saved revision (undo back to
+      // the last save): forcing `true` there lied to the user and re-saved an
+      // identical document. Ask the saved revision instead — comparing the
+      // RESTORED doc, because `this.state.doc` has not been committed yet.
+      dirty: this.isDirtyAgainstSaved(JSON.stringify(doc)),
     };
   }
 
   /** Reset dirty flag after a successful save. */
   markSaved(): void {
+    this.savedJson = this.currentJson();
     if (!this.state.dirty) return;
     this.emit({ dirty: false });
   }
@@ -3795,6 +3972,8 @@ export class EditorEngine {
   replaceDocument(doc: CardDocument): void {
     this.history = new HistoryStack(50);
     this.history.commit(JSON.stringify(doc), { group: null });
+    // A replacement is a brand-new revision: it is NOT the saved document.
+    this.savedJson = null;
     this.emit({ doc, selection: this.withSelection(null), canUndo: false, canRedo: false, dirty: true });
   }
 

@@ -18,7 +18,14 @@ import { EditorEngine, type ResizeHandle } from "../engine/EditorEngine";
 import { useCardEditor } from "./useCardEditor";
 import { LayerBox, LayeredCard } from "./LayeredCardRenderer";
 import { SelectionOverlay } from "./SelectionOverlay";
-import { shouldBeginHandleDrag, exceedsClickThreshold } from "../domain/penGesture";
+import {
+  PEN_ANGLE_SNAP_DEGREES,
+  constrainPenPoint,
+  shouldBeginHandleDrag,
+  exceedsClickThreshold,
+} from "../domain/penGesture";
+import { ANGLE_ASSIST_PRESETS } from "../domain/guides";
+import { RulersAndGuides } from "./RulersAndGuides";
 import { layerHitCursor } from "../domain/cursorPolicy";
 import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
 import { constrainToAngle } from "../domain/pathOps";
@@ -35,6 +42,7 @@ import {
   type SnapGuide,
 } from "../domain/geometry";
 import { selectLayerIdsByMarquee } from "../domain/selectionMarquee";
+import { allowEditingShortcut, codeOf, isEditableTarget, isShortcutDialogOpen } from "../domain/keyboardGuards";
 
 type Props = {
   engine: EditorEngine;
@@ -97,6 +105,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     end: { x: number; y: number } | null;
   } | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<number | null>(null);
   /** Alt down right now — the "drag the whole layer" modifier of the node mode. */
   const altHeld = useAltHeld();
   const panRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
@@ -320,24 +329,29 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
 
   // Editor keyboard: arrows nudge, Delete/Backspace removes, Esc deselects,
   // Ctrl/Cmd+C/V/D copy/paste/duplicate. Typing in inputs is never hijacked.
+  // All physical keys are matched by `code` (layout-independent) so a Persian
+  // keyboard cannot turn Delete / arrows / Enter into dead keys.
   useEffect(() => {
-    const isEditable = (t: EventTarget | null): boolean => {
-      const el = t as HTMLElement | null;
-      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-    };
     const handler = (e: KeyboardEvent) => {
-      if (preview || isEditable(e.target)) return;
+      // While the shortcuts overlay is open the document is frozen: every
+      // editing key (Delete, arrows, Ctrl+D…) belongs to the modal, not the
+      // canvas, so the overlay behaves like the modal it claims to be.
+      if (preview || !allowEditingShortcut(e)) return;
       const mod = e.ctrlKey || e.metaKey;
       const id = state.selection.layerId;
       const layer = id ? doc.layers.find((l) => l.id === id) : null;
-      if (state.editingPathId && e.key.toLowerCase() === "h") {
+      const code = codeOf(e);
+
+      // H toggles node handles — only meaningful while point-editing.
+      if (state.editingPathId && code === "keyh") {
         e.preventDefault();
         engine.toggleShowNodes();
         return;
       }
-      if (e.key === "Escape") {
-        // Esc commits draft if 2+ anchors exist (Figma/Illustrator contract),
-        // drops draft if 1 anchor, leaves point-editing, or deselects.
+
+      // Escape: close pen draft, exit path editing, or deselect — all without
+      // a selected layer requirement.
+      if (code === "escape") {
         if (state.penDraft) {
           if (state.penDraft.length >= 2) {
             engine.finishPen(false);
@@ -354,84 +368,128 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         if (state.selection.layerId) engine.select(null);
         return;
       }
-      if (e.key === "Enter" && state.penDraft) {
-        e.preventDefault();
-        if (state.penDraft.length >= 2) {
-          engine.finishPen(false);
-        } else {
-          engine.cancelPen();
+
+      // Enter: finish/cancel pen draft, or enter path-editing mode on a path.
+      if (code === "enter") {
+        if (state.penDraft) {
+          e.preventDefault();
+          if (state.penDraft.length >= 2) {
+            engine.finishPen(false);
+          } else {
+            engine.cancelPen();
+          }
+          engine.setTool("select");
+          return;
         }
-        engine.setTool("select");
-        return;
+        if (layer?.kind === "path" && state.tool === "select") {
+          e.preventDefault();
+          engine.setPathEditing(layer.id);
+          return;
+        }
       }
-      if (e.key === "Enter" && !state.penDraft && layer?.kind === "path" && state.tool === "select") {
-        e.preventDefault();
-        engine.setPathEditing(layer.id);
-        return;
-      }
+
       const anchor = state.selectedAnchor;
-      // NODE MODE: Delete removes the whole node GROUP (multi-node), falling
-      // back to the single anchor; Ctrl+A selects every node of the path.
-      if ((e.key === "Delete" || e.key === "Backspace") && state.editingPathId) {
+
+      // NODE MODE: Delete/Backspace removes node GROUP (multi-node) or single
+      // anchor. Works without a selected layer — only needs active path editing.
+      if (code === "delete" && state.editingPathId) {
         e.preventDefault();
         if (!engine.deleteSelectedAnchors()) {
           if (anchor && state.editingPathId === anchor.layerId) engine.removeAnchorAt(anchor.layerId, anchor.index);
         }
         return;
       }
-      if (mod && e.key.toLowerCase() === "a" && state.editingPathId) {
+      if (code === "backspace" && state.editingPathId) {
+        e.preventDefault();
+        if (!engine.deleteSelectedAnchors()) {
+          if (anchor && state.editingPathId === anchor.layerId) engine.removeAnchorAt(anchor.layerId, anchor.index);
+        }
+        return;
+      }
+
+      // Ctrl+A selects all anchors of the edited path.
+      if (mod && code === "keya" && state.editingPathId) {
         e.preventDefault();
         engine.selectAllAnchors();
         return;
       }
-      // Arrow nudge moves the node GROUP while point-editing, else the layer.
-      if (state.editingPathId && anchor && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+
+      // Arrow nudge in node mode — moves the selected node GROUP.
+      if (
+        state.editingPathId &&
+        anchor &&
+        (code === "arrowleft" || code === "arrowright" || code === "arrowup" || code === "arrowdown")
+      ) {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
-        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
-        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        const dx =
+          code === "arrowleft" ? -step : code === "arrowright" ? step : 0;
+        const dy =
+          code === "arrowup" ? -step : code === "arrowdown" ? step : 0;
         engine.moveSelectedAnchors(dx, dy);
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && anchor && state.editingPathId === anchor.layerId) {
-        // While point-editing, Delete removes the selected ANCHOR, not the layer.
+
+      // While point-editing, Delete/Backspace on a single selected anchor removes
+      // just that anchor.
+      if (
+        (code === "delete" || code === "backspace") &&
+        anchor &&
+        state.editingPathId === anchor.layerId
+      ) {
         e.preventDefault();
         engine.removeAnchorAt(anchor.layerId, anchor.index);
         return;
       }
+
+      // Layer-level actions require a selected layer.
       if (!layer) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
+
+      // Delete/Backspace removes the selected layer.
+      if (code === "delete" || code === "backspace") {
         e.preventDefault();
         engine.deleteLayer(layer.id);
         return;
       }
-      if (mod && e.key.toLowerCase() === "d") {
+
+      // Ctrl+D duplicates the selected layer.
+      if (mod && code === "keyd") {
         e.preventDefault();
         engine.duplicateLayer(layer.id);
         return;
       }
-      if (mod && e.key.toLowerCase() === "c") {
+
+      // Ctrl+C copies the selected layer to the stage clipboard.
+      if (mod && code === "keyc") {
+        e.preventDefault();
         clipboard.current = JSON.parse(JSON.stringify(layer));
+        // Brief confirmation so the user knows the copy landed.
+        setCopyFeedback(Date.now());
+        if (copyFeedbackTimer.current) window.clearTimeout(copyFeedbackTimer.current);
+        copyFeedbackTimer.current = window.setTimeout(() => setCopyFeedback(null), 1200);
         return;
       }
-      if (mod && e.key.toLowerCase() === "v") {
+
+      // Ctrl+V pastes from the stage clipboard (does NOT need a selected layer).
+      if (mod && code === "keyv") {
         if (!clipboard.current) return;
         e.preventDefault();
         engine.pasteLayer(clipboard.current);
         return;
       }
+
       // Arrow nudge (Shift = coarse 10px step). One history entry per keydown.
       const step = e.shiftKey ? 10 : 1;
-      if (e.key === "ArrowLeft") {
+      if (code === "arrowleft") {
         e.preventDefault();
         engine.nudge(layer.id, -step, 0);
-      } else if (e.key === "ArrowRight") {
+      } else if (code === "arrowright") {
         e.preventDefault();
         engine.nudge(layer.id, step, 0);
-      } else if (e.key === "ArrowUp") {
+      } else if (code === "arrowup") {
         e.preventDefault();
         engine.nudge(layer.id, 0, -step);
-      } else if (e.key === "ArrowDown") {
+      } else if (code === "arrowdown") {
         e.preventDefault();
         engine.nudge(layer.id, 0, step);
       }
@@ -441,16 +499,22 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   }, [engine, doc, state.selection.layerId, state.penDraft, state.editingPathId, state.selectedAnchor, state.tool, preview]);
 
   const clipboard = useRef<CardLayer | null>(null);
+  const copyFeedbackTimer = useRef<number | null>(null);
+
+  // Clear the copy feedback timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimer.current) window.clearTimeout(copyFeedbackTimer.current);
+    };
+  }, []);
 
   // Space toggles the pan cursor. Bound on window so the state is right even
   // when focus is on a handle/input elsewhere in the stage.
   useEffect(() => {
-    const isEditable = (t: EventTarget | null): boolean => {
-      const el = t as HTMLElement | null;
-      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-    };
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !isEditable(e.target) && !spaceDown) {
+      // Space pans the canvas — but only when the help overlay is NOT open,
+      // where Space belongs to the modal (scrolling its content).
+      if (e.code === "Space" && !isEditableTarget(e.target) && !isShortcutDialogOpen() && !spaceDown) {
         e.preventDefault();
         setSpaceDown(true);
       }
@@ -515,16 +579,23 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     }
     if (state.tool === "pen") {
       event.stopPropagation();
-      const pos = pointerPos(event);
+      const raw = pointerPos(event);
       const draft = state.penDraft;
       // Clicking the FIRST anchor closes the path — the Figma/Illustrator
       // contract. The target is generous, but only offered once there is
-      // actually something to close.
-      if (draft && draft.length >= 2 && Math.hypot(pos.x - draft[0].x, pos.y - draft[0].y) <= CLOSE_SLOP / zoom) {
+      // actually something to close. RAW position on purpose: the Shift angle
+      // lock must never push the pointer off the anchor it is closing on.
+      if (draft && draft.length >= 2 && Math.hypot(raw.x - draft[0].x, raw.y - draft[0].y) <= CLOSE_SLOP / zoom) {
         engine.finishPen(true);
         setPenCursor(null);
         return;
       }
+      // ANGLE LOCK: Shift gives the documented 45° grid, the "set-square"
+      // toggle gives its own grid. The new segment is measured from the PREVIOUS
+      // anchor, so a horizontal/vertical/diagonal segment is one key away.
+      const increments = penAngleLock(event);
+      const previous = draft && draft.length > 0 ? draft[draft.length - 1] : null;
+      const pos = previous && increments.length > 0 ? constrainPenPoint(previous, raw, true, increments) : raw;
       if (draft && draft.length > 0) engine.penAddAnchor(pos);
       else engine.penStart(pos);
       // Remember where this click landed: a click only becomes a handle DRAG
@@ -605,11 +676,20 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     }
     const pos = pointerPos(event);
     if (state.tool === "pen") {
-      if (state.penDraft) setPenCursor(pos);
+      const penDraft = state.penDraft;
+      const anchor = penDraft && penDraft.length > 0 ? penDraft[penDraft.length - 1] : null;
+      const increments = penAngleLock(event);
+      // The rubber band and the handle drag both measure from the anchor just
+      // placed, so the lock previews exactly what the next click would commit.
+      const locked =
+        anchor && increments.length > 0 ? constrainPenPoint(anchor, pos, true, increments) : pos;
+      if (penDraft) setPenCursor(locked);
+      // The click↔drag decision stays RAW: the angle lock must not shrink the
+      // travel that decides whether this press is a drag at all.
       if (!penDragRef.current && penStartRef.current && shouldBeginHandleDrag(penStartRef.current, pos, zoom)) {
         penDragRef.current = true;
       }
-      if (penDragRef.current) engine.penDragHandle(pos);
+      if (penDragRef.current) engine.penDragHandle(locked);
       return;
     }
     if (isDrawingRef.current && state.tool === "draw") {
@@ -894,6 +974,19 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   }, [preview, onUploadImage, dropping, engine, pointerPos]);
 
   const isDrawingTool = state.tool === "pen" || state.tool === "draw";
+
+  /**
+   * The angular grid a drawing gesture locks onto, in degrees.
+   *
+   * Shift is the documented Illustrator/Photoshop 45° constraint; the
+   * "set-square" (`state.angleAssist`) is the same idea as a toggle with its own
+   * increment, so a user who needs 30° does not have to hold a key for it. An
+   * empty list means "no lock" — the pointer decides.
+   */
+  const penAngleLock = (event: { shiftKey: boolean }): number[] => {
+    if (event.shiftKey) return [PEN_ANGLE_SNAP_DEGREES];
+    return state.angleAssist ? [state.angleAssistIncrement] : [];
+  };
 
   const editingLayer = useMemo(
     () => (editingTextId ? (doc.layers.find((l) => l.id === editingTextId) as TextLayer | undefined) : undefined),
@@ -1197,7 +1290,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           </div>
           <button
             type="button"
-            title="اسنپ هوشمند (لنگرها، لبه‌ها و آرت‌بورد هنگام درگ گره)"
+            title="اسنپ هوشمند (لنگرها، لبه‌ها، خطوط راهنما و آرت‌بورد هنگام درگ گره)"
             onClick={() => engine.setSnapping(!state.snapping)}
             className={`rounded-xl border px-2 py-1 text-[11px] font-bold transition ${
               state.snapping
@@ -1207,6 +1300,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           >
             🧲 اسنپ
           </button>
+
             </div>
           </details>
         </div>
@@ -1317,6 +1411,43 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             </div>
           )}
 
+          {/* گونیا / زاویه‌بندی — همان قفل زاویه‌ای که Shift می‌دهد، این‌بار به‌صورت کلید دائمی
+              و با گام دلخواه. جای درستش همین نوار ابزار ترسیم است: تنها جایی که
+              کاربر در حال کشیدن خط است. */}
+          <div
+            className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold transition ${
+              state.angleAssist
+                ? "border-amber-400 bg-amber-500/20 text-amber-200"
+                : "border-white/10 bg-white/5 text-slate-400"
+            }`}
+          >
+            <button
+              type="button"
+              data-angle-assist-toggle=""
+              aria-pressed={state.angleAssist}
+              title="گونیا/زاویه‌بندی: قلم روی شبکهٔ زاویه‌ای قفل می‌شود (Shift همیشه ۴۵ درجه است)"
+              onClick={() => engine.setAngleAssist(!state.angleAssist)}
+            >
+              📐 گونیا
+            </button>
+            {state.angleAssist ? (
+              <select
+                data-angle-assist-increment=""
+                aria-label="گام زاویه"
+                title="گام زاویه‌ای قفل"
+                value={state.angleAssistIncrement}
+                onChange={(event) => engine.setAngleAssistIncrement(Number(event.target.value))}
+                className="rounded border border-white/10 bg-black/30 px-1 py-0.5 font-mono text-[10px] text-amber-100"
+              >
+                {ANGLE_ASSIST_PRESETS.map((degrees) => (
+                  <option key={degrees} value={degrees}>
+                    {degrees}°
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-slate-400">ضخامت</span>
             <input
@@ -1373,6 +1504,28 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           marginBottom: 12,
         }}
       >
+        {/* RULERS + USER GUIDES. View state only — the document never sees them,
+            which is why this sits in the wrapper rather than in the layer tree.
+            Mounted while EITHER is visible: hiding the ruler scale must not make
+            the user's guides vanish (they still snap, so they must still show). */}
+        {state.rulers || state.guides.length > 0 ? (
+          <RulersAndGuides
+            artboard={doc.artboard}
+            zoom={zoom}
+            pan={pan}
+            rulers={state.rulers}
+            guides={state.guides}
+            preview={preview}
+            /* The set-square locks a guide's angle too: one angular grid for the
+               whole drawing aid, not a pen-only setting. */
+            angleSnap={state.angleAssist ? state.angleAssistIncrement : null}
+            onAdd={(axis, at) => engine.addGuide(axis, at)}
+            onAddAngled={(angle, point) => engine.addAngledGuide(angle, point)}
+            onMove={(id, point) => engine.moveGuide(id, point)}
+            onRotate={(id, angle) => engine.rotateGuide(id, angle)}
+            onRemove={(id) => engine.removeGuide(id)}
+          />
+        ) : null}
       <div
         data-stage-inner
         className="absolute left-0 top-0 origin-top-left"
@@ -1685,9 +1838,45 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         </div>
       ) : null}
 
-      {/* Zoom controls (bottom-right, always reachable; RTL-safe, 10% to 200% range) */}
+      {/* Copy feedback flash — brief confirmation that Ctrl+C landed. */}
+      {copyFeedback !== null ? (
+        <div
+          className="absolute bottom-10 right-3 z-[3001] rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-2 py-1 text-[10px] font-semibold text-emerald-200 backdrop-blur shadow-lg"
+          aria-live="polite"
+        >
+          کپی شد
+        </div>
+      ) : null}
+
+      {/* Zoom controls (bottom-right, always reachable; RTL-safe, 10% to 200% range).
+          The ruler/guide toggle lives here rather than in the path-node panel because
+          rulers align ANY layer — they must be reachable long before point-editing. */}
       {preview ? null : (
         <div className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
+          <button
+            type="button"
+            data-rulers-toggle=""
+            aria-pressed={state.rulers}
+            title="خط‌کش و خطوط راهنما: از خط‌کش بکشید تا خط راهنما بسازید؛ برای حذف روی خط‌کش رها کنید یا دوبار کلیک کنید"
+            onClick={() => engine.setRulers(!state.rulers)}
+            className={`rounded-lg px-1.5 py-1 text-[11px] font-bold transition hover:bg-white/10 ${
+              state.rulers ? "bg-cyan-500/20 text-cyan-300" : "text-slate-400"
+            }`}
+          >
+            📏{state.guides.length > 0 ? ` ${state.guides.length}` : ""}
+          </button>
+          {state.guides.length > 0 ? (
+            <button
+              type="button"
+              data-guides-clear=""
+              title="حذف همهٔ خطوط راهنما (فقط نمایشی‌اند و روی طرح ذخیره نمی‌شوند)"
+              onClick={() => engine.clearGuides()}
+              className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-400 transition hover:bg-rose-500/15 hover:text-rose-200"
+            >
+              🧹
+            </button>
+          ) : null}
+          <div className="mx-0.5 h-4 w-px bg-white/10" />
           <button
             type="button"
             onClick={zoomOut}

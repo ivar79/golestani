@@ -48,7 +48,14 @@ services:
     command:
       - sh
       - -c
-      - cd public && exec php -S 0.0.0.0:8000 -t . ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+      # Laravel serves /storage/* statically only while public/storage resolves:
+      # the router script hands any existing file back to the web server, but a
+      # broken link falls through to the framework, where the signed local-disk
+      # route answers 403. The host's Windows symlink is unusable in here (Docker
+      # maps it to /mnt/host/c/...), which is why every uploaded card image
+      # rendered as an empty placeholder. A RELATIVE link resolves both inside
+      # this container and on the host, so the check recreates it when broken.
+      - cd public && [ -e storage/cards ] || { rm -rf storage && ln -s ../storage/app/public storage; }; exec php -S 0.0.0.0:8000 -t . ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
     networks:
       - golestani-network
     depends_on:

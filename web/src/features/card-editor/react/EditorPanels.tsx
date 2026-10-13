@@ -57,8 +57,11 @@ import {
   STROKE_WIDTH_MAX,
   STROKE_WIDTH_MIN,
 } from "../domain/stroke";
+import { allowEditingShortcut, codeOf } from "../domain/keyboardGuards";
 
-/** Structural access to badge-only fields (used for the style editor). */
+/**
+ * Structural access to badge-only fields (used for the style editor).
+ */
 type BadgeLayerLike = Pick<BadgeLayer, "style">;
 import type { EditorEngine, NumericField } from "../engine/EditorEngine";
 import { BOOLEAN_OP_LABELS, type BooleanOp } from "../domain/geometry/booleanOps";
@@ -402,15 +405,13 @@ export function Toolbox({
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
-      const target = event.target as HTMLElement | null;
-      if (!target || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
-      if (target.closest?.("[data-shortcut-dialog]")) return;
-      const root = toolbarRef.current?.closest(".ik-studio");
-      if (!root || !root.contains(target)) return;
+      if (!allowEditingShortcut(event)) return;
       const map: Record<string, ToolboxEntry> = {
-        v: "pointer", t: "text", r: "shape", p: "pen", b: "path", i: "image", q: "qr",
+        keyv: "pointer", keyt: "text", keyr: "shape", keyp: "pen", keyb: "path", keyi: "image", keyq: "qr",
       };
-      const kind = map[event.key.toLowerCase()];
+      // Physical key (KeyboardEvent.code) — a shortcut is about the key that was
+      // pressed, not the character a non-Latin layout would print for it.
+      const kind = map[codeOf(event)];
       if (!kind) return;
       event.preventDefault();
       activateRef.current(kind);
@@ -475,6 +476,15 @@ export function Toolbox({
       !kindAllowed ||
       (addsLayer && addBlocked) ||
       (kind === "image" && (uploading || !onUploadImage));
+    // Honest reason for a dead button: the tool the user is aiming at must say
+    // WHY it cannot be used (plan lock vs. layer cap), never just go grey.
+    const disabledReason = !kindAllowed
+      ? "این ابزار در پلن فعلی فعال نیست"
+      : addsLayer && addBlocked
+        ? "به سقف تعداد لایه‌ها رسیده‌اید"
+        : kind === "image" && !onUploadImage
+          ? "بارگذاری تصویر در این صفحه در دسترس نیست"
+          : undefined;
     const isSelected =
       (kind === "pointer" && state.tool === "select") ||
       (kind === "path" && state.tool === "draw") ||
@@ -488,7 +498,7 @@ export function Toolbox({
         ref={kind === "shape" ? shapeTriggerRef as RefObject<HTMLButtonElement> : kind === "curved_line" ? curveTriggerRef as RefObject<HTMLButtonElement> : undefined}
         onClick={() => activate(kind)}
         disabled={disabled}
-        title={item.shortcut ? item.label + " · " + item.shortcut : item.label}
+        title={disabledReason ?? (item.shortcut ? item.label + " · " + item.shortcut : item.label)}
         aria-label={item.label}
         aria-keyshortcuts={item.shortcut}
         aria-pressed={isSelected}
@@ -625,6 +635,7 @@ export function BackgroundPanel({ engine }: { engine: EditorEngine }) {
   const entitlements = useEntitlements();
   const isPro = entitlements.plan !== "Free" && entitlements.plan !== "free";
   const bg = state.doc.background;
+  const [presetLockNote, setPresetLockNote] = useState<string | null>(null);
 
   const BG_LUXURY_PRESETS = [
     { label: "مخملی رویال", value: "linear-gradient(135deg, #090d16 0%, #111827 50%, #060910 100%)", preview: "#090d16" },
@@ -662,7 +673,12 @@ export function BackgroundPanel({ engine }: { engine: EditorEngine }) {
               key={idx}
               type="button"
               onClick={() => {
-                if (!isPro) return;
+                if (!isPro) {
+                  // Never a silent no-op: name the lock so the user knows why
+                  // the material did not apply.
+                  setPresetLockNote("متریال‌های لوکس در پلن حرفه‌ای فعال می‌شوند.");
+                  return;
+                }
                 engine.setBackground(preset.value);
               }}
               className={`relative flex items-center gap-1.5 rounded-lg border p-1.5 text-[10px] font-semibold transition ${
@@ -684,6 +700,9 @@ export function BackgroundPanel({ engine }: { engine: EditorEngine }) {
             </button>
           ))}
         </div>
+        {presetLockNote && (
+          <p className="text-[9px] font-semibold text-amber-300/90">{presetLockNote}</p>
+        )}
       </div>
 
       <GradientField
@@ -849,6 +868,10 @@ export function InspectorPanel({
   const [replacing, setReplacing] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const entitlements = useEntitlements();
+  // Duplicate ADDS a layer, so it answers to the same max_layers cap as the
+  // Toolbox — otherwise a full document could be pushed over the limit from the
+  // inspector and only discovered when the autosave audit refused it.
+  const addBlocked = layerLimitState(entitlements.capabilities, state.doc.layers.length).state === "reached";
 
   // TYPOGRAPHY CAPABILITY: the document's font families are the SAME entitlement
   // as the template font (card_fonts), enforced server-side on every save. The
@@ -948,9 +971,10 @@ export function InspectorPanel({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
+            disabled={addBlocked}
             onClick={() => engine.duplicateLayer(selected.id)}
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
-            title="کپی / همانندسازی لایه (Ctrl+D)"
+            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+            title={addBlocked ? "به سقف تعداد لایه‌ها رسیده‌اید" : "کپی / همانندسازی لایه (Ctrl+D)"}
           >
             <Copy className="h-3 w-3" />
             <span>کپی</span>
@@ -988,7 +1012,10 @@ export function InspectorPanel({
             <textarea
               dir="rtl"
               value={selected.text}
-              onChange={(e) => engine.updateLayer(selected.id, { text: e.target.value } as never)}
+              // One history record per typing run, not per keystroke: otherwise
+              // ~50 characters evict the whole bounded (cap-50) undo stack.
+              onChange={(e) => engine.updateLayer(selected.id, { text: e.target.value } as never, { group: "text:" + selected.id })}
+              onBlur={() => engine.breakHistoryGroup()}
               rows={2}
               className="w-full rounded-xl border border-white/15 bg-white/5 p-2 text-xs text-white outline-none focus:border-cyan-400"
             />
@@ -1015,7 +1042,9 @@ export function InspectorPanel({
                 min={12}
                 max={96}
                 value={selected.fontSize}
-                onChange={(e) => engine.updateLayer(selected.id, { fontSize: Number(e.target.value) } as never)}
+                onChange={(e) => engine.updateLayer(selected.id, { fontSize: Number(e.target.value) } as never, { group: "fontSize:" + selected.id })}
+                onPointerUp={() => engine.breakHistoryGroup()}
+                onKeyUp={() => engine.breakHistoryGroup()}
                 className="w-full accent-cyan-400"
               />
             </label>
@@ -1062,7 +1091,9 @@ export function InspectorPanel({
                 max={2.4}
                 step={0.05}
                 value={selected.lineHeight ?? 1.25}
-                onChange={(e) => engine.updateLayer(selected.id, { lineHeight: Number(e.target.value) } as never)}
+                onChange={(e) => engine.updateLayer(selected.id, { lineHeight: Number(e.target.value) } as never, { group: "lineHeight:" + selected.id })}
+                onPointerUp={() => engine.breakHistoryGroup()}
+                onKeyUp={() => engine.breakHistoryGroup()}
                 className="w-full accent-cyan-400"
               />
             </label>
@@ -1074,7 +1105,9 @@ export function InspectorPanel({
                 max={12}
                 step={0.5}
                 value={selected.letterSpacing ?? 0}
-                onChange={(e) => engine.updateLayer(selected.id, { letterSpacing: Number(e.target.value) } as never)}
+                onChange={(e) => engine.updateLayer(selected.id, { letterSpacing: Number(e.target.value) } as never, { group: "letterSpacing:" + selected.id })}
+                onPointerUp={() => engine.breakHistoryGroup()}
+                onKeyUp={() => engine.breakHistoryGroup()}
                 className="w-full accent-cyan-400"
               />
             </label>
@@ -1291,7 +1324,7 @@ export function InspectorPanel({
               max={180}
               step={1}
               value={Math.round(selected.angle ?? 0)}
-              onChange={(e) => engine.setLayerBox(selected.id, { angle: Number(e.target.value) } as never)}
+              onChange={(e) => engine.setLayerBox(selected.id, { angle: Number(e.target.value) })}
               className="w-full accent-cyan-400"
               title="چرخش سریع (۱ درجه‌ای) — برای زاویه اعشاری از کادر چرخش استفاده کنید"
             />
@@ -1339,7 +1372,7 @@ export function InspectorPanel({
           </button>
           <button
             type="button"
-            onClick={() => engine.setLayerBox(selected.id, { angle: 0 } as never)}
+            onClick={() => engine.setLayerBox(selected.id, { angle: 0 })}
             className="flex-1 rounded-lg border border-white/10 bg-white/5 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-white"
           >
             صاف کردن
@@ -1460,6 +1493,11 @@ export function InspectorPanel({
 
 export function LayersPanel({ engine, doc }: { engine: EditorEngine; doc: CardDocument }) {
   const state = useCardEditor(engine);
+  const entitlements = useEntitlements();
+  // The SAME cap the Toolbox enforces. Without it, this button (and the
+  // inspector's Duplicate) let the document exceed max_layers, and the next
+  // autosave then failed its pre-flight audit — an error the user did not cause.
+  const addBlocked = layerLimitState(entitlements.capabilities, doc.layers.length).state === "reached";
   const ordered = [...doc.layers].reverse(); // top-most first for display
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -1568,8 +1606,10 @@ export function LayersPanel({ engine, doc }: { engine: EditorEngine; doc: CardDo
       )}
       <button
         type="button"
+        disabled={addBlocked}
         onClick={() => engine.addLayer("text")}
-        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 py-2 text-xs font-bold text-slate-300 hover:text-white"
+        title={addBlocked ? "به سقف تعداد لایه‌ها رسیده‌اید" : undefined}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 py-2 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-40"
       >
         <Plus className="h-3.5 w-3.5" />
         لایه متن جدید

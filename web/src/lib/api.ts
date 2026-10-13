@@ -1,5 +1,6 @@
 import axios from "axios";
 import { clearSession, readStoredToken } from "@/lib/session";
+import { formatRemaining } from "@/lib/subscriptionTime";
 // Backwards-compatible re-export: existing imports of TOKEN_KEY keep working.
 export { TOKEN_KEY } from "@/lib/session";
 // Host URLs must come from NEXT_PUBLIC_API_URL only (Vercel now, Liara later).
@@ -74,6 +75,42 @@ export async function retryTransient<T>(run: () => Promise<T>, delays: number[] 
   }
 }
 
+/**
+ * How long the client must wait after a 429, in seconds — straight from the
+ * server's `Retry-After` header (Laravel's throttle middleware sets it).
+ *
+ * The buckets are NOT all one minute: /auth/send-otp is 3 per 10 minutes
+ * (route `throttle:3,10` plus OtpService::MAX_SENDS / SENDS_TTL_SECONDS),
+ * /auth/verify-otp 5 per 15 minutes, and the card-write bucket 120 per
+ * minute — so a single hardcoded duration is wrong somewhere. Returns null
+ * when the answer carried no header (our own API's 429 JSON, tests, proxies
+ * that strip it).
+ */
+export function retryAfterSeconds(error: unknown): number | null {
+  if (!axios.isAxiosError(error)) return null;
+  const headers = error.response?.headers as Record<string, unknown> | undefined;
+  const raw = headers?.["retry-after"];
+  const seconds = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : null;
+}
+
+/**
+ * The wait phrase inside a 429 sentence: the server's own number when it sent
+ * one («حدود ۱۰ دقیقه», «حدود ۴۵ ثانیه»), otherwise the auth-window default —
+ * the bucket users hit most often is send-otp at 3 per 10 minutes, and the
+ * old copy understated it as «حدود یک دقیقه».
+ */
+export function rateLimitWaitHint(error: unknown): string {
+  const seconds = retryAfterSeconds(error);
+  if (seconds === null) return "حدود ۱۰ دقیقه";
+  // Under a minute the seconds themselves are the useful answer; above that,
+  // round UP to whole minutes — Laravel reports the leftover window (599s for
+  // the 10-minute send-otp bucket), and «حدود ۹ دقیقه و ۵۹ ثانیه» is noise for
+  // someone who has to wait it out anyway.
+  const rounded = seconds < 60 ? seconds * 1000 : Math.ceil(seconds / 60) * 60_000;
+  return `حدود ${formatRemaining(rounded)}`;
+}
+
 export function extractApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
@@ -86,7 +123,7 @@ export function extractApiError(error: unknown): string {
     // ("Too Many Attempts.", "Server Error") — verified live: 31×200 then 429
     // from the `throttle:30,1` bucket on /businesses. Those never reach the UI.
     if (status === 429) {
-      return "درخواست‌های زیادی در زمان کوتاه ارسال شد؛ حدود یک دقیقه صبر کنید و دوباره تلاش کنید.";
+      return `درخواست‌های زیادی در زمان کوتاه ارسال شد؛ ${rateLimitWaitHint(error)} صبر کنید و دوباره تلاش کنید.`;
     }
     if (status !== undefined && status >= 500) {
       return "سرور در حال حاضر پاسخ درست نمی‌دهد؛ کمی بعد دوباره تلاش کنید.";

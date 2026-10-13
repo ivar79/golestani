@@ -18,6 +18,33 @@ describe("extractApiError", () => {
 
     expect(message).not.toMatch(/Too Many Attempts/i);
     expect(message).toContain("درخواست‌های زیادی");
+    // Regression (measured live 2026-10-12): the send-otp bucket is 3 per
+    // 10 MINUTES, but the copy promised «حدود یک دقیقه», so users retried in
+    // a minute and were refused again — they read it as a broken login.
+    expect(message).toContain("۱۰ دقیقه");
+    expect(message).not.toContain("یک دقیقه");
+  });
+
+  it("states the server's own wait when the 429 carries Retry-After", () => {
+    const error = new AxiosError("Request failed with status code 429");
+    error.response = {
+      status: 429,
+      data: { message: "Too Many Attempts." },
+      headers: { "retry-after": "600" },
+    } as never;
+
+    expect(extractApiError(error)).toContain("۱۰ دقیقه");
+
+    // The card-write bucket is per-MINUTE, so the same mapper must not promise
+    // a ten-minute wait for a bucket that clears in seconds.
+    const short = new AxiosError("Request failed with status code 429");
+    short.response = {
+      status: 429,
+      data: { message: "Too Many Attempts." },
+      headers: { "retry-after": "45" },
+    } as never;
+
+    expect(extractApiError(short)).toContain("۴۵ ثانیه");
   });
 
   it("localizes a 5xx instead of leaking 'Server Error'", () => {

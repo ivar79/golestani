@@ -120,6 +120,23 @@ describe("EditorEngine", () => {
     expect(engine.getState().dirty).toBe(false);
   });
 
+  it("undo back to the last saved revision reports CLEAN (header must not lie)", () => {
+    const engine = new EditorEngine(testDoc());
+    // No save has happened yet: the initial document is the only revision.
+    engine.markSaved();
+    expect(engine.getState().dirty).toBe(false);
+
+    engine.updateLayer("t1", { text: "edited" });
+    expect(engine.getState().dirty).toBe(true);
+
+    engine.undo();
+    // Undone exactly onto the saved revision — nothing is pending.
+    expect(engine.getState().dirty).toBe(false);
+
+    engine.redo();
+    expect(engine.getState().dirty).toBe(true);
+  });
+
   it("addLayer selects the new layer", () => {
     const engine = new EditorEngine(testDoc());
     const id = engine.addLayer("badge");

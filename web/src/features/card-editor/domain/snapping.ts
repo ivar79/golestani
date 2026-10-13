@@ -30,6 +30,7 @@ export type SnapKind =
   | "box-edge"
   | "artboard-edge"
   | "artboard-center"
+  | "guide"
   | "grid";
 
 export type SnapAxis = "x" | "y";
@@ -57,6 +58,13 @@ export type Guide = {
   to: number;
   kind: "align" | "spacing";
   label?: string;
+  /**
+   * Present on an ANGLED guide: the alignment line runs through (at, from) at
+   * this angle in degrees (0 = horizontal, 90 = vertical). `axis` is then only
+   * a hint for z-order and `at`/`from` are the anchor POINT, not an axis value.
+   * A renderer must check this before trusting `axis`.
+   */
+  angle?: number;
 };
 
 export type SnapOptions = {
@@ -69,6 +77,12 @@ export type SnapOptions = {
    * modifier contract a UI exposes as "hold shift to constrain".
    */
   axisLock?: boolean;
+  /**
+   * USER GUIDES THAT ARE NOT AXIS-ALIGNED (domain/guides.ts). They are lines at
+   * any angle, so they cannot be expressed as a one-axis `SnapLine`: snapping to
+   * one PROJECTS the point onto the line (both coordinates move).
+   */
+  angledGuides?: readonly { x: number; y: number; angle: number }[];
   artboard?: { width: number; height: number };
 };
 
@@ -118,7 +132,16 @@ function pushBox(index: SnapIndex, rect: Rect, kind: SnapKind, sourceId?: string
  */
 export function buildSnapIndex(
   doc: CardDocument,
-  options: { excludeIds?: string[]; layers?: CardLayer[] } = {},
+  options: {
+    excludeIds?: string[];
+    layers?: CardLayer[];
+    /**
+     * USER GUIDES (domain/guides.ts) as one-axis lines. They are view state, so
+     * they arrive here structurally rather than through the document: a guide
+     * snaps exactly like an edge, and it is never written into the design.
+     */
+    guides?: readonly { axis: SnapAxis; at: number }[];
+  } = {},
 ): SnapIndex {
   const exclude = new Set(options.excludeIds ?? []);
   const index: SnapIndex = { lines: [], points: [] };
@@ -151,6 +174,16 @@ export function buildSnapIndex(
       { axis: "y", value: 0, kind: "artboard-edge", from: 0, to: width },
       { axis: "y", value: height / 2, kind: "artboard-center", from: 0, to: width },
       { axis: "y", value: height, kind: "artboard-edge", from: 0, to: width },
+    );
+  }
+
+  // Guides span the whole board, so the extent is the board itself.
+  for (const guide of options.guides ?? []) {
+    if (!Number.isFinite(guide.at)) continue;
+    index.lines.push(
+      guide.axis === "x"
+        ? { axis: "x", value: guide.at, kind: "guide", from: 0, to: height ?? 0 }
+        : { axis: "y", value: guide.at, kind: "guide", from: 0, to: width ?? 0 },
     );
   }
 
@@ -200,6 +233,33 @@ function gridSnap(value: number, grid: number): number {
 }
 
 /**
+ * Nearest ANGLED guide to a point, by PERPENDICULAR distance to its line.
+ *
+ * Perpendicular distance is the only honest metric here: the Euclidean distance
+ * to an infinite line's anchor would make a long line snap worse the further
+ * along it you grab, which is the opposite of what a guide is for.
+ */
+function nearestAngledGuide(
+  point: Pt,
+  guides: readonly { x: number; y: number; angle: number }[],
+  tolerance: number,
+): { guide: { x: number; y: number; angle: number }; x: number; y: number; distance: number } | null {
+  let best: { guide: { x: number; y: number; angle: number }; x: number; y: number; distance: number } | null =
+    null;
+  for (const guide of guides) {
+    const radians = (guide.angle * Math.PI) / 180;
+    const nx = -Math.sin(radians);
+    const ny = Math.cos(radians);
+    const signed = (point.x - guide.x) * nx + (point.y - guide.y) * ny;
+    const distance = Math.abs(signed);
+    if (!Number.isFinite(distance) || distance > tolerance) continue;
+    if (best && distance >= best.distance) continue;
+    best = { guide, x: point.x - signed * nx, y: point.y - signed * ny, distance };
+  }
+  return best;
+}
+
+/**
  * Snap a POINT (a node, an endpoint, a corner being dragged).
  *
  * Order: a full point target wins (both axes, one anchor), otherwise each axis
@@ -228,6 +288,24 @@ export function snapPointSmart(point: Pt, index: SnapIndex, options: SnapOptions
   const lineY = nearestLine(index, "y", point.y, tolerance);
   const devX = lineX ? Math.abs(lineX.value - point.x) : Infinity;
   const devY = lineY ? Math.abs(lineY.value - point.y) : Infinity;
+
+  // An angled guide is a line the USER drew on purpose, and it can only be
+  // honoured by moving both coordinates (the point projects onto the line).
+  // `axisLock` promises "only one axis may move", which an angled line cannot
+  // keep, so the lock wins and the angled pass is skipped.
+  const angled = options.axisLock
+    ? null
+    : nearestAngledGuide(point, options.angledGuides ?? [], tolerance);
+  if (angled && angled.distance <= Math.min(devX, devY) + 1e-9) {
+    return {
+      x: angled.x,
+      y: angled.y,
+      snappedX: true,
+      snappedY: true,
+      kind: "guide",
+      guides: [{ axis: "x", at: angled.guide.x, from: angled.guide.y, to: angled.guide.y, kind: "align", angle: angled.guide.angle }],
+    };
+  }
 
   const allowX = !options.axisLock || devX <= devY;
   const allowY = !options.axisLock || devY <= devX;

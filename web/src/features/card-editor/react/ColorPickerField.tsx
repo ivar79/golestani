@@ -66,7 +66,7 @@ export function ColorPickerField({
         onPointerLeave={(e) => {
           if (e.buttons > 0) onGestureEnd();
         }}
-        className="[&_.react-colorful]:w-full [&_.react-colorful]:h-40 [&_.react-colorful\_\_pointer]:w-4 [&_.react-colorful\_\_pointer]:h-4"
+        className="color-picker-shell"
       >
         <HexAlphaColorPicker
           color={hex8}

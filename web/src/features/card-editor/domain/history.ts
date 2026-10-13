@@ -73,4 +73,15 @@ export class HistoryStack {
     this.past = [];
     this.future = [];
   }
+
+  /**
+   * Close the current coalescing run: the top record stops matching its group
+   * key, so the next same-group commit starts a fresh record. Used to make one
+   * typing run (or one slider gesture) a single undo step without letting the
+   * following run merge into it.
+   */
+  sealGroup(): void {
+    const top = this.past[this.past.length - 1];
+    if (top && top.group !== null) top.group = null;
+  }
 }

@@ -11,17 +11,29 @@
  * The controls write through the engine, so the assertions read the document —
  * the same source the renderer, the autosave and the exporter consume.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EditorEngine } from "../../engine/EditorEngine";
+import { renderToStaticMarkup } from "react-dom/server";
 import { InspectorPanel, Toolbox } from "../EditorPanels";
 import { LayeredCard, LayerVisual } from "../LayeredCardRenderer";
 import { clearQrAssets, registerQrAsset } from "../../domain/qrAssets";
-import { ARTBOARD, type CardDocument, type CardLayer, type ImageLayer, type QrLayer, type TextLayer } from "../../domain/document";
+import { ARTBOARD, type CardDocument, type CardLayer, type ImageLayer, type PathLayer, type QrLayer, type TextLayer } from "../../domain/document";
 
 // VectorInspectors (imported by EditorPanels) links out to the pricing page.
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children?: React.ReactNode; href?: string }) => <a href={href}>{children}</a>,
+}));
+
+// CardStudio tests need FeatureGate mock; other tests don't use it directly.
+// `PremiumBadge` is mocked too: a PATH inspector renders it (luxury material
+// picker), so a path-layer test would otherwise fail on the partial mock.
+vi.mock("@/components/cards/FeatureGate", () => ({
+  useEntitlements: () => ({
+    plan: "Free",
+    capabilities: { max_layers: 50, card_fonts: ["vazir", "sans", "serif", "monospace"] },
+  }),
+  PremiumBadge: ({ label = "ویژه" }: { label?: string }) => <span>{label}</span>,
 }));
 
 afterEach(cleanup);
@@ -79,15 +91,29 @@ describe("Toolbox — keyboard tool shortcuts", () => {
     const studioRoot = container.firstElementChild;
     if (!studioRoot) throw new Error("expected the studio keyboard scope");
 
-    fireEvent.keyDown(studioRoot, { key: "p" });
+    // Real keyboards always send BOTH fields; the shortcut is bound to the
+    // physical `code` so a non-Latin layout cannot steal it.
+    fireEvent.keyDown(studioRoot, { key: "p", code: "KeyP" });
     expect(engine.getState().tool).toBe("pen");
-    fireEvent.keyDown(studioRoot, { key: "b" });
+    fireEvent.keyDown(studioRoot, { key: "b", code: "KeyB" });
     expect(engine.getState().tool).toBe("draw");
-    fireEvent.keyDown(studioRoot, { key: "v" });
+    fireEvent.keyDown(studioRoot, { key: "v", code: "KeyV" });
     expect(engine.getState().tool).toBe("select");
-    fireEvent.keyDown(studioRoot, { key: "q" });
+    fireEvent.keyDown(studioRoot, { key: "q", code: "KeyQ" });
     expect(engine.getState().doc.layers).toHaveLength(1);
     expect((engine.getState().doc.layers[0] as QrLayer).payload).toBe("golestani");
+  });
+
+  it("fires on a Persian layout where `key` is not a Latin letter", () => {
+    const engine = new EditorEngine(doc([]));
+    const { container } = render(<div className="ik-studio"><Toolbox engine={engine} qrPayload="golestani" /></div>);
+    const studioRoot = container.firstElementChild;
+    if (!studioRoot) throw new Error("expected the studio keyboard scope");
+
+    // The physical P key on a Persian layout produces «ح» — the old `key`-based
+    // handler matched nothing and the tool shortcut silently died.
+    fireEvent.keyDown(studioRoot, { key: "ح", code: "KeyP" });
+    expect(engine.getState().tool).toBe("pen");
   });
 });
 
@@ -163,6 +189,69 @@ describe("InspectorPanel — QR payload editor", () => {
   });
 });
 
+/**
+ * REGRESSION — the reported "Received NaN for the `cy` attribute" flood from the
+ * right-hand layer-operation buttons.
+ *
+ * "صاف کردن" (and the quick rotation slider) commits an ANGLE-ONLY box. On a
+ * path layer that used to re-scale every anchor by an undefined size, so the
+ * whole drawing became `d="M NaN NaN …"` and the anchor/handle circles — SVG
+ * `<circle>` with `cx`/`cy` from those anchors — rendered with NaN. The autosave
+ * then persisted the ruin. The panel must not be able to do that, and the
+ * geometry it leaves behind must stay renderable.
+ */
+describe("InspectorPanel — layer ops never turn path geometry into NaN", () => {
+  const pathLayer = (): CardLayer =>
+    ({
+      ...BASE,
+      id: "p1",
+      kind: "path",
+      x: 67.5,
+      y: 341.6,
+      width: 612.4,
+      height: 59.2,
+      closed: false,
+      points: [
+        { x: 5, y: 41.9, hIn: null, hOut: { x: 45.4, y: 42 } },
+        { x: 166.4, y: 42.1, hIn: { x: 71.6, y: 39.6 }, hOut: { x: 261.2, y: 44.6 } },
+        { x: 607.4, y: 5, hIn: { x: 561.7, y: 15.5 }, hOut: null },
+      ],
+      stroke: "#0ea5e9",
+      strokeWidth: 6,
+      fill: null,
+      pathMode: "pen",
+    }) as PathLayer;
+
+  it("«صاف کردن» leaves every anchor finite and the drawn path valid", () => {
+    const engine = new EditorEngine(doc([pathLayer()]));
+    engine.select("p1");
+    render(<InspectorPanel engine={engine} />);
+    const original = JSON.parse(JSON.stringify((engine.getState().doc.layers[0] as PathLayer).points));
+
+    fireEvent.click(screen.getByText("صاف کردن"));
+
+    const after = engine.getState().doc.layers[0] as PathLayer;
+    expect(after.points).toEqual(original);
+    expect(after.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))).toBe(true);
+    // The markup the stage/export actually produce must be NaN-free as well.
+    expect(renderToStaticMarkup(<LayerVisual layer={after} />)).not.toMatch(/NaN|Infinity/);
+  });
+
+  it("the quick rotation slider only rotates the path", () => {
+    const engine = new EditorEngine(doc([pathLayer()]));
+    engine.select("p1");
+    render(<InspectorPanel engine={engine} />);
+    const original = JSON.parse(JSON.stringify((engine.getState().doc.layers[0] as PathLayer).points));
+
+    fireEvent.change(screen.getByRole("slider", { name: /چرخش سریع/ }), { target: { value: "37" } });
+
+    const after = engine.getState().doc.layers[0] as PathLayer;
+    expect(after.angle).toBe(37);
+    expect(after.points).toEqual(original);
+    expect(after.width).toBe(612.4);
+  });
+});
+
 describe("InspectorPanel — mirror/flip for every layer kind", () => {
   it("flips a TEXT layer from the shared transform block", () => {
     const engine = new EditorEngine(doc([textLayer()]));
@@ -226,4 +315,244 @@ describe("QR layer repaints when the owner-session asset arrives", () => {
     render(<LayeredCard doc={doc([qrLayer("golestani")])} qrRevision={3} />);
     expect(document.querySelector("img")?.getAttribute("src")).toBe("data:image/svg+xml;base64,BBBB");
   });
+});
+
+// ─── KEYBOARD SHORTCUT COVERAGE ─────────────────────────────────────────────
+// Every shortcut advertised in the help dialog must actually work. These tests
+// cover tool shortcuts from any focus target (including document.body), the ?
+// help toggle under a Persian layout, preview-mode blocking, copy feedback, and
+// the full edit short cut set (undo/redo/save/duplicate/copy/paste/delete/arrows).
+import { EditorStage } from "../EditorStage";
+import { CardStudio } from "../CardStudio";
+// CardStudio tests need FeatureGate mock; other tests don't use it directly.
+// `PremiumBadge` is mocked too: a PATH inspector renders it (luxury material
+// picker), so a path-layer test would otherwise fail on the partial mock.
+vi.mock("@/components/cards/FeatureGate", () => ({
+  useEntitlements: () => ({
+    plan: "Free",
+    capabilities: { max_layers: 50, card_fonts: ["vazir", "sans", "serif", "monospace"] },
+  }),
+  PremiumBadge: ({ label = "ویژه" }: { label?: string }) => <span>{label}</span>,
+}));
+
+describe("CardStudio — keyboard shortcuts", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class { observe() {} unobserve() {} disconnect() {} },
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it("opens the shortcut help dialog with the physical slash key on a Persian layout", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    const saved = vi.fn();
+    const biz = { id: 1, name: "متن آزمایشی" } as unknown as import("@/lib/businesses").Business;
+    const tmpl = engine.getState().doc.background as unknown as "classic";
+    const { container } = render(
+      <div className="ik-studio">
+        <CardStudio business={biz} template={tmpl} theme="dark" fontFamily="vazir" designJson={engine.getState().doc} onSaved={saved} />
+      </div>,
+    );
+    // The physical / key on a Persian layout produces a non-Latin character.
+    // The help toggle must still open because it is bound to the physical code,
+    // not the produced character.
+    fireEvent.keyDown(window, { key: "ظ", code: "slash", bubbles: true, cancelable: true });
+    expect(container.querySelector("[data-shortcut-dialog]")).not.toBeNull();
+  });
+});
+
+describe("CardStudio — preview mode blocks mutating shortcuts", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class { observe() {} unobserve() {} disconnect() {} },
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it("blocks undo and save while preview mode is active", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    const saved = vi.fn();
+    const biz = { id: 1, name: "تست" } as unknown as import("@/lib/businesses").Business;
+    const tmpl = engine.getState().doc.background as unknown as "classic";
+    render(
+      <div className="ik-studio">
+        <CardStudio business={biz} template={tmpl} theme="dark" fontFamily="vazir" designJson={engine.getState().doc} onSaved={saved} />
+      </div>,
+    );
+    // Enter preview mode.
+    const previewBtn = document.querySelector('button[aria-label="پیش‌نمایش"]');
+    expect(previewBtn).not.toBeNull();
+    if (previewBtn) fireEvent.click(previewBtn);
+
+    // Ctrl+Z must not undo while preview.
+    fireEvent.keyDown(window, { key: "z", code: "KeyZ", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers).toHaveLength(1);
+
+    // Ctrl+S must not save while preview.
+    fireEvent.keyDown(window, { key: "s", code: "KeyS", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(saved).not.toHaveBeenCalled();
+  });
+});
+
+describe("EditorStage — keyboard shortcuts", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class { observe() {} unobserve() {} disconnect() {} },
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+    document.querySelectorAll("[data-shortcut-dialog]").forEach((node) => node.remove());
+  });
+
+  it("duplicates a selected layer with Ctrl+D (physical code)", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "د", code: "KeyD", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers).toHaveLength(2);
+  });
+
+  it("copies a selected layer with Ctrl+C and shows feedback", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    const { container } = render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "c", code: "KeyC", ctrlKey: true, bubbles: true, cancelable: true });
+    // Feedback flash should appear.
+    expect(container.querySelector("[aria-live=\"polite\"]")).not.toBeNull();
+    expect(container.textContent).toContain("کپی");
+  });
+
+  it("pastes a copied layer with Ctrl+V (no selected layer needed)", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    // Copy.
+    fireEvent.keyDown(window, { key: "c", code: "KeyC", ctrlKey: true, bubbles: true, cancelable: true });
+    // Deselect.
+    engine.select(null);
+    // Paste — works even without a selection.
+    fireEvent.keyDown(window, { key: "v", code: "KeyV", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers).toHaveLength(2);
+  });
+
+  it("deletes the selected layer with Delete (physical code)", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "Delete", code: "Delete", bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers).toHaveLength(0);
+  });
+
+  it("deletes the selected layer with Backspace (physical code)", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "Backspace", code: "Backspace", bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers).toHaveLength(0);
+  });
+
+  it("nudges a selected layer with arrow keys (physical codes)", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "ArrowRight", code: "ArrowRight", bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers[0].x).toBe(11);
+
+    fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown", bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers[0].y).toBe(21);
+  });
+
+  it("nudges by 10px with Shift+arrow (physical codes)", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "ArrowRight", code: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers[0].x).toBe(20);
+  });
+
+  it("does not nudge when no layer is selected", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "ArrowRight", code: "ArrowRight", bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers[0].x).toBe(10);
+  });
+
+  it("does not duplicate when no layer is selected", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "d", code: "KeyD", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(engine.getState().doc.layers).toHaveLength(1);
+  });
+
+  it("does not copy when no layer is selected", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    render(<EditorStage engine={engine} doc={engine.getState().doc} />);
+
+    fireEvent.keyDown(window, { key: "c", code: "KeyC", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(document.querySelector("[aria-live=\"polite\"]")).toBeNull();
+  });
+});
+
+describe("Toolbox — tool shortcuts from any focus target", () => {  it("activates tools when focus is on the studio root (tabIndex={-1})", () => {
+    const engine = new EditorEngine(doc([]));
+    const { container } = render(
+      <div className="ik-studio">
+        <Toolbox engine={engine} qrPayload="golestani" />
+      </div>,
+    );
+    const studioRoot = container.querySelector(".ik-studio") as HTMLElement | null;
+    if (studioRoot) studioRoot.focus?.();
+
+    fireEvent.keyDown(window, { key: "P", code: "KeyP", bubbles: true, cancelable: true });
+    expect(engine.getState().tool).toBe("pen");
+  });
+
+  it("ignores tool shortcuts while an input is focused", () => {
+    const engine = new EditorEngine(doc([textLayer()]));
+    engine.select("t1");
+    const { container } = render(
+      <div className="ik-studio">
+        <InspectorPanel engine={engine} />
+      </div>,
+    );
+    const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
+    if (textarea) {
+      fireEvent.keyDown(textarea, { key: "V", code: "KeyV", bubbles: true, cancelable: true });
+      expect(engine.getState().tool).toBe("select");
+    }
+  });
+
+  it("ignores tool shortcuts while the shortcut dialog is open", () => {
+    const engine = new EditorEngine(doc([]));
+    render(
+      <div className="ik-studio">
+        <Toolbox engine={engine} qrPayload="golestani" />
+      </div>,
+    );
+    const dialog = document.createElement("div");
+    dialog.setAttribute("data-shortcut-dialog", "");
+    document.body.appendChild(dialog);
+
+    fireEvent.keyDown(window, { key: "V", code: "KeyV", bubbles: true, cancelable: true });
+    expect(engine.getState().tool).toBe("select");    });
 });

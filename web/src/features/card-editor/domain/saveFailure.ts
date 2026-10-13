@@ -16,7 +16,7 @@
  */
 
 import axios from "axios";
-import { extractApiError } from "@/lib/api";
+import { extractApiError, rateLimitWaitHint } from "@/lib/api";
 import {
   describeEntitlementErrors,
   describeStudioErrors,
@@ -70,7 +70,7 @@ export function describeSaveFailure(error: unknown): string {
   if (entitlement) return entitlement;
 
   if (status === 429) {
-    return "تعداد درخواست‌ها زیاد است؛ حدود یک دقیقه صبر کنید و دوباره تلاش کنید.";
+    return `تعداد درخواست‌ها زیاد است؛ ${rateLimitWaitHint(error)} صبر کنید و دوباره تلاش کنید.`;
   }
   if (status === 422) {
     return "سند کارت با ساختار مجاز سرور همخوانی نیست — بخشی از طرح ذخیره نشد.";

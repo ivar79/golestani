@@ -16,6 +16,54 @@
  * gesture feels identical at every zoom level.
  */
 
+import { constrainToAngle } from "./pathOps";
+
+/**
+ * Angle grid (degrees) the pen locks onto while Shift is held.
+ *
+ * One increment already covers every direction a card layout needs: 0/180
+ * (horizontal), ±45 (diagonals), ±90 (vertical), ±135. Illustrator and
+ * Photoshop both document Shift on the Pen tool as "constrain the angle of the
+ * segment to a multiple of 45°"; Figma documents no such modifier, so this is a
+ * grid we own and can widen later (the freehand constrained mode offers
+ * 15/30/45/90 presets through the same maths).
+ */
+export const PEN_ANGLE_SNAP_DEGREES = 45;
+
+/**
+ * Lock a pen point onto the angle grid measured FROM `from`.
+ *
+ * Two deliberate differences from the freehand constrained mode:
+ *   - Shift is an explicit command, so EVERY direction lands on the grid. That
+ *     is what the tolerance of half a step achieves: the farthest a raw angle
+ *     can be from its nearest grid direction is exactly half an increment.
+ *   - the pointer's DISTANCE is preserved, so the lock rotates the segment
+ *     instead of shortening it (drifting towards the anchor would silently move
+ *     the point the user asked for).
+ *
+ * Returns `to` untouched when the lock is off or when any input is non-finite,
+ * so a broken coordinate can never be turned into NaN geometry.
+ */
+export function constrainPenPoint(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  locked: boolean,
+  increments: number[] = [PEN_ANGLE_SNAP_DEGREES],
+): { x: number; y: number } {
+  if (!locked) return { x: to.x, y: to.y };
+  if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) return { x: to.x, y: to.y };
+  const usable = increments.filter((inc) => Number.isFinite(inc) && inc > 0);
+  if (usable.length === 0) return { x: to.x, y: to.y };
+  const snapped = constrainToAngle(from, to, {
+    increments: usable,
+    tolerance: Math.min(...usable) / 2,
+    // The grid already contains 0°/90°, so the coarse axis lock would only
+    // pre-empt the grid's own answer at a different distance.
+    axisLock: false,
+  });
+  return { x: snapped.x, y: snapped.y };
+}
+
 /**
  * Minimum SCREEN-space pointer travel before a press is a DRAG rather than a
  * click. Smaller movement = click.

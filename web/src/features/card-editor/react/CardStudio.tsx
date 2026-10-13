@@ -32,6 +32,7 @@ import { useEntitlements } from "@/components/cards/FeatureGate";
 import { LayersPanel, InspectorPanel, Toolbox, BackgroundPanel } from "./EditorPanels";
 import { TemplatesPanel } from "./TemplatesPanel";
 import { useCardEditor } from "./useCardEditor";
+import { codeOf, isEditableTarget, isShortcutDialogOpen } from "../domain/keyboardGuards";
 
 type SaveStatus = { kind: "idle" | "saving" | "saved" | "error"; message?: string };
 
@@ -77,6 +78,7 @@ export function CardStudio({
   const [leftTab, setLeftTab] = useState<"layers" | "templates">("layers");
   const [rightTab, setRightTab] = useState<"inspector" | "bg">("inspector");
   const saveTimer = useRef<number | null>(null);
+  const shortcutDialogRef = useRef<HTMLElement | null>(null);
   // Saves are SERIALIZED: at most one request on the wire, the newest document
   // always queued next — so an out-of-order response can never write an older
   // revision over newer edits.
@@ -200,50 +202,92 @@ export function CardStudio({
     return () => window.removeEventListener("beforeunload", handler);
   }, [state.dirty]);
 
+  // The help overlay claims `aria-modal="true"`, so it must also be a real
+  // keyboard trap: move focus in when it opens, keep Tab inside it, and put
+  // focus back on the trigger when it closes. Without this, Tab walked into the
+  // canvas behind the dialog and screen-reader users lost the modal.
+  useEffect(() => {
+    if (!showShortcuts) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(
+        shortcutDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => !el.hasAttribute("disabled"));
+
+    focusables()[0]?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      previouslyFocused?.focus?.();
+    };
+  }, [showShortcuts]);
+
   // Don't hijack text-editing shortcuts while focus is inside an editable field.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const editable = !!target && (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      );
-      if (editable || target?.closest?.("[data-shortcut-dialog]")) return;
+      // Typing is never a shortcut.
+      if (isEditableTarget(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
-      const key = e.key.toLowerCase();
+      // Physical keys, not characters: a non-Latin layout must not turn
+      // Ctrl+Z / Ctrl+Y / Ctrl+S into dead keys.
+      const code = codeOf(e);
 
-      if (showShortcuts) {
+      // While the help overlay is open only Esc is meaningful: every other
+      // shortcut must stay out of the document behind the modal. (Focus inside
+      // the dialog is handled by the dialog's own capture handler.)
+      if (showShortcuts || isShortcutDialogOpen()) {
         if (e.key === "Escape") {
           e.preventDefault();
           setShowShortcuts(false);
         }
         return;
       }
-      if (e.key === "?" || (mod && e.code === "Slash")) {
+      if (preview) return;
+      // Physical slash key — layout-independent. On EN yield "/", on Persian
+      // the same physical key produces a different character, so matching `key`
+      // alone would silently break the help toggle.
+      if (e.key === "?" || e.key === "/" || code === "slash") {
         e.preventDefault();
         setShowShortcuts(true);
         return;
       }
       if (!mod) return;
-      if (key === "z") {
+      // Undo/Redo: Ctrl+Z / Cmd+Z and Ctrl+Shift+Z, plus Ctrl+Y.
+      if (code === "keyz") {
         e.preventDefault();
         if (e.shiftKey) engine.redo();
         else engine.undo();
-      } else if (key === "y") {
+      } else if (code === "keyy") {
         e.preventDefault();
         engine.redo();
-      } else if (key === "s") {
+      } else if (code === "keys") {
         e.preventDefault();
         void persistRef.current();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [engine, showShortcuts]);
+  }, [engine, preview, showShortcuts]);
 
   return (
-    <div dir="rtl" className="ik-studio flex min-w-0 flex-col gap-2 text-slate-100">
+    <div dir="rtl" className="ik-studio flex min-w-0 flex-col gap-2 text-slate-100" tabIndex={-1}>
       <header className="sticky top-0 z-40 flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] bg-[#15171c]/95 px-3 py-2 backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-300/10 text-[11px] font-black text-cyan-200">IK</span>
@@ -257,7 +301,7 @@ export function CardStudio({
           {saveStatus.kind === "saved" && <span className="flex items-center gap-1 text-[11px] text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> ذخیره شد</span>}
           {saveStatus.kind === "saving" && <span className="flex items-center gap-1 text-[11px] text-slate-400"><RotateCcw className="h-3.5 w-3.5 animate-spin" /> در حال ذخیره</span>}
           {saveStatus.kind === "error" && <span className="flex items-center gap-1.5 text-[11px] text-rose-300"><AlertCircle className="h-3.5 w-3.5 shrink-0" /><span className="max-w-44 truncate">{saveStatus.message}</span><button type="button" onClick={() => void persistRef.current()} title="تلاش دوباره برای ذخیره" aria-label="تلاش دوباره برای ذخیره" className="flex h-7 w-7 items-center justify-center rounded-md border border-rose-400/30 hover:bg-rose-500/10"><RotateCcw className="h-3.5 w-3.5" /></button></span>}
-          {state.dirty && saveStatus.kind === "idle" && <span className="hidden text-[11px] text-amber-300 sm:inline">ذخیره‌نشده</span>}
+          {state.dirty && saveStatus.kind === "idle" && <span className="text-[11px] text-amber-300">ذخیره‌نشده</span>}
           <button type="button" onClick={() => setShowShortcuts(true)} title="میانبرهای صفحه‌کلید · ?" aria-label="راهنمای میانبرهای صفحه‌کلید" className="flex h-8 w-8 items-center justify-center rounded-md border border-white/[0.08] text-slate-300 transition hover:bg-white/[0.07] hover:text-white"><Keyboard className="h-4 w-4" /></button>
           <button type="button" onClick={() => setPreview((p) => !p)} title={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش"} aria-label={preview ? "خروج از پیش‌نمایش" : "پیش‌نمایش"} className={preview ? "flex h-8 items-center gap-1.5 rounded-md border border-cyan-300/40 bg-cyan-300/10 px-2.5 text-xs text-cyan-100" : "flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-xs text-slate-300 transition hover:bg-white/[0.06] hover:text-white"}>
             <Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">{preview ? "ویرایش" : "پیش‌نمایش"}</span>
@@ -272,7 +316,7 @@ export function CardStudio({
           onPointerDown={(event) => { if (event.target === event.currentTarget) setShowShortcuts(false); }}
           onKeyDownCapture={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setShowShortcuts(false); } }}
         >
-          <section role="dialog" aria-modal="true" aria-labelledby="card-studio-shortcuts-title" className="max-h-[min(82vh,680px)] w-full max-w-2xl overflow-y-auto rounded-xl border border-white/10 bg-[#17191f] p-4 shadow-2xl shadow-black/60 sm:p-6">
+          <section ref={shortcutDialogRef} role="dialog" aria-modal="true" aria-labelledby="card-studio-shortcuts-title" className="max-h-[min(82vh,680px)] w-full max-w-2xl overflow-y-auto rounded-xl border border-white/10 bg-[#17191f] p-4 shadow-2xl shadow-black/60 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><Keyboard className="h-4 w-4" /></span>
@@ -308,6 +352,8 @@ export function CardStudio({
                     ["قلم آزاد", "B"],
                     ["تصویر", "I"],
                     ["کد QR", "Q"],
+                    ["منحنی", "—"],
+                    ["نشان", "—"],
                   ].map(([label, keys]) => <div key={label} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-300">{label}</span><kbd dir="ltr" className="min-w-8 rounded border border-white/10 bg-black/20 px-2 py-1 text-center font-mono text-[10px] text-slate-200">{keys}</kbd></div>)}
                 </div>
               </div>
@@ -319,6 +365,9 @@ export function CardStudio({
                     ["جابه‌جایی ۱۰ پیکسل", "Shift + Arrow"],
                     ["حذف لایه / گره انتخاب‌شده", "Delete / Backspace"],
                     ["ورود به ویرایش مسیر", "Enter"],
+                    ["قفل زاویهٔ قلم (۰/۴۵/۹۰ درجه)", "Shift + کلیک"],
+                    ["گونیا / زاویه‌بندی (کلید جدا)", "📐 گونیا"],
+                    ["خط‌کش و خطوط راهنما", "📏 خط‌کش"],
                     ["لغو / خروج از حالت فعلی", "Esc"],
                     ["نمایش / مخفی گره‌ها", "H (ویرایش مسیر)"],
                     ["انتخاب همهٔ گره‌های مسیر", "Ctrl / ⌘ + A"],

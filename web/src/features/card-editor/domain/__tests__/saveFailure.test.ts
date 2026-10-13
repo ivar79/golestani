@@ -33,6 +33,9 @@ describe("describeSaveFailure", () => {
 
     expect(message).not.toMatch(/Too Many/i);
     expect(message).toContain("تعداد درخواست‌ها زیاد است");
+    // The old copy said «حدود یک دقیقه» (regression measured 2026-10-12).
+    expect(message).toContain("۱۰ دقیقه");
+    expect(message).not.toContain("یک دقیقه");
   });
 
   it("keeps the calm hint for a structural 422 rejection", () => {

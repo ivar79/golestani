@@ -294,3 +294,24 @@ html {
    Hero background video — reduced-motion is handled in HeroVideo.tsx by
    pausing playback (freezing on the poster frame) instead of hiding the
    element, so the atmospheric background never disappears entirely. */
+
+/* ============================================================
+   react-colorful overrides — the library injects UNLAYERED CSS with a
+   28px pointer that overflows its container when centered via
+   translate(-50%,-50%). Tailwind v4 utilities live in @layer utilities
+   which loses the specificity battle, so the w-4/h-4 classes on the
+   wrapper never shrink the pointer. These unlayered rules win.
+   ============================================================ */
+.react-colorful {
+  width: 100% !important;
+  height: 9.5rem !important;
+}
+.react-colorful__pointer {
+  width: 16px !important;
+  height: 16px !important;
+}
+.react-colorful__saturation,
+.react-colorful__hue,
+.react-colorful__alpha {
+  border-radius: 6px;
+}

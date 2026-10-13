@@ -4,8 +4,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { EditorEngine } from "../../engine/EditorEngine";
-import type { CardDocument, ShapeLayer, TextLayer } from "../document";
+import type { CardDocument, PathLayer, ShapeLayer, TextLayer } from "../document";
 import { ARTBOARD } from "../document";
+import { resolveLayerPathD } from "../path";
 
 function makeDoc(): CardDocument {
   const mk = (id: string, kind: "shape" | "text", x: number, y: number, w: number, h: number): ShapeLayer | TextLayer =>
@@ -208,6 +209,130 @@ describe("EditorEngine transform contract", () => {
     const engine = new EditorEngine(makeDoc());
     engine.beginTransient();
     engine.commitTransform();
+    expect(engine.getState().canUndo).toBe(false);
+  });
+});
+
+/**
+ * REGRESSION (SVG NaN / blank drawing from the layer-op buttons).
+ *
+ * The transform panel's rotation controls commit an ANGLE-ONLY box:
+ * "صاف کردن" sends `{ angle: 0 }` and the quick slider sends `{ angle: n }`.
+ * `setLayerBox` read the missing size as a scale factor, so for a path layer
+ * `sx = undefined / Math.max(1, width)` was NaN and EVERY anchor (and its
+ * handles) was rewritten with NaN. The renderer turned that into
+ * `d="M NaN NaN …"` plus `cy="NaN"` on the anchor/handle circles — the console
+ * flood in the report — and the autosave persisted the ruin. A partial box must
+ * only touch what it actually specifies.
+ */
+describe("EditorEngine setLayerBox keeps partial (angle-only) boxes safe", () => {
+  const ANCHORS = [
+    { x: 0, y: 0, hIn: null, hOut: { x: 10, y: 0 } },
+    { x: 50, y: 20, hIn: { x: 30, y: 12 }, hOut: { x: 70, y: 28 } },
+    { x: 100, y: 0, hIn: { x: 80, y: 4 }, hOut: null },
+  ];
+
+  const makePath = (extra: Partial<PathLayer> = {}): PathLayer =>
+    ({
+      id: "p",
+      kind: "path",
+      x: 20,
+      y: 30,
+      width: 120,
+      height: 60,
+      angle: 0,
+      opacity: 1,
+      locked: false,
+      hidden: false,
+      color: null,
+      background: null,
+      closed: false,
+      points: ANCHORS.map((point) => ({ ...point })),
+      stroke: "#0ea5e9",
+      strokeWidth: 6,
+      fill: null,
+      pathMode: "pen",
+      ...extra,
+    }) as PathLayer;
+
+  const makePathDoc = (extra: Partial<PathLayer> = {}): CardDocument => ({
+    version: 1,
+    artboard: { ...ARTBOARD },
+    background: "#ffffff",
+    layers: [makePath(extra)],
+  });
+
+  const pathOf = (engine: EditorEngine) => engine.getState().doc.layers[0] as PathLayer;
+  const snapshot = (layer: PathLayer) => JSON.parse(JSON.stringify(layer)) as PathLayer;
+
+  it("angle-only commit (صاف کردن) leaves anchors and the drawn path untouched", () => {
+    const engine = new EditorEngine(makePathDoc());
+    const original = snapshot(pathOf(engine));
+
+    engine.setLayerBox("p", { angle: 0 });
+
+    const after = pathOf(engine);
+    expect(after.points).toEqual(original.points);
+    expect(after.width).toBe(original.width);
+    expect(after.x).toBe(original.x);
+    // The renderer's own path builder must stay free of NaN/Infinity values.
+    expect(resolveLayerPathD(after)).not.toMatch(/NaN|Infinity/);
+  });
+
+  it("the quick rotation slider only changes the angle", () => {
+    const engine = new EditorEngine(makePathDoc());
+    const original = snapshot(pathOf(engine));
+
+    engine.setLayerBox("p", { angle: 37 });
+
+    const after = pathOf(engine);
+    expect(after.angle).toBe(37);
+    expect(after.points).toEqual(original.points);
+    expect(after.width).toBe(original.width);
+    expect(after.height).toBe(original.height);
+    expect(after.x).toBe(original.x);
+    expect(after.y).toBe(original.y);
+  });
+
+  it("an angle-only commit keeps a rawD contour verbatim", () => {
+    const RAW_D = "M 4 40 C 20 10 60 10 100 40 L 120 60";
+    const engine = new EditorEngine(makePathDoc({ rawD: RAW_D }));
+
+    engine.setLayerBox("p", { angle: 0 });
+
+    expect(pathOf(engine).rawD).toBe(RAW_D);
+  });
+
+  it("a real resize STILL rescales the anchors into the new box", () => {
+    const engine = new EditorEngine(makePathDoc());
+
+    engine.setLayerBox("p", { x: 20, y: 30, width: 240, height: 60, angle: 0 });
+
+    const after = pathOf(engine);
+    expect(after.width).toBe(240);
+    // sx = 240 / 120 = 2, sy = 60 / 60 = 1 — anchors AND their handles scale.
+    expect(after.points.map((point) => point.x)).toEqual([0, 100, 200]);
+    expect(after.points[1].hIn).toEqual({ x: 60, y: 12 });
+    expect(after.points[1].hOut).toEqual({ x: 140, y: 28 });
+  });
+
+  it("non-finite box values never reach the document", () => {
+    const engine = new EditorEngine(makePathDoc());
+    const original = snapshot(pathOf(engine));
+
+    engine.setLayerBox("p", { width: Number.NaN });
+    engine.setLayerBox("p", { height: Number.POSITIVE_INFINITY });
+    engine.setLayerBox("p", { x: Number.NaN, y: Number.NaN });
+
+    const after = pathOf(engine);
+    expect(after).toMatchObject({
+      x: original.x,
+      y: original.y,
+      width: original.width,
+      height: original.height,
+    });
+    expect(after.points).toEqual(original.points);
+    // Nothing changed, so nothing was recorded (no bogus undo step).
     expect(engine.getState().canUndo).toBe(false);
   });
 });
