@@ -222,6 +222,7 @@ export function RulersAndGuides({
   const dragRef = useRef<Drag | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [limitNotice, setLimitNotice] = useState(false);
   const [pointer, setPointer] = useState<Point | null>(null);
   const lastPointerRef = useRef<string>("");
@@ -402,6 +403,40 @@ export function RulersAndGuides({
     },
     [flashLimit, guides.length, onAdd, onAddAngled, onMove, onRemove, onRotate],
   );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && dragRef.current?.kind === "rotate") {
+        event.preventDefault();
+        finish(false);
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input,textarea,select,[contenteditable='true']")) return;
+      if (!selectedGuideId) return;
+      const guide = guides.find(item => item.id === selectedGuideId);
+      if (!guide) return;
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        onRemove(selectedGuideId);
+        setSelectedGuideId(null);
+      } else if (event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        onToggleLock?.(selectedGuideId);
+      } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        if (guide.locked) return;
+        const delta = event.shiftKey ? 10 : 1;
+        const next = {
+          x: guide.x + (event.key === "ArrowLeft" ? -delta : event.key === "ArrowRight" ? delta : 0),
+          y: guide.y + (event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0),
+        };
+        onMove(selectedGuideId, next);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [finish, guides, onMove, onRemove, onToggleLock, selectedGuideId]);
 
   if (preview) return null;
 
@@ -676,7 +711,7 @@ export function RulersAndGuides({
         {guides.map((guide) => {
           const chord = chordFor(guide.angle, { x: guide.x, y: guide.y });
           if (!chord) return null;
-          const active = hoveredId === guide.id || (drag?.id === guide.id && drag.moved);
+          const active = hoveredId === guide.id || selectedGuideId === guide.id || (drag?.id === guide.id && drag.moved);
           const axisAligned = isAxisAlignedAngle(guide.angle);
           const handle = rotateHandleAt(chord);
           return (
@@ -716,6 +751,7 @@ export function RulersAndGuides({
                 }}
                 onPointerDown={(event) => {
                   const point = toArtboard(event.clientX, event.clientY);
+                  setSelectedGuideId(guide.id);
                   if (guide.locked) {
                     event.preventDefault();
                     event.stopPropagation();
