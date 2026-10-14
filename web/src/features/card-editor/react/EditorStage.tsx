@@ -27,7 +27,7 @@ import {
 import { ANGLE_ASSIST_PRESETS } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
 import { layerHitCursor } from "../domain/cursorPolicy";
-import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
+import { getBrushStrokeOutline, outlineToD, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
 import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import { useQrAssets } from "./useQrAssets";
@@ -269,6 +269,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const isDrawingRef = useRef(false);
   const brushPtsRef = useRef<FreehandPoint[]>([]);
   const brushSmoothRef = useRef<FreehandPoint | null>(null);
+  const brushLastTimeRef = useRef<number | null>(null);
   const brushStartRef = useRef<{ x: number; y: number } | null>(null);
   const liveBrushRef = useRef<SVGPathElement>(null);
   const brushRafRef = useRef(0);
@@ -615,6 +616,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
       brushPtsRef.current = [pt];
       brushSmoothRef.current = pt;
+      brushLastTimeRef.current = event.timeStamp;
       brushStartRef.current = { x: pos.x, y: pos.y };
       return;
     }
@@ -709,14 +711,17 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           });
         }
         const s = brushSmoothRef.current ?? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 };
-        const t = 1 - STREAMLINE;
-        const np: FreehandPoint = {
-          x: s.x + (constrained.x - s.x) * t,
-          y: s.y + (constrained.y - s.y) * t,
-          p: ev.pressure || 0.5,
-        };
+        const previousTime = brushLastTimeRef.current;
+        const elapsedMs = previousTime == null ? 0 : Math.max(0, ev.timeStamp - previousTime);
+        brushLastTimeRef.current = ev.timeStamp;
+        const np = smoothFreehandSample(
+          s,
+          { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 },
+          elapsedMs,
+        );
         const last = brushPtsRef.current[brushPtsRef.current.length - 1];
-        if (last && Math.hypot(np.x - last.x, np.y - last.y) * zoom < 1) continue;
+        // Sampling density is measured in document units, never screen pixels.
+        if (last && Math.hypot(np.x - last.x, np.y - last.y) < 1) continue;
         brushSmoothRef.current = np;
         brushPtsRef.current.push(np);
       }
@@ -810,6 +815,23 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     engine.transientMove(transform.layerId, kept.x, kept.y);
   };
 
+  const onStagePointerCancel = () => {
+    // Cancelled pointer sequences must never commit a partial stroke.
+    isDrawingRef.current = false;
+    isPenInputRef.current = false;
+    if (brushRafRef.current) {
+      cancelAnimationFrame(brushRafRef.current);
+      brushRafRef.current = 0;
+    }
+    brushPtsRef.current = [];
+    brushSmoothRef.current = null;
+    brushLastTimeRef.current = null;
+    brushStartRef.current = null;
+    liveBrushRef.current?.setAttribute("d", "");
+    penStartRef.current = null;
+    penDragRef.current = false;
+  };
+
   const onStagePointerUp = () => {
     if (layerMarqueeRef.current) {
       const start = layerMarqueeRef.current;
@@ -867,6 +889,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       }
       brushPtsRef.current = [];
       brushSmoothRef.current = null;
+      brushLastTimeRef.current = null;
       brushStartRef.current = null;
       liveBrushRef.current?.setAttribute("d", "");
       return;
@@ -1007,6 +1030,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       onPointerDown={onStagePointerDown}
       onPointerMove={onStagePointerMove}
       onPointerUp={onStagePointerUp}
+       onPointerCancel={onStagePointerCancel}
       onWheel={onStageWheel}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
