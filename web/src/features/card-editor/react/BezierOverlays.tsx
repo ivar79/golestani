@@ -87,37 +87,47 @@ function startBendDrag(
   toBoardPoint: (event: { clientX: number; clientY: number }) => BoardPoint,
   tolerance: number,
 ): boolean {
-  const local = toLayerLocal(toBoardPoint(event), layer);
-  const started = engine.beginBend(layer.id, local, tolerance);
-  if (!started) return false;
-  // Pointer capture is a nicety: it throws when the pointer is not capturable
-  // (released early, or synthetic), and the gesture must survive that — the
-  // window listeners below are what actually drive the drag.
-  try {
-    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
-  } catch {
-    /* not capturable: the move/up listeners still own the gesture */
-  }
+  const pressClient = { x: event.clientX, y: event.clientY };
+  const pressLocal = toLayerLocal(toBoardPoint(event), layer);
+  let started: { index: number; point: BoardPoint } | null = null;
+  let offsetX = 0;
+  let offsetY = 0;
+  let finished = false;
 
-  // The node tracks the pointer EXACTLY: the gap between the pressed point and
-  // the projected node is constant, so the gesture cannot accumulate drift even
-  // though every move re-derives the position from the live snapshot.
-  const offsetX = started.point.x - local.x;
-  const offsetY = started.point.y - local.y;
-  const onMove = (move: PointerEvent) => {
-    const current = toLayerLocal(toBoardPoint(move), layer);
-    engine.transientMoveAnchor(layer.id, started.index, {
-      x: current.x + offsetX,
-      y: current.y + offsetY,
-    });
-  };
-  const onUp = () => {
+  const cleanup = () => {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
-    engine.commitPathEdit(layer.id);
+    window.removeEventListener("pointercancel", onUp);
+  };
+  const onMove = (move: PointerEvent) => {
+    if (finished) return;
+    // Lazy bend: a plain click never inserts a node. Only a genuine >4px drag
+    // creates the lossless split at the original press point.
+    if (!started) {
+      if (Math.hypot(move.clientX - pressClient.x, move.clientY - pressClient.y) <= 4) return;
+      started = engine.beginBend(layer.id, pressLocal, tolerance);
+      if (!started) {
+        finished = true;
+        cleanup();
+        engine.commitTransient();
+        return;
+      }
+      offsetX = started.point.x - pressLocal.x;
+      offsetY = started.point.y - pressLocal.y;
+    }
+    const current = toLayerLocal(toBoardPoint(move), layer);
+    engine.transientMoveAnchor(layer.id, started.index, { x: current.x + offsetX, y: current.y + offsetY });
+  };
+  const onUp = () => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    if (started) engine.commitPathEdit(layer.id);
+    else engine.commitTransient();
   };
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
   return true;
 }
 
@@ -351,20 +361,19 @@ export function PathEditOverlay({
   };
 
   const onSegPointerDown = (event: React.PointerEvent<SVGPathElement>) => {
-    if (event.button !== 0 || event.detail >= 2) return;
-    // Alt/Option keeps the press for the LAYER: the hit stroke is already
-    // transparent while Alt is held, and a press that raced that state must not
-    // bend either.
-    if (event.altKey) return;
+    if (event.button !== 0 || event.detail >= 2 || event.altKey) return;
     event.stopPropagation();
     event.preventDefault();
     engine.beginTransient();
-    if (!startBendDrag(engine, layer, event, toBoardPoint, CURVE_SLOP / zoom)) {
-      // Nothing was touched: close the gesture so a LATER drag cannot commit a
-      // stale pre-state.
-      engine.commitTransient();
-      return;
-    }
+    if (!startBendDrag(engine, layer, event, toBoardPoint, CURVE_SLOP / zoom)) engine.commitTransient();
+    setGhost(null);
+  };
+
+  const onSegDoubleClick = (event: React.MouseEvent<SVGPathElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const local = toLayerLocal(toBoardPoint(event), layer);
+    engine.insertAnchorAtPoint(layer.id, local, CURVE_SLOP / zoom);
     setGhost(null);
   };
 
@@ -411,6 +420,7 @@ export function PathEditOverlay({
         onPointerMove={onSegPointerMove}
         onPointerLeave={() => setGhost(null)}
         onPointerDown={onSegPointerDown}
+        onDoubleClick={onSegDoubleClick}
       />
 
       {/* The bend preview: the node a press would create, right under the pointer. */}
