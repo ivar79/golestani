@@ -160,7 +160,7 @@ export function normalizeGuides(
       angle,
       x: point.x,
       y: point.y,
-      locked: guide.locked === true,
+      ...(guide.locked === true ? { locked: true } : {}),
     };
     if (out.some((other) => nearlySame(other, candidate))) continue;
     out.push(candidate);
@@ -213,7 +213,7 @@ export function addAngledGuide(
   const current = normalizeGuides(list, artboard);
   const angle = normalizeAngle(input.angle);
   const point = clampPoint({ x: input.x, y: input.y }, artboard);
-  const candidate: UserGuide = { id: guideId(angle, point, current), angle, x: point.x, y: point.y, locked: false };
+  const candidate: UserGuide = { id: guideId(angle, point, current), angle, x: point.x, y: point.y };
   const existing = current.find((guide) => nearlySame(guide, candidate));
   if (existing) {
     // A locked guide is a physical straightedge: creating another line on top
@@ -260,7 +260,14 @@ export function moveGuide(
 }
 
 export function toggleGuideLock(list: readonly UserGuide[], id: string): UserGuide[] {
-  return list.map((guide) => guide.id === id ? { ...guide, locked: !guide.locked } : guide);
+  return list.map((guide) => {
+    if (guide.id !== id) return guide;
+    if (guide.locked) {
+      const { locked: _locked, ...unlocked } = guide;
+      return unlocked;
+    }
+    return { ...guide, locked: true };
+  });
 }
 
 export function removeGuide(list: readonly UserGuide[], id: string): UserGuide[] {
