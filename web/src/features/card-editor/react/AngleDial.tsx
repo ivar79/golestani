@@ -86,6 +86,12 @@ export function AngleDial({ vertex, baseAngle, artboard, zoom, pan, onCommit, on
         onPointerUp={() => { dragRef.current = false; setDragging(false); }}
         onPointerCancel={() => { dragRef.current = false; setDragging(false); }} />
       <path d={`M ${start.x} ${start.y} A ${RADIUS} ${RADIUS} 0 1 1 ${end.x} ${end.y}`} fill="none" stroke="#fbbf24" strokeWidth={2} pointerEvents="none" />
+      <line x1={cx} y1={cy} x2={start.x} y2={start.y} stroke="#94a3b8" strokeOpacity={0.8} strokeWidth={1.5} pointerEvents="none" />
+      <line data-angle-needle-hit="" x1={cx} y1={cy} x2={needle.x} y2={needle.y} stroke="transparent" strokeWidth={18} pointerEvents="stroke" style={{ cursor: "grab" }}
+        onPointerDown={event => { event.preventDefault(); event.stopPropagation(); dragRef.current = true; setDragging(true); (event.currentTarget as Element).setPointerCapture?.(event.pointerId); setTheta(readTheta(event.clientX,event.clientY,event.shiftKey)); }}
+        onPointerMove={event => { if (dragRef.current) setTheta(readTheta(event.clientX,event.clientY,event.shiftKey)); }}
+        onPointerUp={() => { dragRef.current = false; setDragging(false); }}
+        onPointerCancel={() => { dragRef.current = false; setDragging(false); }} />
       {ticks}
       <line x1={cx} y1={cy} x2={needle.x} y2={needle.y} stroke="#fbbf24" strokeWidth={dragging ? 3.5 : 2.5} strokeLinecap="round" pointerEvents="none" />
       <circle cx={cx} cy={cy} r={5} fill="#fbbf24" stroke="#111827" strokeWidth={2} pointerEvents="none" />
