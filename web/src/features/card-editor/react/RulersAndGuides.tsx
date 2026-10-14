@@ -136,6 +136,7 @@ type Props = {
   onRemove: (id: string) => void;
   onToggleLock?: (id: string) => void;
   onPin?: (vertex: Point, baseAngle: number) => void;
+  onSnapCreate?: (point: Point, axis: GuideAxis) => Point;
   selectMode?: boolean;
   /** Preview mode never shows design aids. */
   preview?: boolean;
@@ -215,6 +216,7 @@ export function RulersAndGuides({
   onRemove,
   onToggleLock,
   onPin,
+  onSnapCreate,
   selectMode = true,
   preview = false,
 }: Props) {
@@ -315,13 +317,14 @@ export function RulersAndGuides({
       if (current.kind === "create" && event.shiftKey) {
         // Shift+drag from either ruler turns the ordinary guide pull into an
         // angled guide, preserving the original press as the visible pivot.
-        const anchor = clampPoint(current.anchor, artboard);
+        const anchor = clampPoint(onSnapCreate?.(current.anchor, current.axis ?? "x") ?? current.anchor, artboard);
         next = { ...next, kind: "angled", axis: null, anchor, x: anchor.x, y: anchor.y, angle: angleFromDrag(anchor, point, increments), droppedOnRuler: false };
       } else if (current.kind === "rotate" || current.kind === "angled") {
         next = { ...next, angle: angleFromDrag(current.anchor, point, increments) };
       } else if (current.kind === "create") {
         const axis = current.axis ?? "x";
-        const value = axis === "x" ? point.x : point.y;
+        const snappedPoint = onSnapCreate?.(point, axis) ?? point;
+        const value = axis === "x" ? snappedPoint.x : snappedPoint.y;
         const extent = axis === "x" ? artboard.width : artboard.height;
         next = {
           ...next,
@@ -359,7 +362,7 @@ export function RulersAndGuides({
       dragRef.current = next;
       setDrag(next);
     },
-    [artboard, backOnRuler, snapIncrements, toArtboard],
+    [artboard, backOnRuler, onSnapCreate, snapIncrements, toArtboard],
   );
 
   const finish = useCallback(
