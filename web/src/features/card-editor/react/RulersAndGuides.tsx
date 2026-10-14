@@ -135,6 +135,7 @@ type Props = {
   onRemove: (id: string) => void;
   onToggleLock?: (id: string) => void;
   onPin?: (vertex: Point, baseAngle: number) => void;
+  selectMode?: boolean;
   /** Preview mode never shows design aids. */
   preview?: boolean;
 };
@@ -213,6 +214,7 @@ export function RulersAndGuides({
   onRemove,
   onToggleLock,
   onPin,
+  selectMode = true,
   preview = false,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -699,7 +701,7 @@ export function RulersAndGuides({
                 stroke="transparent"
                 strokeWidth={HIT_STROKE_PX}
                 strokeLinecap="round"
-                pointerEvents="stroke"
+                pointerEvents={selectMode ? "stroke" : "none"}
                 style={{ cursor: axisAligned ? (isVertical(guide.angle) ? "col-resize" : "row-resize") : "move" }}
                 onPointerOver={() => setHoveredId(guide.id)}
                 onPointerOut={() => setHoveredId(null)}
@@ -712,7 +714,7 @@ export function RulersAndGuides({
                   if (guide.locked) {
                     event.preventDefault();
                     event.stopPropagation();
-                    onPin?.(projectOnGuideForUi(guide, point), guide.angle);
+                    if (selectMode) onPin?.(projectOnGuideForUi(guide, point), guide.angle);
                     return;
                   }
                   start(
@@ -763,7 +765,7 @@ export function RulersAndGuides({
                   cy={guide.y * scale + pan.y}
                   r={13}
                   fill="transparent"
-                  style={{ cursor: "pointer", pointerEvents: "auto" }}
+                  style={{ cursor: "pointer", pointerEvents: selectMode ? "auto" : "none" }}
                   onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
                   onClick={(event) => { event.preventDefault(); event.stopPropagation(); onToggleLock?.(guide.id); }}
                 />
@@ -786,7 +788,7 @@ export function RulersAndGuides({
                     cy={handle.y}
                     r={11}
                     fill="transparent"
-                    style={{ cursor: "grab" }}
+                    style={{ cursor: "grab", pointerEvents: selectMode ? "auto" : "none" }}
                     onPointerDown={(event) => {
                       if (guide.locked) { event.preventDefault(); event.stopPropagation(); return; }
                       start(
