@@ -245,6 +245,24 @@ describe("RulersAndGuides", () => {
     expect(view.onRemove).toHaveBeenCalledWith("g1");
   });
 
+  it("pins a locked guide on click instead of starting a move", () => {
+    const onPin = vi.fn();
+    const view = renderOverlay({ guides: [{ ...horizontal("locked", 120), locked: true }], onPin });
+    firePointer(view.bed('[data-guide-hit="locked"]'), "pointerdown", { clientX: 200, clientY: 120, pointerId: 31 });
+    expect(onPin).toHaveBeenCalledWith({ x: 200, y: 120 }, 0);
+    expect(view.onMove).not.toHaveBeenCalled();
+  });
+
+  it("creates an angled guide by Shift-dragging from the top ruler", () => {
+    const view = renderOverlay();
+    const ruler = view.bed('[data-ruler="top"]');
+    firePointer(ruler, "pointerdown", { clientX: 100, clientY: 5, pointerId: 32 });
+    firePointer(ruler, "pointermove", { clientX: 150, clientY: 100, pointerId: 32, shiftKey: true });
+    firePointer(ruler, "pointerup", { clientX: 150, clientY: 100, pointerId: 32, shiftKey: true });
+    expect(view.onAddAngled).toHaveBeenCalledTimes(1);
+    expect(view.onAdd).not.toHaveBeenCalled();
+  });
+
   it("pins a guide dragged past the board edge on its own axis instead of deleting it", () => {
     const view = renderOverlay({ guides: [vertical("g1")] });
     const hit = view.bed('[data-guide-hit="g1"]');
