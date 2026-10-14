@@ -655,9 +655,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     engine.select(null);
   };
 
-  const STREAMLINE = 0.45;
-
-  const renderLiveBrush = () => {
+    const renderLiveBrush = () => {
     brushRafRef.current = 0;
     const outline = getBrushStrokeOutline(brushPtsRef.current, {
       size: state.brushWidth || 14,
