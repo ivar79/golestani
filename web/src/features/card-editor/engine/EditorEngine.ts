@@ -1644,6 +1644,52 @@ export class EditorEngine {
     return id;
   }
 
+  /** Commit a straightedge-constrained stroke without smoothing or curve fitting. */
+  commitStraightStroke(
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    options: { color: string; width: number; style?: StrokeStyleKind; linecap?: StrokeLineCap; linejoin?: StrokeLineJoin; opacity?: number },
+  ): string | null {
+    if (Math.hypot(end.x - start.x, end.y - start.y) < 0.01) return this.commitFreehandDot(start, options);
+    const strokeWidth = clampStrokeWidth(options.width);
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const points: PathPoint[] = [
+      { x: start.x, y: start.y, hIn: null, hOut: null },
+      { x: end.x, y: end.y, hIn: null, hOut: null },
+    ];
+    const layer = normalizePathLayer<PathLayer>({
+      id, kind: "path", pathMode: "freehand", x: 0, y: 0, width: 1, height: 1,
+      angle: 0, opacity: options.opacity ?? this.state.brushOpacity, locked: false, hidden: false,
+      z: this.state.doc.layers.length + 1, color: null, background: null, closed: false, points,
+      stroke: options.color, strokeWidth, strokeStyle: options.style ?? this.state.brushStyle,
+      strokeLinecap: options.linecap ?? this.state.brushLinecap,
+      strokeLinejoin: options.linejoin ?? this.state.brushLinejoin,
+      strokeOpacity: options.opacity ?? this.state.brushOpacity, fill: null,
+    }, pathPadding(strokeWidth));
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, layer] },
+      workingStroke: null, tool: "draw", selection: this.withSelection(id),
+      editingPathId: id, selectedAnchor: { layerId: id, index: 0 },
+    });
+    return id;
+  }
+
+  /** A press/release without travel is a visible round dab, never an empty path. */
+  commitFreehandDot(
+    point: { x: number; y: number },
+    options: { color: string; width: number; opacity?: number },
+  ): string {
+    const diameter = Math.max(1, clampStrokeWidth(options.width));
+    const id = this.addShape("ellipse", {
+      x: point.x - diameter / 2, y: point.y - diameter / 2,
+      width: diameter, height: diameter, background: options.color,
+      opacity: options.opacity ?? this.state.brushOpacity,
+    });
+    this.emit({ tool: "draw", editingPathId: null, selectedAnchor: null });
+    return id;
+  }
+
   commitFreehandStroke(options: {
     color: string;
     width: number;
