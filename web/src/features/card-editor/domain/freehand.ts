@@ -157,8 +157,9 @@ export function outlineToEditablePath(
   if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
 
   const local = outline.map(([x, y]) => ({ x: x - minX + pad, y: y - minY + pad }));
-  let simplified = ramerDouglasPeucker(local, 1.6);
-  let epsilon = 1.6;
+  const epsilonStart = Math.max(0.35, (1 - Math.max(0, Math.min(1, fidelity))) * 4);
+  let simplified = ramerDouglasPeucker(local, epsilonStart);
+  let epsilon = epsilonStart;
   for (let pass = 0; pass < 8 && simplified.length > maxPoints; pass += 1) {
     epsilon = Math.min(14, epsilon * 1.55);
     const next = ramerDouglasPeucker(local, epsilon);
@@ -170,7 +171,7 @@ export function outlineToEditablePath(
   const points = autoSmoothPoints(
     simplified.map((p) => ({ x: p.x, y: p.y, hIn: null, hOut: null })),
     true,
-    0.18,
+    Math.max(0, Math.min(0.45, handleSmoothing)),
   );
 
   return {
