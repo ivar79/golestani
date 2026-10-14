@@ -1691,8 +1691,9 @@ export class EditorEngine {
     start: { x: number; y: number },
     end: { x: number; y: number },
     options: { color: string; width: number; style?: StrokeStyleKind; linecap?: StrokeLineCap; linejoin?: StrokeLineJoin; opacity?: number },
+    pressure = 1,
   ): string | null {
-    if (Math.hypot(end.x - start.x, end.y - start.y) < 0.01) return this.commitFreehandDot(start, options);
+    if (Math.hypot(end.x - start.x, end.y - start.y) < 0.01) return this.commitFreehandDot(start, options, pressure);
     const strokeWidth = clampStrokeWidth(options.width);
     const id = `path-${Math.random().toString(36).slice(2, 9)}`;
     const points: PathPoint[] = [
