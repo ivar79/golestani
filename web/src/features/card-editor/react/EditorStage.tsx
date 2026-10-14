@@ -716,6 +716,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       guidePath?.setAttribute("d", `M ${first.x} ${first.y} L ${last.x} ${last.y}`);
       guidePath?.setAttribute("stroke", state.brushColor || "#0ea5e9");
       guidePath?.setAttribute("stroke-width", String(state.brushWidth || 14));
+      guidePath?.setAttribute("opacity", String(state.brushOpacity));
       return;
     }
     liveGuideBrushRef.current?.setAttribute("d", "");
