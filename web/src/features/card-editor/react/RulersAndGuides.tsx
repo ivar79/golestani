@@ -133,6 +133,8 @@ type Props = {
   /** Spin an existing guide around its own anchor. */
   onRotate: (id: string, angle: number) => void;
   onRemove: (id: string) => void;
+  onToggleLock?: (id: string) => void;
+  onPin?: (vertex: Point, baseAngle: number) => void;
   /** Preview mode never shows design aids. */
   preview?: boolean;
 };
@@ -184,6 +186,14 @@ export function clipLineToBoard(
 }
 
 /** Kill the 1e-14 residue a rotation leaves behind, so edges read exactly. */
+function projectOnGuideForUi(guide: UserGuide, point: Point): Point {
+  const radians = (guide.angle * Math.PI) / 180;
+  const nx = -Math.sin(radians);
+  const ny = Math.cos(radians);
+  const signed = (point.x - guide.x) * nx + (point.y - guide.y) * ny;
+  return { x: point.x - signed * nx, y: point.y - signed * ny };
+}
+
 function tidy(value: number): number {
   const rounded = Math.round(value * 1e6) / 1e6;
   return Object.is(rounded, -0) ? 0 : rounded;
@@ -201,6 +211,8 @@ export function RulersAndGuides({
   onMove,
   onRotate,
   onRemove,
+  onToggleLock,
+  onPin,
   preview = false,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -697,6 +709,12 @@ export function RulersAndGuides({
                 }}
                 onPointerDown={(event) => {
                   const point = toArtboard(event.clientX, event.clientY);
+                  if (guide.locked) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onPin?.(projectOnGuideForUi(guide, point), guide.angle);
+                    return;
+                  }
                   start(
                     {
                       kind: "move",
@@ -720,10 +738,39 @@ export function RulersAndGuides({
                 onPointerUp={() => finish(true)}
                 onPointerCancel={() => finish(false)}
               />
-              {/* ROTATE HANDLE — appears on hover, on the line, so "make this
-                  diagonal" is one obvious gesture instead of a hidden modifier. */}
-              {active ? (
-                <g data-guide-rotate={guide.id}>
+              {/* Lock state is visible and directly controllable without entering another mode. */}
+              <g data-guide-lock-control={guide.id}>
+                <circle
+                  cx={guide.x * scale + pan.x}
+                  cy={guide.y * scale + pan.y}
+                  r={9}
+                  fill={guide.locked ? "#164e63" : "#07111d"}
+                  stroke={guide.locked ? "#67e8f9" : "#94a3b8"}
+                  strokeWidth={1.5}
+                  pointerEvents="none"
+                />
+                <text
+                  x={guide.x * scale + pan.x}
+                  y={guide.y * scale + pan.y + 3}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill="#e0f2fe"
+                  pointerEvents="none"
+                >{guide.locked ? "L" : "·"}</text>
+                <circle
+                  data-guide-lock-grip={guide.id}
+                  cx={guide.x * scale + pan.x}
+                  cy={guide.y * scale + pan.y}
+                  r={13}
+                  fill="transparent"
+                  style={{ cursor: "pointer", pointerEvents: "auto" }}
+                  onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                  onClick={(event) => { event.preventDefault(); event.stopPropagation(); onToggleLock?.(guide.id); }}
+                />
+              </g>
+              {/* ROTATE HANDLE — always visible; locked guides expose it disabled. */}
+              {true ? (
+                <g data-guide-rotate={guide.id} data-disabled={guide.locked ? "yes" : "no"} opacity={guide.locked ? 0.45 : 1}>
                   <circle cx={handle.x} cy={handle.y} r={9} fill="#07111d" stroke="#a5f3fc" strokeWidth={1.5} />
                   <line
                     x1={handle.x - 3.5}
@@ -741,6 +788,7 @@ export function RulersAndGuides({
                     fill="transparent"
                     style={{ cursor: "grab" }}
                     onPointerDown={(event) => {
+                      if (guide.locked) { event.preventDefault(); event.stopPropagation(); return; }
                       start(
                         {
                           kind: "rotate",
