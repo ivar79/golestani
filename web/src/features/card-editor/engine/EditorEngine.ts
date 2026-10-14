@@ -3656,20 +3656,22 @@ export class EditorEngine {
    * Place a guide (dragging out of a ruler). Adding onto an existing guide of
    * the same axis MOVES it — see `domain/guides.addGuide`.
    */
-  addGuide(axis: GuideAxis, at: number): void {
+  addGuide(axis: GuideAxis, at: number): boolean {
     const next = addGuide(this.state.guides, axis, at, this.state.doc.artboard);
-    if (next === this.state.guides) return;
+    if (JSON.stringify(next) === JSON.stringify(this.state.guides)) return false;
     this.emit({ guides: next });
+    return true;
   }
 
   /**
    * Place a guide at ANY angle — the diagonal a ruler drag cannot express.
    * `point` is where the line passes; the angle is in degrees (0 = horizontal).
    */
-  addAngledGuide(angle: number, point: { x: number; y: number }): void {
+  addAngledGuide(angle: number, point: { x: number; y: number }): boolean {
     const next = addAngledGuide(this.state.guides, { angle, ...point }, this.state.doc.artboard);
-    if (next === this.state.guides) return;
+    if (JSON.stringify(next) === JSON.stringify(this.state.guides)) return false;
     this.emit({ guides: next });
+    return true;
   }
 
   /** Move one guide while it is dragged (its anchor point follows the pointer). */
