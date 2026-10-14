@@ -115,6 +115,7 @@ import {
   normalizeAngleAssist,
   removeGuide,
   rotateGuide,
+  toggleGuideLock,
   type GuideAxis,
   type UserGuide,
 } from "../domain/guides";
@@ -3633,9 +3634,36 @@ export class EditorEngine {
     return true;
   }
 
+  toggleGuideLock(id: string): void {
+    const next = toggleGuideLock(this.state.guides, id);
+    if (next.every((guide, index) => guide === this.state.guides[index])) return;
+    this.emit({ guides: next });
+  }
+
   clearGuides(): void {
-    if (this.state.guides.length === 0) return;
-    this.emit({ guides: [] });
+    const next = this.state.guides.filter((guide) => guide.locked === true);
+    if (next.length === this.state.guides.length) return;
+    this.emit({ guides: next });
+  }
+
+  /** Create a locked straightedge at an absolute angle through the dial vertex. */
+  addLockedAngledGuide(angle: number, point: { x: number; y: number }): boolean {
+    const before = this.state.guides;
+    const next = addAngledGuide(before, { angle, ...point }, this.state.doc.artboard);
+    const normalizedAngle = ((angle % 180) + 180) % 180;
+    const existing = next.find((guide) => {
+      const delta = Math.abs((((guide.angle - normalizedAngle) % 180) + 270) % 180 - 90);
+      const distance = Math.abs((point.x - guide.x) * Math.sin((guide.angle * Math.PI) / 180) - (point.y - guide.y) * Math.cos((guide.angle * Math.PI) / 180));
+      return delta < 0.5 && distance < 0.5;
+    });
+    if (next.length === before.length && !existing) return false;
+    if (existing) {
+      const locked = next.map((guide) => guide.id === existing.id ? { ...guide, locked: true } : guide);
+      this.emit({ guides: locked });
+      return true;
+    }
+    this.emit({ guides: next });
+    return false;
   }
 
   /** Turn the angle-assist grid on/off (the "set-square"). */
