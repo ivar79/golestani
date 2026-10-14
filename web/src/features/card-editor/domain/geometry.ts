@@ -62,6 +62,7 @@ export function snapLayerPosition(
   pos: { x: number; y: number },
   size: { width: number; height: number },
   threshold = 6,
+  userGuides: readonly { axis: "x" | "y"; at: number }[] = [],
 ): { pos: { x: number; y: number }; guides: SnapGuide[] } {
   const board = doc.artboard;
   const others = doc.layers.filter((l) => l.id !== layerId && !l.hidden && l.opacity > 0);
@@ -93,8 +94,8 @@ export function snapLayerPosition(
     }
   };
 
-  const xGuides = [0, board.width, board.width / 2];
-  const yGuides = [0, board.height, board.height / 2];
+  const xGuides = [0, board.width, board.width / 2, ...userGuides.filter(g => g.axis === "x").map(g => g.at)];
+  const yGuides = [0, board.height, board.height / 2, ...userGuides.filter(g => g.axis === "y").map(g => g.at)];
   for (const other of others) {
     xGuides.push(other.x, other.x + other.width, other.x + other.width / 2);
     yGuides.push(other.y, other.y + other.height, other.y + other.height / 2);
