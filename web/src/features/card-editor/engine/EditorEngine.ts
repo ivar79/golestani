@@ -1701,7 +1701,7 @@ export class EditorEngine {
     ];
     const layer = normalizePathLayer<PathLayer>({
       id, kind: "path", pathMode: "freehand", x: 0, y: 0, width: 1, height: 1,
-      angle: 0, opacity: options.opacity ?? this.state.brushOpacity, locked: false, hidden: false,
+      angle: 0, opacity: 1, locked: false, hidden: false,
       z: this.state.doc.layers.length + 1, color: null, background: null, closed: false, points,
       stroke: options.color, strokeWidth, strokeStyle: options.style ?? this.state.brushStyle,
       strokeLinecap: options.linecap ?? this.state.brushLinecap,
