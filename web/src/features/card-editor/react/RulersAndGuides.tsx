@@ -57,6 +57,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   RULER_THICKNESS,
+  MAX_GUIDES,
   angleFromDrag,
   axisForAngle,
   clampAxis,
@@ -126,9 +127,9 @@ type Props = {
    * 30° gets exactly 30° instead of "about 30°".
    */
   angleSnap?: number | null;
-  onAdd: (axis: GuideAxis, at: number) => void;
+  onAdd: (axis: GuideAxis, at: number) => boolean | void;
   /** Create a guide at ANY angle through `point` (0 = horizontal, 90 = vertical). */
-  onAddAngled: (angle: number, point: Point) => void;
+  onAddAngled: (angle: number, point: Point) => boolean | void;
   onMove: (id: string, point: Point) => void;
   /** Spin an existing guide around its own anchor. */
   onRotate: (id: string, angle: number) => void;
@@ -221,11 +222,13 @@ export function RulersAndGuides({
   const dragRef = useRef<Drag | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [limitNotice, setLimitNotice] = useState(false);
   const [pointer, setPointer] = useState<Point | null>(null);
   const lastPointerRef = useRef<string>("");
 
   const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   const snapIncrements = angleSnap && angleSnap > 0 ? [angleSnap] : [];
+  const flashLimit = useCallback(() => { setLimitNotice(true); window.setTimeout(() => setLimitNotice(false), 2200); }, []);
 
   /** Client point → artboard point, using the wrapper rect and the pan offset. */
   const toArtboard = useCallback(
@@ -308,13 +311,13 @@ export function RulersAndGuides({
         moved,
       };
 
-      if (current.kind === "rotate" || current.kind === "angled") {
-        // Both gestures are "point at the direction you want": the line pivots
-        // around an anchor that never moves.
-        next = {
-          ...next,
-          angle: angleFromDrag(current.anchor, point, increments),
-        };
+      if (current.kind === "create" && event.shiftKey) {
+        // Shift+drag from either ruler turns the ordinary guide pull into an
+        // angled guide, preserving the original press as the visible pivot.
+        const anchor = clampPoint(current.anchor, artboard);
+        next = { ...next, kind: "angled", axis: null, anchor, x: anchor.x, y: anchor.y, angle: angleFromDrag(anchor, point, increments), droppedOnRuler: false };
+      } else if (current.kind === "rotate" || current.kind === "angled") {
+        next = { ...next, angle: angleFromDrag(current.anchor, point, increments) };
       } else if (current.kind === "create") {
         const axis = current.axis ?? "x";
         const value = axis === "x" ? point.x : point.y;
@@ -367,7 +370,8 @@ export function RulersAndGuides({
 
       if (current.kind === "angled") {
         // A corner drag that never left the elbow is a stray click, not a line.
-        onAddAngled(current.angle, { x: current.anchor.x, y: current.anchor.y });
+        const ok = onAddAngled(current.angle, { x: current.anchor.x, y: current.anchor.y });
+        if (ok === false && guides.length >= MAX_GUIDES) flashLimit();
         return;
       }
 
@@ -381,7 +385,8 @@ export function RulersAndGuides({
         // Dropping a line back onto the strip it came from means "never mind".
         if (current.droppedOnRuler) return;
         const axis = current.axis ?? "x";
-        onAdd(axis, axis === "x" ? current.x : current.y);
+        const ok = onAdd(axis, axis === "x" ? current.x : current.y);
+        if (ok === false && guides.length >= MAX_GUIDES) flashLimit();
         return;
       }
 
@@ -395,7 +400,7 @@ export function RulersAndGuides({
       // Off the board on its OWN axis is not a delete — it pins to the edge.
       onMove(id, { x: current.x, y: current.y });
     },
-    [onAdd, onAddAngled, onMove, onRemove, onRotate],
+    [flashLimit, guides.length, onAdd, onAddAngled, onMove, onRemove, onRotate],
   );
 
   if (preview) return null;
@@ -836,6 +841,8 @@ export function RulersAndGuides({
           />
         ) : null}
       </svg>
+
+      {limitNotice ? <div role="status" data-guide-limit-notice="" className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded-md border border-rose-300/30 bg-rose-950/95 px-3 py-1.5 text-[11px] font-semibold text-rose-100 shadow-lg">حداکثر {MAX_GUIDES} خط راهنما مجاز است</div> : null}
 
       {/* Exact readout while dragging: the number is the contract, not the pixel. */}
       {drag && drag.kind !== "create" && drag.moved ? (
