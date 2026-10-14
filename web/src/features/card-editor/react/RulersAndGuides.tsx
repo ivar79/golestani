@@ -79,7 +79,6 @@ const LINE_PAD_PX = 28;
 /** Hit stroke width in screen px — a 1px diagonal is impossible to grab. */
 const HIT_STROKE_PX = 12;
 /** Shift is the universal "constrain rotation" modifier. */
-const SHIFT_ROTATE_STEP = 15;
 
 type Point = { x: number; y: number };
 
@@ -306,7 +305,7 @@ export function RulersAndGuides({
         event.clientY - current.origin.clientY,
       );
       const moved = current.moved || travelled > CREATE_THRESHOLD_PX;
-      const increments = event.shiftKey ? [SHIFT_ROTATE_STEP] : snapIncrements;
+      const increments = snapIncrements;
       let next: Drag = {
         ...current,
         rawX: point.x,
@@ -332,30 +331,14 @@ export function RulersAndGuides({
           y: axis === "y" ? clampAxis(value, extent) : artboard.height / 2,
           droppedOnRuler: backOnRuler(axis, point),
         };
-      } else if (isAxisAlignedAngle(current.angle)) {
-        // An axis guide follows ONE pointer coordinate: the other one is noise,
-        // and its cross coordinate is what expresses "drop me back on the ruler".
-        const axis = current.axis ?? "x";
-        const value = axis === "x" ? point.x : point.y;
-        const extent = axis === "x" ? artboard.width : artboard.height;
-        next = {
-          ...next,
-          x: axis === "x" ? clampAxis(value, extent) : current.anchor.x,
-          y: axis === "y" ? clampAxis(value, extent) : current.anchor.y,
-          droppedOnRuler: backOnRuler(axis, point),
-        };
       } else {
-        // An angled guide TRANSLATES: both of its coordinates are meaningful, so
-        // there is no single axis it could follow. The anchor is clamped to the
-        // board, which is why the whole line stays grabbable.
+        // Unified translation for every angle preserves the exact grab offset;
+        // the guide never jumps so its anchor sits under the cursor.
         const axis = axisForAngle(current.angle);
-        const anchor = clampPoint(
-          {
-            x: current.anchor.x + (point.x - current.press.x),
-            y: current.anchor.y + (point.y - current.press.y),
-          },
-          artboard,
-        );
+        const anchor = clampPoint({
+          x: current.anchor.x + (point.x - current.press.x),
+          y: current.anchor.y + (point.y - current.press.y),
+        }, artboard);
         next = { ...next, x: anchor.x, y: anchor.y, droppedOnRuler: backOnRuler(axis, point) };
       }
 
@@ -430,11 +413,13 @@ export function RulersAndGuides({
         event.preventDefault();
         if (guide.locked) return;
         const delta = event.shiftKey ? 10 : 1;
-        const next = {
-          x: guide.x + (event.key === "ArrowLeft" ? -delta : event.key === "ArrowRight" ? delta : 0),
-          y: guide.y + (event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0),
-        };
-        onMove(selectedGuideId, next);
+        const dx = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+        const dy = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+        const radians = guide.angle * Math.PI / 180;
+        const nx = -Math.sin(radians), ny = Math.cos(radians);
+        const amount = (dx * nx + dy * ny) * delta;
+        if (Math.abs(amount) < 1e-8) return;
+        onMove(selectedGuideId, { x: guide.x + nx * amount, y: guide.y + ny * amount });
       }
     };
     window.addEventListener("keydown", onKeyDown);
