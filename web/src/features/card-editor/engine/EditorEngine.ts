@@ -1717,20 +1717,40 @@ export class EditorEngine {
     return id;
   }
 
-  /** A press/release without travel is a visible round dab, never an empty path. */
+  /** A press/release without travel is an editable round path dab, never an empty stroke. */
   commitFreehandDot(
     point: { x: number; y: number },
     options: { color: string; width: number; opacity?: number },
+    pressure = 1,
   ): string {
-    const diameter = Math.max(1, clampStrokeWidth(options.width));
-    const id = this.addShape("ellipse", {
-      x: point.x - diameter / 2, y: point.y - diameter / 2,
-      width: diameter, height: diameter, background: options.color,
-      opacity: options.opacity ?? this.state.brushOpacity,
+    const diameter = Math.max(1, clampStrokeWidth(options.width) * Math.max(0.2, Math.min(1, pressure)));
+    const r = diameter / 2;
+    const k = 0.5522847498 * r;
+    const points: PathPoint[] = [
+      { x: r, y: 0, hIn: { x: r - k, y: 0 }, hOut: { x: r + k, y: 0 } },
+      { x: diameter, y: r, hIn: { x: diameter, y: r - k }, hOut: { x: diameter, y: r + k } },
+      { x: r, y: diameter, hIn: { x: r + k, y: diameter }, hOut: { x: r - k, y: diameter } },
+      { x: 0, y: r, hIn: { x: 0, y: r + k }, hOut: { x: 0, y: r - k } },
+    ];
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer: PathLayer = {
+      id, kind: "path", pathMode: "freehand", name: "قلم آزاد",
+      points, closed: true, fill: options.color, stroke: null, strokeWidth: 0,
+      strokeStyle: this.state.brushStyle, strokeLinecap: this.state.brushLinecap,
+      strokeLinejoin: this.state.brushLinejoin, strokeOpacity: options.opacity ?? this.state.brushOpacity,
+      x: point.x - r, y: point.y - r, width: diameter, height: diameter, angle: 0,
+      opacity: options.opacity ?? this.state.brushOpacity, locked: false, hidden: false,
+      color: options.color, background: null,
+    };
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, layer] },
+      tool: "draw", selection: this.withSelection(id), editingPathId: id,
+      selectedAnchor: { layerId: id, index: 0 },
     });
-    this.emit({ tool: "draw", editingPathId: null, selectedAnchor: null });
     return id;
   }
+
 
   commitFreehandStroke(options: {
     color: string;
