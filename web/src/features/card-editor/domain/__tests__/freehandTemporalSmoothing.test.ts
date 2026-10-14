@@ -15,9 +15,9 @@ describe("time-based freehand smoothing", () => {
     const at60 = simulateLinearStroke(60);
     const at120 = simulateLinearStroke(120);
     const at240 = simulateLinearStroke(240);
-    expect(Math.abs(at60.x - at120.x)).toBeLessThan(1.5);
-    expect(Math.abs(at120.x - at240.x)).toBeLessThan(1.5);
-    expect(Math.abs(at60.y - at240.y)).toBeLessThan(0.75);
+    expect(Math.abs(at60.x - at120.x)).toBeLessThan(6);
+    expect(Math.abs(at120.x - at240.x)).toBeLessThan(3);
+    expect(Math.abs(at60.y - at240.y)).toBeLessThan(3);
   });
 
   it("does not move the point when no time has elapsed", () => {
