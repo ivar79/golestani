@@ -1607,6 +1607,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             pan={pan}
             rulers={state.rulers}
             guides={state.guides}
+            selectMode={state.tool === "select"}
             preview={preview}
             /* The set-square locks a guide's angle too: one angular grid for the
                whole drawing aid, not a pen-only setting. */
@@ -1629,6 +1630,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           pan={pan}
           angleSnap={state.angleAssist ? state.angleAssistIncrement : null}
           engagedEdge={engagedSetSquareEdge}
+          interactive={state.tool === "select"}
           onMove={(id, center) => engine.moveSetSquare(id, center)}
           onRotate={(id, angle) => engine.rotateSetSquare(id, angle)}
           onResize={(id, size) => engine.resizeSetSquare(id, size)}
