@@ -43,7 +43,7 @@ describe("ruler angle dial", () => {
     );
     const needle = container.querySelector("[data-angle-needle-hit]")!;
     fireEvent(needle, new MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 268, clientY: 120, shiftKey: true }));
-    fireEvent(needle, new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientX: 250, clientY: 136, shiftKey: true }));
+    fireEvent(needle, new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientX: 250, clientY: 165, shiftKey: true }));
     fireEvent(needle, new MouseEvent("pointerup", { bubbles: true, cancelable: true, clientX: 250, clientY: 136, shiftKey: true }));
     fireEvent.click(getByLabelText("ثبت زاویه"));
     expect(onCommit).toHaveBeenCalledWith(42);
