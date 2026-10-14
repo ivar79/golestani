@@ -24,11 +24,12 @@ import {
   shouldBeginHandleDrag,
   exceedsClickThreshold,
 } from "../domain/penGesture";
-import { ANGLE_ASSIST_PRESETS, axisAlignedGuideLines, distanceToGuide, projectOnGuide, type UserGuide } from "../domain/guides";
+import { ANGLE_ASSIST_PRESETS, axisAlignedGuideLines, projectOnGuide, type UserGuide } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
 import { AngleDial } from "./AngleDial";
 import { SetSquareOverlay } from "./SetSquareOverlay";
-import { closestPointOnSegment, nearestSetSquareEdge, setSquareVertices, SET_SQUARE_ENGAGE_PX, type SetSquare } from "../domain/setSquare";
+import { closestPointOnSegment, type SetSquare } from "../domain/setSquare";
+import { nearestLockedStraightedge } from "../domain/draftingSnap";
 import { layerHitCursor } from "../domain/cursorPolicy";
 import { getBrushStrokeOutline, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
 import { pathD } from "../domain/path";
@@ -632,28 +633,15 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       const stageElement = containerRef.current?.querySelector("[data-stage-inner]") as HTMLElement | null;
       brushRectRef.current = stageElement?.getBoundingClientRect() ?? null;
       const rawPos = brushPointerPos(event);
-      const engageRadius = 12 / Math.max(zoom, 0.01);
-      let engaged: UserGuide | null = null;
-      let bestDistance = Infinity;
-      for (const guide of state.guides) {
-        if (!guide.locked) continue;
-        const distance = distanceToGuide(guide, rawPos);
-        if (distance <= engageRadius && distance < bestDistance) { engaged = guide; bestDistance = distance; }
-      }
-      let squareEdge: { square: SetSquare; edgeIndex: number; a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
-      for (const square of state.setSquares) {
-        const nearest = nearestSetSquareEdge(square, rawPos);
-        if (!nearest || nearest.distance > SET_SQUARE_ENGAGE_PX / Math.max(zoom, 0.01) || nearest.distance >= bestDistance) continue;
-        const vertices = setSquareVertices(square);
-        squareEdge = { square, edgeIndex: nearest.edgeIndex, a: vertices[nearest.edgeIndex], b: vertices[(nearest.edgeIndex + 1) % vertices.length] };
-        bestDistance = nearest.distance;
-      }
-      brushEngagedGuideRef.current = squareEdge ? null : engaged;
+      const straightedge = nearestLockedStraightedge(rawPos, state.guides, state.setSquares, zoom);
+      const engaged = straightedge?.kind === "guide" ? straightedge.guide : null;
+      const squareEdge = straightedge?.kind === "set-square"
+        ? { square: straightedge.square, edgeIndex: straightedge.edgeIndex, a: straightedge.a, b: straightedge.b }
+        : null;
+      brushEngagedGuideRef.current = engaged;
       brushEngagedSquareRef.current = squareEdge;
       setEngagedSetSquareEdge(squareEdge ? { squareId: squareEdge.square.id, edgeIndex: squareEdge.edgeIndex } : null);
-      const pos = squareEdge
-        ? closestPointOnSegment(rawPos, squareEdge.a, squareEdge.b).point
-        : engaged ? projectOnGuide(engaged, rawPos) : rawPos;
+      const pos = straightedge?.point ?? rawPos;
       const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
       brushPtsRef.current = [pt];
       brushSmoothRef.current = pt;
