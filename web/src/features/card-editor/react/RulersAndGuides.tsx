@@ -372,7 +372,12 @@ export function RulersAndGuides({
         // Dropping a line back onto the strip it came from means "never mind".
         if (current.droppedOnRuler) return;
         const axis = current.axis ?? "x";
-        const ok = onAdd(axis, axis === "x" ? current.x : current.y);
+        const point = current.moved
+          ? { x: current.x, y: current.y }
+          : onSnapCreate?.(current.anchor, axis) ?? current.anchor;
+        const extent = axis === "x" ? artboard.width : artboard.height;
+        const value = clampAxis(axis === "x" ? point.x : point.y, extent);
+        const ok = onAdd(axis, value);
         if (ok === false && guides.length >= MAX_GUIDES) flashLimit();
         return;
       }
@@ -387,7 +392,7 @@ export function RulersAndGuides({
       // Off the board on its OWN axis is not a delete — it pins to the edge.
       onMove(id, { x: current.x, y: current.y });
     },
-    [flashLimit, guides.length, onAdd, onAddAngled, onMove, onRemove, onRotate],
+    [artboard, flashLimit, guides.length, onAdd, onAddAngled, onMove, onRemove, onRotate, onSnapCreate],
   );
 
   useEffect(() => {
