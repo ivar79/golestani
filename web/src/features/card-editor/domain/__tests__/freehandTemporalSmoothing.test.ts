@@ -5,7 +5,7 @@ function simulateLinearStroke(hz: number): FreehandPoint {
   const dt = 1000 / hz;
   let point: FreehandPoint = { x: 0, y: 0, p: 0.5 };
   for (let t = dt; t <= 100 + 1e-8; t += dt) {
-    point = smoothFreehandSample(point, { x: t, y: t * 0.5, p: 0.5 }, dt);
+    point = smoothFreehandSample(point, { x: t, y: t * 0.5, p: 0.5 }, dt, 8 + 0.45 * 42);
   }
   return point;
 }
