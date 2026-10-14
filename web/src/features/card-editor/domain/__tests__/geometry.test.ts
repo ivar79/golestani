@@ -225,6 +225,23 @@ describe("zoom", () => {
 
 
 describe("user-guide snapping for layers", () => {
+  it("snaps a layer box anchor onto an angled guide", () => {
+    const doc = makeDoc([{ x: 0, y: 0, width: 20, height: 20 }]);
+    const result = snapLayerPosition(
+      doc,
+      "layer-0",
+      { x: 100, y: 108 },
+      { width: 20, height: 20 },
+      6,
+      [],
+      [{ x: 100, y: 100, angle: 45 }],
+    );
+    const snappedAnchor = { x: result.pos.x, y: result.pos.y };
+    expect(Math.abs((snappedAnchor.x - 100) - (snappedAnchor.y - 100))).toBeLessThan(6);
+    expect(result.pos.x).not.toBe(100);
+    expect(result.pos.y).not.toBe(108);
+  });
+
   it("snaps layer positions to vertical and horizontal user guides regardless of layer kind", () => {
     const doc = makeDoc([{ x: 0, y: 0, width: 20, height: 20 }]);
     const vertical = snapLayerPosition(doc, "layer-0", { x: 97, y: 40 }, { width: 20, height: 20 }, 6, [{ axis: "x", at: 100 }]);
