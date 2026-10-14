@@ -29,7 +29,7 @@ import { RulersAndGuides } from "./RulersAndGuides";
 import { AngleDial } from "./AngleDial";
 import { SetSquareOverlay } from "./SetSquareOverlay";
 import { closestPointOnSegment, type SetSquare } from "../domain/setSquare";
-import { nearestLockedStraightedge } from "../domain/draftingSnap";
+import { nearestLockedStraightedge, type LockedStraightedgeHit } from "../domain/draftingSnap";
 import { layerHitCursor } from "../domain/cursorPolicy";
 import { getBrushStrokeOutline, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
 import { pathD } from "../domain/path";
@@ -294,6 +294,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const isPenInputRef = useRef(false);
   /** True only once the pen click has crossed PEN_DRAG_THRESHOLD_PX (domain/penGesture). */
   const penDragRef = useRef(false);
+  const penEngagedStraightedgeRef = useRef<LockedStraightedgeHit | null>(null);
   /** Where the current pen pointer-down landed (artboard coords) — the threshold base. */
   const penStartRef = useRef<{ x: number; y: number } | null>(null);
   /** Rubber-band target for the live pen path (view state only). */
@@ -612,11 +613,18 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       // ANGLE LOCK: Shift gives the documented 45° grid, the "set-square"
       // toggle gives its own grid. The new segment is measured from the PREVIOUS
       // anchor, so a horizontal/vertical/diagonal segment is one key away.
+      const straightedge = nearestLockedStraightedge(raw, state.guides, state.setSquares, zoom);
+      const snappedRaw = straightedge?.point ?? raw;
       const increments = penAngleLock(event);
       const previous = draft && draft.length > 0 ? draft[draft.length - 1] : null;
-      const pos = previous && increments.length > 0 ? constrainPenPoint(previous, raw, true, increments) : raw;
-      if (draft && draft.length > 0) engine.penAddAnchor(pos);
-      else engine.penStart(pos);
+      const pos = straightedge
+        ? snappedRaw
+        : previous && increments.length > 0 ? constrainPenPoint(previous, raw, true, increments) : raw;
+      penEngagedStraightedgeRef.current = straightedge;
+      if (draft && draft.length > 0) {
+        if (straightedge) engine.penAddStraightAnchor(pos);
+        else engine.penAddAnchor(pos);
+      } else engine.penStart(pos);
       // Remember where this click landed: a click only becomes a handle DRAG
       // once the pointer crosses PEN_DRAG_THRESHOLD_PX in SCREEN pixels (see
       // onStagePointerMove). Until then it is a plain corner anchor.
@@ -740,17 +748,26 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       const penDraft = state.penDraft;
       const anchor = penDraft && penDraft.length > 0 ? penDraft[penDraft.length - 1] : null;
       const increments = penAngleLock(event);
-      // The rubber band and the handle drag both measure from the anchor just
-      // placed, so the lock previews exactly what the next click would commit.
-      const locked =
-        anchor && increments.length > 0 ? constrainPenPoint(anchor, pos, true, increments) : pos;
+      const currentHit = nearestLockedStraightedge(pos, state.guides, state.setSquares, zoom);
+      const straightedge = penEngagedStraightedgeRef.current ?? currentHit;
+      const snapped = straightedge
+        ? straightedge.kind === "guide" ? projectOnGuide(straightedge.guide, pos) : closestPointOnSegment(pos, straightedge.a, straightedge.b).point
+        : pos;
+      // A physical straightedge takes precedence over angle assists and never
+      // introduces Bézier handles: the preview and committed segment stay exact.
+      const locked = straightedge ? snapped : anchor && increments.length > 0 ? constrainPenPoint(anchor, pos, true, increments) : pos;
       if (penDraft) setPenCursor(locked);
-      // The click↔drag decision stays RAW: the angle lock must not shrink the
-      // travel that decides whether this press is a drag at all.
       if (!penDragRef.current && penStartRef.current && shouldBeginHandleDrag(penStartRef.current, pos, zoom)) {
         penDragRef.current = true;
       }
-      if (penDragRef.current) engine.penDragHandle(locked);
+      if (penDragRef.current) {
+        if (straightedge) {
+          penEngagedStraightedgeRef.current = straightedge;
+          engine.penMoveLastAnchor(locked);
+        } else {
+          engine.penDragHandle(locked);
+        }
+      }
       return;
     }
     if (isDrawingRef.current && state.tool === "draw") {
@@ -899,6 +916,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     liveGuideBrushRef.current?.setAttribute("d", "");
     penStartRef.current = null;
     penDragRef.current = false;
+    penEngagedStraightedgeRef.current = null;
   };
 
   const onStagePointerUp = () => {
@@ -934,6 +952,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       // alive until the path is closed or committed.
       penDragRef.current = false;
       penStartRef.current = null;
+      penEngagedStraightedgeRef.current = null;
       return;
     }
     if (isDrawingRef.current) {
