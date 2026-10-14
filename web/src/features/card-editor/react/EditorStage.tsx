@@ -282,6 +282,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const brushEngagedGuideRef = useRef<UserGuide | null>(null);
   const brushStartRef = useRef<{ x: number; y: number } | null>(null);
   const liveBrushRef = useRef<SVGPathElement>(null);
+  const liveGuideBrushRef = useRef<SVGPathElement>(null);
   const brushRafRef = useRef(0);
   const isPenInputRef = useRef(false);
   /** True only once the pen click has crossed PEN_DRAG_THRESHOLD_PX (domain/penGesture). */
@@ -679,7 +680,19 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
 
     const renderLiveBrush = () => {
     brushRafRef.current = 0;
-    const outline = getBrushStrokeOutline(brushPtsRef.current, {
+    const samples = brushPtsRef.current;
+    if (brushEngagedGuideRef.current && samples.length > 0) {
+      const first = samples[0];
+      const last = samples[samples.length - 1] ?? first;
+      liveBrushRef.current?.setAttribute("d", "");
+      const guidePath = liveGuideBrushRef.current;
+      guidePath?.setAttribute("d", `M ${first.x} ${first.y} L ${last.x} ${last.y}`);
+      guidePath?.setAttribute("stroke", state.brushColor || "#0ea5e9");
+      guidePath?.setAttribute("stroke-width", String(state.brushWidth || 14));
+      return;
+    }
+    liveGuideBrushRef.current?.setAttribute("d", "");
+    const outline = getBrushStrokeOutline(samples, {
       size: state.brushWidth || 14,
       thinning: 0.55,
       smoothing: 0.6,
@@ -854,6 +867,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     brushEngagedGuideRef.current = null;
     brushStartRef.current = null;
     liveBrushRef.current?.setAttribute("d", "");
+    liveGuideBrushRef.current?.setAttribute("d", "");
     penStartRef.current = null;
     penDragRef.current = false;
   };
@@ -924,6 +938,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       brushLastTimeRef.current = null;
       brushStartRef.current = null;
       liveBrushRef.current?.setAttribute("d", "");
+      liveGuideBrushRef.current?.setAttribute("d", "");
       return;
     }
     if (nodeMarqueeRef.current) {
@@ -1846,6 +1861,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         <div className="pointer-events-none absolute inset-0 z-[2000]">
           <svg style={{ width: "100%", height: "100%", overflow: "visible" }} viewBox={`0 0 ${doc.artboard.width} ${doc.artboard.height}`}>
             <path ref={liveBrushRef} fill={state.brushColor || "#0ea5e9"} pointerEvents="none" />
+            <path ref={liveGuideBrushRef} fill="none" stroke={state.brushColor || "#0ea5e9"} strokeWidth={state.brushWidth || 14} strokeLinecap="round" pointerEvents="none" />
           </svg>
         </div>
 
