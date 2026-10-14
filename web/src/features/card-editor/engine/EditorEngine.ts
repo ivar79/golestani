@@ -3316,6 +3316,16 @@ export class EditorEngine {
     this.clearSnapGuides();
   }
 
+  /** Insert a node at the nearest drawn segment point (used by segment double-click). */
+  insertAnchorAtPoint(layerId: string, localPoint: { x: number; y: number }, tolerance = SNAP_TOLERANCE_DEFAULT): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer) return false;
+    const hit = nearestSegmentOnCubics(this.bendSegmentsOf(layer), localPoint);
+    if (!hit || hit.distance > tolerance) return false;
+    this.insertAnchorAt(layerId, hit.segIndex, hit.t);
+    return true;
+  }
+
   /** Insert an anchor on a segment (loss-less de Casteljau split). One record. */
   insertAnchorAt(layerId: string, segIndex: number, t: number): void {
     const layer = this.editablePath(layerId);
