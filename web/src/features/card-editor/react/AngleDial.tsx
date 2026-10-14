@@ -97,7 +97,7 @@ export function AngleDial({ vertex, baseAngle, artboard, zoom, pan, onCommit, on
       <circle cx={cx} cy={cy} r={5} fill="#fbbf24" stroke="#111827" strokeWidth={2} pointerEvents="none" />
     </svg>
     <div dir="ltr" className="pointer-events-auto absolute flex items-center gap-1 rounded-lg border border-amber-300/30 bg-slate-950/95 p-2 shadow-xl"
-      style={{ left: Math.max(4, Math.min(cx - 85, (hostRef.current?.clientWidth ?? 600) - 180)), top: Math.max(4, cy + 76) }}
+      style={{ left: Math.max(4, Math.min(cx - 85, artboard.width * scale - 180)), top: Math.max(4, cy + 76) }}
       onPointerDown={event => event.stopPropagation()}>
       <label className="text-[10px] text-amber-100">θ</label>
       <input ref={inputRef} aria-label="زاویه نقاله" type="number" min={0} max={180} step={1} value={theta}
