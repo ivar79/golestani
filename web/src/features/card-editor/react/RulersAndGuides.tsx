@@ -353,7 +353,7 @@ export function RulersAndGuides({
       const current = dragRef.current;
       dragRef.current = null;
       setDrag(null);
-      if (!current || !commit || (!current.moved && current.kind !== "create")) return;
+      if (!current || !commit || !current.moved) return;
 
       if (current.kind === "angled") {
         // A corner drag that never left the elbow is a stray click, not a line.
