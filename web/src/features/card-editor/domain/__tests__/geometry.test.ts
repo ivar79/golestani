@@ -236,8 +236,15 @@ describe("user-guide snapping for layers", () => {
       [],
       [{ x: 100, y: 100, angle: 45 }],
     );
-    const snappedAnchor = { x: result.pos.x, y: result.pos.y };
-    expect(Math.abs((snappedAnchor.x - 100) - (snappedAnchor.y - 100))).toBeLessThan(6);
+    const anchors = [
+      { x: result.pos.x, y: result.pos.y },
+      { x: result.pos.x + 20, y: result.pos.y },
+      { x: result.pos.x + 20, y: result.pos.y + 20 },
+      { x: result.pos.x, y: result.pos.y + 20 },
+      { x: result.pos.x + 10, y: result.pos.y + 10 },
+    ];
+    const distanceToGuide = (point: { x: number; y: number }) => Math.abs((point.x - 100) - (point.y - 100)) / Math.sqrt(2);
+    expect(Math.min(...anchors.map(distanceToGuide))).toBeLessThan(0.01);
     expect(result.pos.x).not.toBe(100);
     expect(result.pos.y).not.toBe(108);
   });
