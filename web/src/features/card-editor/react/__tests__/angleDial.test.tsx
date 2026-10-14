@@ -20,8 +20,6 @@ describe("ruler angle dial", () => {
         onCancel={onCancel}
         onMoveVertex={vi.fn()}
         onSetBaseAngle={vi.fn()}
-        onMoveVertex={vi.fn()}
-        onSetBaseAngle={vi.fn()}
       />,
     );
     const input = getByLabelText("زاویه نقاله") as HTMLInputElement;
@@ -73,6 +71,8 @@ describe("ruler angle dial", () => {
         pan={{ x: 0, y: 0 }}
         onCommit={onCommit}
         onCancel={onCancel}
+        onMoveVertex={vi.fn()}
+        onSetBaseAngle={vi.fn()}
       />,
     );
     fireEvent.keyDown(window, { key: "Escape" });
