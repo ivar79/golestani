@@ -6,14 +6,21 @@ import { EditorEngine } from "../../engine/EditorEngine";
 import { ARTBOARD, type CardDocument, type PathLayer } from "../../domain/document";
 
 const RECT = { x: 0, y: 0, left: 0, top: 0, right: ARTBOARD.width, bottom: ARTBOARD.height, width: ARTBOARD.width, height: ARTBOARD.height, toJSON: () => ({}) };
+const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
 
 beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1400 });
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0));
   vi.stubGlobal("cancelAnimationFrame", (id: number) => window.clearTimeout(id));
 });
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  if (originalClientWidth) Object.defineProperty(HTMLElement.prototype, "clientWidth", originalClientWidth);
+  else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+});
 
 function emptyDoc(): CardDocument {
   return { version: 1, artboard: { ...ARTBOARD }, background: "#ffffff", layers: [] };
