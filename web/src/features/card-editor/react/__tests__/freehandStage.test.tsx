@@ -64,6 +64,23 @@ describe("EditorStage freehand input", () => {
     expect(engine.getState().editingPathId).toBe(layer.id);
   });
 
+  it("keeps drafting toolbar clicks from starting a canvas stroke", () => {
+    const engine = new EditorEngine(emptyDoc());
+    engine.setTool("draw");
+    const view = renderStage(engine);
+    const addSquare = view.container.querySelector('[data-set-square-add]')!;
+    pointer(addSquare, "pointerdown", 15, 15, 10);
+    fireEvent.click(addSquare);
+    expect(engine.getState().setSquares).toHaveLength(1);
+    expect(engine.getState().doc.layers).toHaveLength(0);
+    expect(engine.getState().tool).toBe("draw");
+
+    const rulers = view.container.querySelector('[data-rulers-toggle]')!;
+    fireEvent.click(rulers);
+    expect(engine.getState().rulersVisible).toBe(true);
+    expect(engine.getState().doc.layers).toHaveLength(0);
+  });
+
   it("fully cancels a pointercancel without committing a partial layer", () => {
     const engine = new EditorEngine(emptyDoc());
     engine.setTool("draw");
