@@ -720,6 +720,15 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       return;
     }
     liveGuideBrushRef.current?.setAttribute("d", "");
+    if (samples.length === 1) {
+      const p = samples[0];
+      const pressureScale = isPenInputRef.current ? Math.max(0.2, Math.min(1, p.p)) : 1;
+      const radius = (state.brushWidth || 14) * pressureScale / 2;
+      liveBrushRef.current?.removeAttribute("transform");
+      liveBrushRef.current?.setAttribute("opacity", String(state.brushOpacity));
+      liveBrushRef.current?.setAttribute("d", `M ${p.x - radius} ${p.y} A ${radius} ${radius} 0 1 0 ${p.x + radius} ${p.y} A ${radius} ${radius} 0 1 0 ${p.x - radius} ${p.y} Z`);
+      return;
+    }
     const outline = getBrushStrokeOutline(samples, brushOptions());
     const geometry = engine.freehandOutlineGeometry(outline, state.freehandTuning.fidelity);
     if (geometry) {
@@ -958,7 +967,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       if ((brushEngagedGuideRef.current || brushEngagedSquareRef.current) && pts.length > 0) {
         const start = pts[0];
         const end = pts[pts.length - 1] ?? start;
-        engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options);
+        engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options, isPenInputRef.current ? end.p : 1);
       } else if (pts.length > 1) {
         const outline = getBrushStrokeOutline(pts, brushOptions());
         engine.commitFreehandOutline(outline, { ...options, fidelity: state.freehandTuning.fidelity });
