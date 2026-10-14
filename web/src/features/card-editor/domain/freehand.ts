@@ -141,6 +141,8 @@ export function outlineToEditablePath(
   outline: number[][],
   pad = 2,
   maxPoints = 72,
+  fidelity = 0.75,
+  handleSmoothing = 0.18,
 ): { points: PathPoint[]; x: number; y: number; width: number; height: number } | null {
   if (!outline || outline.length < 4) return null;
 
