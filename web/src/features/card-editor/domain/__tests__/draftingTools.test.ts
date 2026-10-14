@@ -51,6 +51,25 @@ describe("drafting tool engine behavior", () => {
     expect(engine.getState().doc).not.toHaveProperty("setSquares");
   });
 
+  it("adds straightedge Pen vertices without curvature smoothing and can drag them along the edge", () => {
+    const engine = new EditorEngine(emptyDoc());
+    engine.setTool("pen");
+    engine.setPenMode("curvature");
+    engine.penStart({ x: 10, y: 10 });
+    engine.penAddAnchor({ x: 20, y: 20 });
+    engine.penAddStraightAnchor({ x: 30, y: 40 });
+    let draft = engine.getState().penDraft!;
+    expect(draft).toHaveLength(3);
+    expect(draft[1].hOut).toBeNull();
+    expect(draft[2].hIn).toBeNull();
+    expect(draft[2].hOut).toBeNull();
+
+    engine.penMoveLastAnchor({ x: 50, y: 60 });
+    draft = engine.getState().penDraft!;
+    expect(draft[2]).toMatchObject({ x: 50, y: 60, hIn: null, hOut: null });
+    expect(engine.getState().tool).toBe("pen");
+  });
+
   it("enforces the four-set-square cap", () => {
     const engine = new EditorEngine(emptyDoc());
     expect(engine.addSetSquare()).toBeTruthy();
