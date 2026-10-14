@@ -2023,7 +2023,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
               }
             }}
             className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-amber-200 transition hover:bg-amber-500/15"
-          >📐{state.setSquares.length ? ` ${state.setSquares.length}` : ""}</button>
+          >📐 گونیا{state.setSquares.length ? ` ${state.setSquares.length}` : ""}</button>
           {setSquareNotice ? <span role="status" className="text-[10px] text-rose-200">{setSquareNotice}</span> : null}
           {state.setSquares.some(square => !square.locked) ? (
             <button type="button" data-set-square-clear="" title="حذف گونیاهای آزاد (گونیاهای قفل‌شده باقی می‌مانند)" onClick={() => engine.clearSetSquares()} className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-400 transition hover:bg-rose-500/15 hover:text-rose-200">🧹</button>
