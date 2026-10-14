@@ -977,7 +977,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options, isPenInputRef.current ? end.p : 1);
       } else if (pts.length > 1) {
         const outline = getBrushStrokeOutline(pts, brushOptions());
-        engine.commitFreehandOutline(outline, { ...options, fidelity: state.freehandTuning.fidelity });
+        const committed = engine.commitFreehandOutline(outline, { ...options, fidelity: state.freehandTuning.fidelity });
+        if (!committed) {
+          const last = pts[pts.length - 1];
+          engine.commitFreehandDot({ x: last.x, y: last.y }, options, isPenInputRef.current ? last.p : 1);
+        }
       } else if (pts.length === 1) {
         engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options, isPenInputRef.current ? pts[0].p : 1);
       }
