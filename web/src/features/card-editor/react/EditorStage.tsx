@@ -1699,8 +1699,6 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             return ok;
           }}
           onCancel={() => setAngleDial(null)}
-          onMoveVertex={(vertex) => setAngleDial(current => current ? { ...current, vertex } : current)}
-          onSetBaseAngle={(baseAngle) => setAngleDial(current => current ? { ...current, baseAngle } : current)}
         />
       ) : null}
       <div
@@ -2031,18 +2029,6 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           rulers align ANY layer — they must be reachable long before point-editing. */}
       {preview ? null : (
         <div onPointerDown={(event) => event.stopPropagation()} className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
-          <button
-            type="button"
-            data-protractor-toggle=""
-            aria-pressed={Boolean(angleDial)}
-            disabled={state.tool !== "select"}
-            title={state.tool === "select" ? "نقاله — جابه‌جایی مرکز، چرخش خط مبنا و تنظیم زاویه" : "برای استفاده از نقاله ابتدا ابزار انتخاب را فعال کنید"}
-            onClick={() => setAngleDial(current => current ? null : {
-              vertex: { x: doc.artboard.width / 2, y: doc.artboard.height / 2 },
-              baseAngle: 0,
-            })}
-            className={`rounded-lg px-1.5 py-1 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${angleDial ? "bg-cyan-500/20 text-cyan-200" : "text-cyan-100 hover:bg-cyan-500/15"}`}
-          >∠ نقاله</button>
           <button
             type="button"
             data-set-square-add=""
