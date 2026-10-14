@@ -54,7 +54,7 @@
  * meaningful, so "follow the pointer on one axis" has no meaning for it.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RULER_THICKNESS,
   MAX_GUIDES,
