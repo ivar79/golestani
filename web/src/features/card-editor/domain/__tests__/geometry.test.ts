@@ -222,3 +222,17 @@ describe("zoom", () => {
     expect(panForZoomAtPoint(pan, { x: 0, y: 0 }, { x: 200, y: 200 }, 1.5, 1.5)).toEqual(pan);
   });
 });
+
+
+describe("user-guide snapping for layers", () => {
+  it("snaps layer positions to vertical and horizontal user guides regardless of layer kind", () => {
+    const doc = makeDoc([{ x: 0, y: 0, width: 20, height: 20 }]);
+    const vertical = snapLayerPosition(doc, "layer-0", { x: 97, y: 40 }, { width: 20, height: 20 }, 6, [{ axis: "x", at: 100 }]);
+    expect(vertical.pos.x).toBe(100);
+    expect(vertical.guides).toContainEqual({ axis: "x", at: 100, edge: "start" });
+
+    const horizontal = snapLayerPosition(doc, "layer-0", { x: 40, y: 147 }, { width: 20, height: 20 }, 6, [{ axis: "y", at: 150 }]);
+    expect(horizontal.pos.y).toBe(150);
+    expect(horizontal.guides).toContainEqual({ axis: "y", at: 150, edge: "start" });
+  });
+});
