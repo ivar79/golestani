@@ -26,6 +26,7 @@ import {
 } from "../domain/penGesture";
 import { ANGLE_ASSIST_PRESETS } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
+import { AngleDial } from "./AngleDial";
 import { layerHitCursor } from "../domain/cursorPolicy";
 import { getBrushStrokeOutline, outlineToD, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
 import { constrainToAngle } from "../domain/pathOps";
@@ -83,6 +84,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const [editValue, setEditValue] = useState("");
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
+  const [angleDial, setAngleDial] = useState<{ vertex: { x: number; y: number }; baseAngle: number } | null>(null);
   /** Rubber bands in artboard coordinates; node and layer selection are separate gestures. */
   const [nodeMarquee, setNodeMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [layerMarquee, setLayerMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -1546,8 +1548,27 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             onMove={(id, point) => engine.moveGuide(id, point)}
             onRotate={(id, angle) => engine.rotateGuide(id, angle)}
             onRemove={(id) => engine.removeGuide(id)}
+            onToggleLock={(id) => engine.toggleGuideLock(id)}
+            onPin={(vertex, baseAngle) => {
+              if (state.tool === "select") setAngleDial({ vertex, baseAngle });
+            }}
           />
         ) : null}
+      {angleDial && !preview ? (
+        <AngleDial
+          vertex={angleDial.vertex}
+          baseAngle={angleDial.baseAngle}
+          artboard={doc.artboard}
+          zoom={zoom}
+          pan={pan}
+          onCommit={(absoluteAngle) => {
+            const ok = engine.addLockedAngledGuide(absoluteAngle, angleDial.vertex);
+            if (ok) setAngleDial(null);
+            return ok;
+          }}
+          onCancel={() => setAngleDial(null)}
+        />
+      ) : null}
       <div
         data-stage-inner
         className="absolute left-0 top-0 origin-top-left"
@@ -1874,7 +1895,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           The ruler/guide toggle lives here rather than in the path-node panel because
           rulers align ANY layer — they must be reachable long before point-editing. */}
       {preview ? null : (
-        <div className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
+        <div onPointerDown={(event) => event.stopPropagation()} className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
           <button
             type="button"
             data-rulers-toggle=""
