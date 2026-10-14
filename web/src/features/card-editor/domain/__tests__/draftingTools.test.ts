@@ -51,6 +51,17 @@ describe("drafting tool engine behavior", () => {
     expect(engine.getState().doc).not.toHaveProperty("setSquares");
   });
 
+  it("pins an angle-dial guide and reuses an existing coincident line", () => {
+    const engine = new EditorEngine(emptyDoc());
+    expect(engine.addLockedAngledGuide(45, { x: 80, y: 80 })).toBe(true);
+    expect(engine.getState().guides).toHaveLength(1);
+    expect(engine.getState().guides[0].locked).toBe(true);
+    const before = { ...engine.getState().guides[0] };
+    expect(engine.addLockedAngledGuide(225, { x: 100, y: 100 })).toBe(true);
+    expect(engine.getState().guides).toHaveLength(1);
+    expect(engine.getState().guides[0]).toMatchObject({ id: before.id, x: before.x, y: before.y, locked: true });
+  });
+
   it("adds straightedge Pen vertices without curvature smoothing and can drag them along the edge", () => {
     const engine = new EditorEngine(emptyDoc());
     engine.setTool("pen");
