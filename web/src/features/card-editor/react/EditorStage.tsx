@@ -963,7 +963,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         const outline = getBrushStrokeOutline(pts, brushOptions());
         engine.commitFreehandOutline(outline, { ...options, fidelity: state.freehandTuning.fidelity });
       } else if (pts.length === 1) {
-        engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options);
+        engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options, isPenInputRef.current ? pts[0].p : 1);
       }
       brushEngagedGuideRef.current = null;
       brushEngagedSquareRef.current = null;
