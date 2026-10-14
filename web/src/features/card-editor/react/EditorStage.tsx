@@ -27,6 +27,8 @@ import {
 import { ANGLE_ASSIST_PRESETS, distanceToGuide, projectOnGuide, type UserGuide } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
 import { AngleDial } from "./AngleDial";
+import { SetSquareOverlay } from "./SetSquareOverlay";
+import { closestPointOnSegment, nearestSetSquareEdge, setSquareVertices, SET_SQUARE_ENGAGE_PX, type SetSquare } from "../domain/setSquare";
 import { layerHitCursor } from "../domain/cursorPolicy";
 import { getBrushStrokeOutline, outlineToD, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
 import { constrainToAngle } from "../domain/pathOps";
@@ -85,6 +87,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
   const [angleDial, setAngleDial] = useState<{ vertex: { x: number; y: number }; baseAngle: number } | null>(null);
+  const [setSquareNotice, setSetSquareNotice] = useState("");
+  const [engagedSetSquareEdge, setEngagedSetSquareEdge] = useState<{ squareId: string; edgeIndex: number } | null>(null);
   /** Rubber bands in artboard coordinates; node and layer selection are separate gestures. */
   const [nodeMarquee, setNodeMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [layerMarquee, setLayerMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -280,6 +284,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const brushLastTimeRef = useRef<number | null>(null);
   const brushRectRef = useRef<DOMRect | null>(null);
   const brushEngagedGuideRef = useRef<UserGuide | null>(null);
+  const brushEngagedSquareRef = useRef<{ square: SetSquare; edgeIndex: number; a: { x: number; y: number }; b: { x: number; y: number } } | null>(null);
   const brushStartRef = useRef<{ x: number; y: number } | null>(null);
   const liveBrushRef = useRef<SVGPathElement>(null);
   const liveGuideBrushRef = useRef<SVGPathElement>(null);
@@ -634,8 +639,20 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         const distance = distanceToGuide(guide, rawPos);
         if (distance <= engageRadius && distance < bestDistance) { engaged = guide; bestDistance = distance; }
       }
-      brushEngagedGuideRef.current = engaged;
-      const pos = engaged ? projectOnGuide(engaged, rawPos) : rawPos;
+      let squareEdge: { square: SetSquare; edgeIndex: number; a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
+      for (const square of state.setSquares) {
+        const nearest = nearestSetSquareEdge(square, rawPos);
+        if (!nearest || nearest.distance > SET_SQUARE_ENGAGE_PX / Math.max(zoom, 0.01) || nearest.distance >= bestDistance) continue;
+        const vertices = setSquareVertices(square);
+        squareEdge = { square, edgeIndex: nearest.edgeIndex, a: vertices[nearest.edgeIndex], b: vertices[(nearest.edgeIndex + 1) % vertices.length] };
+        bestDistance = nearest.distance;
+      }
+      brushEngagedGuideRef.current = squareEdge ? null : engaged;
+      brushEngagedSquareRef.current = squareEdge;
+      setEngagedSetSquareEdge(squareEdge ? { squareId: squareEdge.square.id, edgeIndex: squareEdge.edgeIndex } : null);
+      const pos = squareEdge
+        ? closestPointOnSegment(rawPos, squareEdge.a, squareEdge.b).point
+        : engaged ? projectOnGuide(engaged, rawPos) : rawPos;
       const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
       brushPtsRef.current = [pt];
       brushSmoothRef.current = pt;
@@ -681,7 +698,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     const renderLiveBrush = () => {
     brushRafRef.current = 0;
     const samples = brushPtsRef.current;
-    if (brushEngagedGuideRef.current && samples.length > 0) {
+    if ((brushEngagedGuideRef.current || brushEngagedSquareRef.current) && samples.length > 0) {
       const first = samples[0];
       const last = samples[samples.length - 1] ?? first;
       liveBrushRef.current?.setAttribute("d", "");
@@ -744,12 +761,14 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           });
         }
         const engagedGuide = brushEngagedGuideRef.current;
+        const engagedSquare = brushEngagedSquareRef.current;
         if (engagedGuide) constrained = projectOnGuide(engagedGuide, raw);
+        else if (engagedSquare) constrained = closestPointOnSegment(raw, engagedSquare.a, engagedSquare.b).point;
         const s = brushSmoothRef.current ?? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 };
         const previousTime = brushLastTimeRef.current;
         const elapsedMs = previousTime == null ? 0 : Math.max(0, ev.timeStamp - previousTime);
         brushLastTimeRef.current = ev.timeStamp;
-        const np = brushEngagedGuideRef.current
+        const np = (brushEngagedGuideRef.current || brushEngagedSquareRef.current)
           ? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 }
           : smoothFreehandSample(
               s,
@@ -922,7 +941,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         linejoin: state.brushLinejoin,
         opacity: state.brushOpacity,
       };
-      if (brushEngagedGuideRef.current && pts.length > 0) {
+      if ((brushEngagedGuideRef.current || brushEngagedSquareRef.current) && pts.length > 0) {
         const start = pts[0];
         const end = pts[pts.length - 1] ?? start;
         engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options);
@@ -932,6 +951,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options);
       }
       brushEngagedGuideRef.current = null;
+      brushEngagedSquareRef.current = null;
+      setEngagedSetSquareEdge(null);
       brushRectRef.current = null;
       brushPtsRef.current = [];
       brushSmoothRef.current = null;
@@ -1499,7 +1520,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
               title="گونیا/زاویه‌بندی: قلم روی شبکهٔ زاویه‌ای قفل می‌شود (Shift همیشه ۴۵ درجه است)"
               onClick={() => engine.setAngleAssist(!state.angleAssist)}
             >
-              📐 گونیا
+              📐 قفل زاویه
             </button>
             {state.angleAssist ? (
               <select
@@ -1601,6 +1622,21 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             }}
           />
         ) : null}
+      {state.setSquares.length > 0 && !preview ? (
+        <SetSquareOverlay
+          squares={state.setSquares}
+          zoom={zoom}
+          pan={pan}
+          angleSnap={state.angleAssist ? state.angleAssistIncrement : null}
+          engagedEdge={engagedSetSquareEdge}
+          onMove={(id, center) => engine.moveSetSquare(id, center)}
+          onRotate={(id, angle) => engine.rotateSetSquare(id, angle)}
+          onResize={(id, size) => engine.resizeSetSquare(id, size)}
+          onToggleLock={(id) => engine.toggleSetSquareLock(id)}
+          onSwitchKind={(id) => engine.switchSetSquareKind(id)}
+          onRemove={(id) => engine.removeSetSquare(id)}
+        />
+      ) : null}
       {angleDial && !preview ? (
         <AngleDial
           vertex={angleDial.vertex}
@@ -1944,6 +1980,20 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           rulers align ANY layer — they must be reachable long before point-editing. */}
       {preview ? null : (
         <div onPointerDown={(event) => event.stopPropagation()} className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
+          <button
+            type="button"
+            data-set-square-add=""
+            title="📐 گونیا — افزودن مثلث ترسیم"
+            onClick={() => {
+              const id = engine.addSetSquare();
+              if (!id) {
+                setSetSquareNotice("حداکثر ۴ گونیا مجاز است");
+                window.setTimeout(() => setSetSquareNotice(""), 2200);
+              }
+            }}
+            className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-amber-200 transition hover:bg-amber-500/15"
+          >📐{state.setSquares.length ? ` ${state.setSquares.length}` : ""}</button>
+          {setSquareNotice ? <span role="status" className="text-[10px] text-rose-200">{setSquareNotice}</span> : null}
           <button
             type="button"
             data-rulers-toggle=""
