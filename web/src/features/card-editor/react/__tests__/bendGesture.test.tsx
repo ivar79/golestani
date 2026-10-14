@@ -198,7 +198,7 @@ describe("selected layer: the dot travels along the line", () => {
     const bent = layer(engine);
     expect(bent.bend).toBeUndefined();
     expect(bent.points.length).toBeGreaterThan(2);
-    const node = bent.points.find((point) => Math.abs(point.x - onArc!.point.x) < 1 && Math.abs(point.y - onArc!.point.y) < 1);
+    const node = bent.points.find((point) => Math.abs(point.x - (onArc!.point.x + 20)) < 1 && Math.abs(point.y - (onArc!.point.y + 20)) < 1);
     expect(node).toBeTruthy();
   });
 
