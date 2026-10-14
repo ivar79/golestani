@@ -119,6 +119,7 @@ import {
   type GuideAxis,
   type UserGuide,
 } from "../domain/guides";
+import { createSetSquare, normalizeSetSquare, toggleSetSquareKind, MAX_SET_SQUARES, SET_SQUARE_MIN_SIZE, SET_SQUARE_MAX_SIZE, type SetSquare, type SetSquareKind } from "../domain/setSquare";
 import { parseNumericInput } from "../domain/numericInput";
 import { rotatePoint } from "../domain/rotation";
 import {
@@ -298,6 +299,8 @@ export type EngineState = {
   rulers: boolean;
   /** Persistent user guides. `[]` when the user has none. */
   guides: UserGuide[];
+  /** Physical drafting triangles are view state and never enter document history. */
+  setSquares: SetSquare[];
   /** The "set-square": lock drawing angles to `angleAssistIncrement`. */
   angleAssist: boolean;
   /** Angular grid in degrees when `angleAssist` is on (45 by default). */
@@ -364,6 +367,7 @@ export class EditorEngine {
       snapGuides: [],
       rulers: false,
       guides: [],
+      setSquares: [],
       angleAssist: false,
       angleAssistIncrement: ANGLE_ASSIST_DEFAULT,
       editingPathId: null,
@@ -3710,6 +3714,48 @@ export class EditorEngine {
     }
     this.emit({ guides: next });
     return false;
+  }
+
+  /** Add a physical drafting triangle at the center of the artboard. */
+  addSetSquare(kind: SetSquareKind = "45-45-90"): string | null {
+    if (this.state.setSquares.length >= MAX_SET_SQUARES) return null;
+    const id = `set-square-${Math.random().toString(36).slice(2, 9)}`;
+    const square = createSetSquare(id, {
+      x: this.state.doc.artboard.width / 2,
+      y: this.state.doc.artboard.height / 2,
+    }, kind);
+    this.emit({ setSquares: [...this.state.setSquares, square] });
+    return id;
+  }
+
+  moveSetSquare(id: string, center: { x: number; y: number }): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? normalizeSetSquare({ ...s, cx: center.x, cy: center.y }) : s) });
+  }
+
+  rotateSetSquare(id: string, angle: number): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? normalizeSetSquare({ ...s, angle }) : s) });
+  }
+
+  resizeSetSquare(id: string, size: number): void {
+    const clamped = Math.max(SET_SQUARE_MIN_SIZE, Math.min(SET_SQUARE_MAX_SIZE, size));
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? normalizeSetSquare({ ...s, size: clamped }) : s) });
+  }
+
+  toggleSetSquareLock(id: string): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id ? { ...s, locked: !s.locked } : s) });
+  }
+
+  switchSetSquareKind(id: string): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? toggleSetSquareKind(s) : s) });
+  }
+
+  removeSetSquare(id: string): void {
+    this.emit({ setSquares: this.state.setSquares.filter(s => s.id !== id || s.locked) });
+  }
+
+  clearSetSquares(): void {
+    const next = this.state.setSquares.filter(s => s.locked);
+    if (next.length !== this.state.setSquares.length) this.emit({ setSquares: next });
   }
 
   /** Turn the angle-assist grid on/off (the "set-square"). */
