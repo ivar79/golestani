@@ -230,7 +230,7 @@ export function RulersAndGuides({
   const lastPointerRef = useRef<string>("");
 
   const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const snapIncrements = angleSnap && angleSnap > 0 ? [angleSnap] : [];
+  const snapIncrements = useMemo(() => angleSnap && angleSnap > 0 ? [angleSnap] : [], [angleSnap]);
   const flashLimit = useCallback(() => { setLimitNotice(true); window.setTimeout(() => setLimitNotice(false), 2200); }, []);
 
   /** Client point → artboard point, using the wrapper rect and the pan offset. */
@@ -451,7 +451,6 @@ export function RulersAndGuides({
 
   const toScreenX = (value: number) => pan.x + value * scale;
   const toScreenY = (value: number) => pan.y + value * scale;
-  const toScreen = (point: Point) => ({ x: toScreenX(point.x), y: toScreenY(point.y) });
 
   /** The live geometry of a guide (or of the drag preview) as a screen chord. */
   const chordFor = (angle: number, anchor: Point) => {
