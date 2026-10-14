@@ -1632,6 +1632,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             onRotate={(id, angle) => engine.rotateGuide(id, angle)}
             onRemove={(id) => engine.removeGuide(id)}
             onToggleLock={(id) => engine.toggleGuideLock(id)}
+            onSnapCreate={(point, axis) => {
+              if (!state.snapping) return point;
+              const snapped = engine.smartSnapPoint(point, { tolerance: 8 / Math.max(zoom, 0.01) });
+              return axis === "x" ? { ...point, x: snapped.x } : { ...point, y: snapped.y };
+            }}
             onPin={(vertex, baseAngle) => {
               if (state.tool === "select") setAngleDial({ vertex, baseAngle });
             }}
