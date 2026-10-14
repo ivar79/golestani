@@ -169,6 +169,14 @@ describe("RulersAndGuides", () => {
     expect(view.onAdd).not.toHaveBeenCalled();
   });
 
+  it("creates an axis guide on a direct ruler click", () => {
+    const view = renderOverlay();
+    firePointer(view.bed('[data-ruler="top"]'), "pointerdown", { clientX: 130, clientY: 5, pointerId: 33 });
+    firePointer(view.bed('[data-ruler="top"]'), "pointerup", { clientX: 130, clientY: 5, pointerId: 33 });
+    expect(view.onAdd).toHaveBeenCalledWith("x", 130);
+    expect(view.onAddAngled).not.toHaveBeenCalled();
+  });
+
   it("clamps a pull-out past the RIGHT edge onto the board (own axis never deletes)", () => {
     const view = renderOverlay();
     pullOut(view.bed('[data-ruler="top"]'), { x: 100, y: 5 }, { x: 900, y: 120 });
