@@ -11,6 +11,7 @@ type Props = {
   pan: Point;
   angleSnap: number | null;
   engagedEdge?: { squareId: string; edgeIndex: number } | null;
+  interactive?: boolean;
   onMove: (id: string, center: Point) => void;
   onRotate: (id: string, angle: number) => void;
   onResize: (id: string, size: number) => void;
@@ -22,7 +23,7 @@ type Props = {
 function pointAngle(a: Point, b: Point) { return Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI; }
 function pointDistance(a: Point, b: Point) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
-export function SetSquareOverlay({ squares, zoom, pan, angleSnap, engagedEdge, onMove, onRotate, onResize, onToggleLock, onSwitchKind, onRemove }: Props) {
+export function SetSquareOverlay({ squares, zoom, pan, angleSnap, engagedEdge, interactive = true, onMove, onRotate, onResize, onToggleLock, onSwitchKind, onRemove }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
@@ -67,15 +68,15 @@ export function SetSquareOverlay({ squares, zoom, pan, angleSnap, engagedEdge, o
         return <g key={square.id} data-set-square={square.id} data-locked={square.locked ? "yes" : "no"}>
           <polygon points={points} fill="#fbbf24" fillOpacity={square.locked ? 0.12 : 0.08} stroke="#fbbf24" strokeOpacity={0.9} strokeWidth={1.5} pointerEvents="none" />
           {screen.map((p, i) => <line key={i} x1={p.x} y1={p.y} x2={screen[(i+1)%3].x} y2={screen[(i+1)%3].y} stroke={engagedEdge?.squareId === square.id && engagedEdge.edgeIndex === i ? "#67e8f9" : "#fbbf24"} strokeWidth={engagedEdge?.squareId === square.id && engagedEdge.edgeIndex === i ? 4 : 1.5} strokeOpacity={0.95} pointerEvents="none" />)}
-          <polygon data-set-square-body={square.id} points={points} fill="transparent" stroke="transparent" strokeWidth={16} style={{ pointerEvents: square.locked ? "none" : "auto", cursor: square.locked ? "default" : "move" }} onPointerDown={e => begin(e, square, "move")} onPointerMove={move} onPointerUp={end} onPointerCancel={end} />
+          <polygon data-set-square-body={square.id} points={points} fill="transparent" stroke="transparent" strokeWidth={16} style={{ pointerEvents: interactive && !square.locked ? "auto" : "none", cursor: square.locked ? "default" : "move" }} onPointerDown={e => begin(e, square, "move")} onPointerMove={move} onPointerUp={end} onPointerCancel={end} />
           <circle cx={rotateHandle.x} cy={rotateHandle.y} r={7} fill={square.locked ? "#475569" : "#0f172a"} stroke={square.locked ? "#64748b" : "#fde68a"} strokeWidth={1.5} pointerEvents="none" />
-          <circle data-set-square-rotate={square.id} cx={rotateHandle.x} cy={rotateHandle.y} r={13} fill="transparent" style={{ pointerEvents: square.locked ? "none" : "auto", cursor: "grab" }} onPointerDown={e => begin(e, square, "rotate")} onPointerMove={move} onPointerUp={end} onPointerCancel={end} />
+          <circle data-set-square-rotate={square.id} cx={rotateHandle.x} cy={rotateHandle.y} r={13} fill="transparent" style={{ pointerEvents: interactive && !square.locked ? "auto" : "none", cursor: "grab" }} onPointerDown={e => begin(e, square, "rotate")} onPointerMove={move} onPointerUp={end} onPointerCancel={end} />
           <circle cx={hypotenuseMid.x} cy={hypotenuseMid.y} r={6} fill={square.locked ? "#475569" : "#0f172a"} stroke={square.locked ? "#64748b" : "#67e8f9"} strokeWidth={1.5} pointerEvents="none" />
-          <circle data-set-square-resize={square.id} cx={hypotenuseMid.x} cy={hypotenuseMid.y} r={12} fill="transparent" style={{ pointerEvents: square.locked ? "none" : "auto", cursor: "nwse-resize" }} onPointerDown={e => begin(e, square, "resize")} onPointerMove={move} onPointerUp={end} onPointerCancel={end} />
+          <circle data-set-square-resize={square.id} cx={hypotenuseMid.x} cy={hypotenuseMid.y} r={12} fill="transparent" style={{ pointerEvents: interactive && !square.locked ? "auto" : "none", cursor: "nwse-resize" }} onPointerDown={e => begin(e, square, "resize")} onPointerMove={move} onPointerUp={end} onPointerCancel={end} />
         </g>;
       })}
     </svg>
-    {squares.map(square => <div key={square.id} data-set-square-controls={square.id} className="pointer-events-auto absolute flex items-center gap-1 rounded-lg border border-amber-300/25 bg-slate-950/95 p-1 shadow-lg"
+    {squares.map(square => <div key={square.id} data-set-square-controls={square.id} className="absolute flex items-center gap-1 rounded-lg border border-amber-300/25 bg-slate-950/95 p-1 shadow-lg" style={{ pointerEvents: interactive ? "auto" : "none" }}
       style={{ left: Math.max(2, pan.x + square.cx * scale - 52), top: Math.max(2, pan.y + square.cy * scale + 10) }}
       onPointerDown={event => { event.preventDefault(); event.stopPropagation(); }}>
       <button type="button" aria-label={square.locked ? "بازکردن قفل گونیا" : "قفل گونیا"} title={square.locked ? "بازکردن قفل" : "قفل"} onClick={() => onToggleLock(square.id)} className="rounded px-1.5 py-1 text-[10px] text-amber-100">{square.locked ? "🔒" : "🔓"}</button>
