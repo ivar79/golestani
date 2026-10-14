@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { addAngledGuide, moveGuide, normalizeGuides, removeGuide, rotateGuide, toggleGuideLock, type UserGuide } from "../guides";
 
 const board = { width: 800, height: 600 };
-const initial: UserGuide[] = [{ id: "g1", angle: 0, x: 120, y: 160, locked: false }];
+const initial: UserGuide[] = [{ id: "g1", angle: 0, x: 120, y: 160 }];
 
 describe("locked ruler guides", () => {
   it("toggles lock without changing guide geometry", () => {
