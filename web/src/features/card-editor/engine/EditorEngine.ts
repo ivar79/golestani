@@ -1648,6 +1648,44 @@ export class EditorEngine {
     return id;
   }
 
+  /** Prepare the exact editable geometry used by both the live preview and commit. */
+  freehandOutlineGeometry(outline: number[][], fidelity = this.state.freehandTuning.fidelity) {
+    return outlineToEditablePath(
+      outline,
+      2,
+      this.savePolicy.unlimited ? 96 : Math.min(72, this.savePolicy.budget.pathPoints),
+      fidelity,
+      0.18,
+    );
+  }
+
+  /** Commit the previewed perfect-freehand outline as one editable closed path. */
+  commitFreehandOutline(
+    outline: number[][],
+    options: { color: string; width: number; style?: StrokeStyleKind; linecap?: StrokeLineCap; linejoin?: StrokeLineJoin; opacity?: number; fidelity?: number },
+  ): string | null {
+    const geometry = this.freehandOutlineGeometry(outline, options.fidelity);
+    if (!geometry) return null;
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer: PathLayer = {
+      id, kind: "path", pathMode: "freehand", name: "قلم آزاد",
+      points: geometry.points, closed: true, fill: options.color, stroke: null, strokeWidth: 0,
+      strokeStyle: options.style ?? this.state.brushStyle,
+      strokeLinecap: options.linecap ?? this.state.brushLinecap,
+      strokeLinejoin: options.linejoin ?? this.state.brushLinejoin,
+      strokeOpacity: options.opacity ?? this.state.brushOpacity,
+      x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height, angle: 0,
+      opacity: options.opacity ?? this.state.brushOpacity, locked: false, hidden: false, color: options.color, background: null,
+    };
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, layer] },
+      workingStroke: null, tool: "draw", selection: this.withSelection(id),
+      editingPathId: id, selectedAnchor: { layerId: id, index: 0 },
+    });
+    return id;
+  }
+
   /** Commit a straightedge-constrained stroke without smoothing or curve fitting. */
   commitStraightStroke(
     start: { x: number; y: number },
