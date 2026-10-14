@@ -216,11 +216,10 @@ export function addAngledGuide(
   const candidate: UserGuide = { id: guideId(angle, point, current), angle, x: point.x, y: point.y, locked: false };
   const existing = current.find((guide) => nearlySame(guide, candidate));
   if (existing) {
-    // Placing a line onto an existing one MOVES it: the user asked for a line at
-    // a position, not for two lines at the same position.
-    return current.map((guide) =>
-      guide.id === existing.id && !guide.locked ? { ...guide, angle, x: point.x, y: point.y } : guide,
-    );
+    // A locked guide is a physical straightedge: creating another line on top
+    // of it must not move it.
+    if (existing.locked) return current;
+    return current.map((guide) => guide.id === existing.id ? { ...guide, angle, x: point.x, y: point.y } : guide);
   }
   if (current.length >= MAX_GUIDES) return current;
   return [...current, candidate];
@@ -235,7 +234,7 @@ export function rotateGuide(
 ): UserGuide[] {
   const current = normalizeGuides(list, artboard);
   const target = current.find((guide) => guide.id === id);
-  if (!target) return current;
+  if (!target || target.locked) return current;
   const next = normalizeAngle(angle, target.angle);
   const candidate: UserGuide = { ...target, angle: next };
   const collision = current.find((guide) => guide.id !== id && nearlySame(guide, candidate));
