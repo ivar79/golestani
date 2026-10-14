@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorEngine } from "../../engine/EditorEngine";
 import { ARTBOARD, type CardDocument, type PathLayer } from "../document";
+import { pathD } from "../path";
 
 function emptyDoc(): CardDocument {
   return { version: 1, artboard: { ...ARTBOARD }, background: "#ffffff", layers: [] };
@@ -19,6 +20,23 @@ describe("drafting tool engine behavior", () => {
     expect(engine.getState().tool).toBe("draw");
     expect(engine.getState().selection.layerId).toBe(id);
     expect(engine.getState().editingPathId).toBe(id);
+  });
+
+  it("commits exactly the editable geometry prepared for the freehand preview", () => {
+    const engine = new EditorEngine(emptyDoc());
+    const outline = [
+      [10, 10], [24, 6], [40, 10], [48, 24], [40, 38], [24, 42], [10, 34], [4, 22],
+    ];
+    const geometry = engine.freehandOutlineGeometry(outline, 0.9)!;
+    const id = engine.commitFreehandOutline(outline, { color: "#123456", width: 12, fidelity: 0.9 });
+    const layer = engine.getState().doc.layers.find(item => item.id === id) as PathLayer;
+    expect(layer.points).toEqual(geometry.points);
+    expect(layer.x).toBe(geometry.x);
+    expect(layer.y).toBe(geometry.y);
+    expect(pathD(layer.points, true)).toBe(pathD(geometry.points, true));
+    expect(layer.closed).toBe(true);
+    expect(engine.getState().editingPathId).toBe(id);
+    expect(engine.getState().tool).toBe("draw");
   });
 
   it("commits a tap as a visible editable circular path dab", () => {
