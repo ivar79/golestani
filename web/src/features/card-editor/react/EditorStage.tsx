@@ -89,6 +89,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
   const [angleDial, setAngleDial] = useState<{ vertex: { x: number; y: number }; baseAngle: number } | null>(null);
+  useEffect(() => { if (state.tool !== "select" || preview) setAngleDial(null); }, [state.tool, preview]);
   const [setSquareNotice, setSetSquareNotice] = useState("");
   const [engagedSetSquareEdge, setEngagedSetSquareEdge] = useState<{ squareId: string; edgeIndex: number } | null>(null);
   /** Rubber bands in artboard coordinates; node and layer selection are separate gestures. */
