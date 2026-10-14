@@ -89,7 +89,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
   const [angleDial, setAngleDial] = useState<{ vertex: { x: number; y: number }; baseAngle: number } | null>(null);
-  useEffect(() => { if (state.tool !== "select" || preview) setAngleDial(null); }, [state.tool, preview]);
+  useEffect(() => {
+    if (state.tool === "select" && !preview) return;
+    const frame = requestAnimationFrame(() => setAngleDial(null));
+    return () => cancelAnimationFrame(frame);
+  }, [state.tool, preview]);
   const [setSquareNotice, setSetSquareNotice] = useState("");
   const [engagedSetSquareEdge, setEngagedSetSquareEdge] = useState<{ squareId: string; edgeIndex: number } | null>(null);
   /** Rubber bands in artboard coordinates; node and layer selection are separate gestures. */
@@ -1682,7 +1686,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           onRemove={(id) => engine.removeSetSquare(id)}
         />
       ) : null}
-      {angleDial && !preview ? (
+      {angleDial && state.tool === "select" && !preview ? (
         <AngleDial
           vertex={angleDial.vertex}
           baseAngle={angleDial.baseAngle}
