@@ -24,7 +24,7 @@ import {
   shouldBeginHandleDrag,
   exceedsClickThreshold,
 } from "../domain/penGesture";
-import { ANGLE_ASSIST_PRESETS } from "../domain/guides";
+import { ANGLE_ASSIST_PRESETS, distanceToGuide, projectOnGuide, type UserGuide } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
 import { AngleDial } from "./AngleDial";
 import { layerHitCursor } from "../domain/cursorPolicy";
@@ -251,6 +251,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     };
   }, [zoom]);
 
+  const brushPointerPos = useCallback((event: { clientX: number; clientY: number }) => {
+    const rect = brushRectRef.current;
+    if (!rect) return pointerPos(event);
+    return { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom };
+  }, [pointerPos, zoom]);
+
   const onMirrorAxisPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!mirrorAxisPickMode || preview) return;
     const target = event.target as HTMLElement;
@@ -272,6 +278,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const brushPtsRef = useRef<FreehandPoint[]>([]);
   const brushSmoothRef = useRef<FreehandPoint | null>(null);
   const brushLastTimeRef = useRef<number | null>(null);
+  const brushRectRef = useRef<DOMRect | null>(null);
+  const brushEngagedGuideRef = useRef<UserGuide | null>(null);
   const brushStartRef = useRef<{ x: number; y: number } | null>(null);
   const liveBrushRef = useRef<SVGPathElement>(null);
   const brushRafRef = useRef(0);
@@ -614,7 +622,19 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       (event.target as Element).setPointerCapture?.(event.pointerId);
       isDrawingRef.current = true;
       isPenInputRef.current = event.pointerType === "pen";
-      const pos = pointerPos(event);
+      const stageElement = containerRef.current?.querySelector("[data-stage-inner]") as HTMLElement | null;
+      brushRectRef.current = stageElement?.getBoundingClientRect() ?? null;
+      const rawPos = brushPointerPos(event);
+      const engageRadius = 12 / Math.max(zoom, 0.01);
+      let engaged: UserGuide | null = null;
+      let bestDistance = Infinity;
+      for (const guide of state.guides) {
+        if (!guide.locked) continue;
+        const distance = distanceToGuide(guide, rawPos);
+        if (distance <= engageRadius && distance < bestDistance) { engaged = guide; bestDistance = distance; }
+      }
+      brushEngagedGuideRef.current = engaged;
+      const pos = engaged ? projectOnGuide(engaged, rawPos) : rawPos;
       const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
       brushPtsRef.current = [pt];
       brushSmoothRef.current = pt;
@@ -697,7 +717,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     if (isDrawingRef.current && state.tool === "draw") {
       const evs = (event.nativeEvent as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [event.nativeEvent];
       for (const ev of evs) {
-        const raw = pointerPos(ev);
+        const raw = brushPointerPos(ev);
         const start = brushStartRef.current;
         let constrained = raw;
         if (start && (state.freehandMode === "straight" || state.freehandMode === "constrained" || ev.shiftKey)) {
@@ -710,15 +730,19 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             axisLock: state.freehandTuning.axisLock || ev.shiftKey,
           });
         }
+        const engagedGuide = brushEngagedGuideRef.current;
+        if (engagedGuide) constrained = projectOnGuide(engagedGuide, raw);
         const s = brushSmoothRef.current ?? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 };
         const previousTime = brushLastTimeRef.current;
         const elapsedMs = previousTime == null ? 0 : Math.max(0, ev.timeStamp - previousTime);
         brushLastTimeRef.current = ev.timeStamp;
-        const np = smoothFreehandSample(
-          s,
-          { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 },
-          elapsedMs,
-        );
+        const np = brushEngagedGuideRef.current
+          ? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 }
+          : smoothFreehandSample(
+              s,
+              { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 },
+              elapsedMs,
+            );
         const last = brushPtsRef.current[brushPtsRef.current.length - 1];
         // Sampling density is measured in document units, never screen pixels.
         if (last && Math.hypot(np.x - last.x, np.y - last.y) < 1) continue;
@@ -826,6 +850,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     brushPtsRef.current = [];
     brushSmoothRef.current = null;
     brushLastTimeRef.current = null;
+    brushRectRef.current = null;
+    brushEngagedGuideRef.current = null;
     brushStartRef.current = null;
     liveBrushRef.current?.setAttribute("d", "");
     penStartRef.current = null;
@@ -874,19 +900,25 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         brushRafRef.current = 0;
       }
       const pts = brushPtsRef.current;
-      if (pts.length > 1) {
-        // The outline is preview-only. The committed geometry comes from the
-        // canonical freehand pipeline so smoothing/fidelity/angle constraints
-        // actually affect the saved editable Bézier path.
-        engine.commitFreehandSamples(pts, {
-          color: state.brushColor || "#0ea5e9",
-          width: state.brushWidth || 14,
-          style: state.brushStyle,
-          linecap: state.brushLinecap,
-          linejoin: state.brushLinejoin,
-          opacity: state.brushOpacity,
-        });
+      const options = {
+        color: state.brushColor || "#0ea5e9",
+        width: state.brushWidth || 14,
+        style: state.brushStyle,
+        linecap: state.brushLinecap,
+        linejoin: state.brushLinejoin,
+        opacity: state.brushOpacity,
+      };
+      if (brushEngagedGuideRef.current && pts.length > 0) {
+        const start = pts[0];
+        const end = pts[pts.length - 1] ?? start;
+        engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options);
+      } else if (pts.length > 1) {
+        engine.commitFreehandSamples(pts, options);
+      } else if (pts.length === 1) {
+        engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options);
       }
+      brushEngagedGuideRef.current = null;
+      brushRectRef.current = null;
       brushPtsRef.current = [];
       brushSmoothRef.current = null;
       brushLastTimeRef.current = null;
