@@ -30,7 +30,8 @@ import { AngleDial } from "./AngleDial";
 import { SetSquareOverlay } from "./SetSquareOverlay";
 import { closestPointOnSegment, nearestSetSquareEdge, setSquareVertices, SET_SQUARE_ENGAGE_PX, type SetSquare } from "../domain/setSquare";
 import { layerHitCursor } from "../domain/cursorPolicy";
-import { getBrushStrokeOutline, outlineToD, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
+import { getBrushStrokeOutline, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
+import { pathD } from "../domain/path";
 import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import { useQrAssets } from "./useQrAssets";
@@ -695,7 +696,16 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     engine.select(null);
   };
 
-    const renderLiveBrush = () => {
+    const brushOptions = () => ({
+    size: state.brushWidth || 14,
+    thinning: 0.55,
+    smoothing: state.freehandTuning.smoothing,
+    streamline: state.freehandTuning.smoothing,
+    simulatePressure: !isPenInputRef.current,
+    last: true,
+  });
+
+  const renderLiveBrush = () => {
     brushRafRef.current = 0;
     const samples = brushPtsRef.current;
     if ((brushEngagedGuideRef.current || brushEngagedSquareRef.current) && samples.length > 0) {
@@ -709,15 +719,16 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       return;
     }
     liveGuideBrushRef.current?.setAttribute("d", "");
-    const outline = getBrushStrokeOutline(samples, {
-      size: state.brushWidth || 14,
-      thinning: 0.55,
-      smoothing: 0.6,
-      streamline: 0.35,
-      simulatePressure: !isPenInputRef.current,
-      last: false,
-    });
-    liveBrushRef.current?.setAttribute("d", outlineToD(outline));
+    const outline = getBrushStrokeOutline(samples, brushOptions());
+    const geometry = engine.freehandOutlineGeometry(outline, state.freehandTuning.fidelity);
+    if (geometry) {
+      liveBrushRef.current?.setAttribute("d", pathD(geometry.points, true));
+      liveBrushRef.current?.setAttribute("transform", `translate(${geometry.x} ${geometry.y})`);
+      liveBrushRef.current?.setAttribute("opacity", String(state.brushOpacity));
+    } else {
+      liveBrushRef.current?.setAttribute("d", "");
+      liveBrushRef.current?.removeAttribute("transform");
+    }
   };
 
   const onStagePointerMove = (event: React.PointerEvent) => {
@@ -946,7 +957,8 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         const end = pts[pts.length - 1] ?? start;
         engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options);
       } else if (pts.length > 1) {
-        engine.commitFreehandSamples(pts, options);
+        const outline = getBrushStrokeOutline(pts, brushOptions());
+        engine.commitFreehandOutline(outline, { ...options, fidelity: state.freehandTuning.fidelity });
       } else if (pts.length === 1) {
         engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options);
       }
