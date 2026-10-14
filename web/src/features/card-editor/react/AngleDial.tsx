@@ -25,7 +25,6 @@ function polar(cx: number, cy: number, r: number, angle: number): Point {
 
 export function AngleDial({ vertex, baseAngle, artboard, zoom, pan, onCommit, onCancel }: Props) {
   const [theta, setTheta] = useState(90);
-  const [fine, setFine] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState("");
   const hostRef = useRef<HTMLDivElement>(null);
@@ -82,7 +81,7 @@ export function AngleDial({ vertex, baseAngle, artboard, zoom, pan, onCommit, on
     <svg className="absolute inset-0 h-full w-full overflow-visible">
       {chord && <line data-angle-preview="" x1={pan.x + chord.x1 * scale} y1={pan.y + chord.y1 * scale} x2={pan.x + chord.x2 * scale} y2={pan.y + chord.y2 * scale} stroke="#67e8f9" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />}
       <path d={`M ${start.x} ${start.y} A ${RADIUS} ${RADIUS} 0 1 1 ${end.x} ${end.y}`} fill="none" stroke="transparent" strokeWidth={24} pointerEvents="stroke" style={{ cursor: dragging ? "grabbing" : "grab" }}
-        onPointerDown={event => { event.preventDefault(); event.stopPropagation(); dragRef.current = true; setDragging(true); setFine(event.shiftKey); (event.currentTarget as Element).setPointerCapture?.(event.pointerId); setTheta(readTheta(event.clientX,event.clientY,event.shiftKey)); }}
+        onPointerDown={event => { event.preventDefault(); event.stopPropagation(); dragRef.current = true; setDragging(true); (event.currentTarget as Element).setPointerCapture?.(event.pointerId); setTheta(readTheta(event.clientX,event.clientY,event.shiftKey)); }}
         onPointerMove={event => { if (dragRef.current) setTheta(readTheta(event.clientX,event.clientY,event.shiftKey)); }}
         onPointerUp={() => { dragRef.current = false; setDragging(false); }}
         onPointerCancel={() => { dragRef.current = false; setDragging(false); }} />
@@ -95,12 +94,11 @@ export function AngleDial({ vertex, baseAngle, artboard, zoom, pan, onCommit, on
       style={{ left: Math.max(4, Math.min(cx - 85, (hostRef.current?.clientWidth ?? 600) - 180)), top: Math.max(4, cy + 76) }}
       onPointerDown={event => event.stopPropagation()}>
       <label className="text-[10px] text-amber-100">θ</label>
-      <input ref={inputRef} aria-label="زاویه نقاله" type="number" min={0} max={180} step={fine ? 1 : 15} value={theta}
+      <input ref={inputRef} aria-label="زاویه نقاله" type="number" min={0} max={180} step={1} value={theta}
         onChange={event => { const n = Number(event.target.value); if (Number.isFinite(n)) setTheta(Math.max(0, Math.min(180, n))); }}
         onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); commit(); } if (event.key === "Escape") { event.preventDefault(); onCancel(); } }}
         className="w-14 rounded border border-white/15 bg-black px-1 py-1 text-center font-mono text-xs text-white" />
       <span className="text-xs text-amber-100">°</span>
-      <button type="button" aria-label="زاویه دقیق" aria-pressed={fine} onClick={() => setFine(v => !v)} className={fine ? "rounded bg-cyan-500/25 px-2 py-1 text-xs text-cyan-100" : "rounded px-2 py-1 text-xs text-slate-300"}>۱°</button>
       <button type="button" aria-label="ثبت زاویه" onClick={commit} className="rounded bg-emerald-500/20 px-2 py-1 text-xs text-emerald-100">✓</button>
       <button type="button" aria-label="لغو زاویه" onClick={onCancel} className="rounded bg-rose-500/20 px-2 py-1 text-xs text-rose-100">✕</button>
       {notice && <span role="status" className="text-[10px] text-rose-200">{notice}</span>}
