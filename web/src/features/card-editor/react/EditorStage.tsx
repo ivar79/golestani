@@ -256,11 +256,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     };
   }, [zoom]);
 
-  const brushPointerPos = useCallback((event: { clientX: number; clientY: number }) => {
+  const brushPointerPos = (event: { clientX: number; clientY: number }) => {
     const rect = brushRectRef.current;
     if (!rect) return pointerPos(event);
     return { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom };
-  }, [pointerPos, zoom]);
+  };
 
   const onMirrorAxisPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!mirrorAxisPickMode || preview) return;
