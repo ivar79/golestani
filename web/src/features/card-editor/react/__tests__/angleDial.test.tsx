@@ -54,8 +54,8 @@ describe("ruler angle dial", () => {
     expect(onMoveVertex).toHaveBeenCalledWith({ x: 240, y: 150 });
 
     const baseline = container.querySelector("[data-angle-baseline-hit]")!;
-    fireEvent(baseline, new MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 308, clientY: 150 }));
-    fireEvent(baseline, new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientX: 240, clientY: 218 }));
+    fireEvent(baseline, new MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 268, clientY: 120 }));
+    fireEvent(baseline, new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientX: 200, clientY: 188 }));
     fireEvent(baseline, new MouseEvent("pointerup", { bubbles: true, cancelable: true, clientX: 240, clientY: 218 }));
     expect(onSetBaseAngle).toHaveBeenCalledWith(90);
   });
