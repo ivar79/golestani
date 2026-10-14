@@ -1633,7 +1633,9 @@ export class EditorEngine {
     this.emit({
       doc: { ...this.state.doc, layers },
       workingStroke: null,
-      tool: "select",
+      // Keep the drawing tool active while the committed path is selected
+      // and its anchors are editable.
+      tool: "draw",
       selection: this.withSelection(id),
       editingPathId: id,
       selectedAnchor: { layerId: id, index: 0 },
