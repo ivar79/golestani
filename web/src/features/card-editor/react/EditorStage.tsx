@@ -24,7 +24,7 @@ import {
   shouldBeginHandleDrag,
   exceedsClickThreshold,
 } from "../domain/penGesture";
-import { ANGLE_ASSIST_PRESETS, axisAlignedGuideLines, projectOnGuide, type UserGuide } from "../domain/guides";
+import { ANGLE_ASSIST_PRESETS, angledGuideLines, axisAlignedGuideLines, projectOnGuide, type UserGuide } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
 import { AngleDial } from "./AngleDial";
 import { SetSquareOverlay } from "./SetSquareOverlay";
@@ -895,7 +895,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       engine.transientMoveSelection(transform.layerId, rawX, rawY);
       return;
     }
-    const snapped = snapLayerPosition(doc, transform.layerId, { x: rawX, y: rawY }, { width: layer.width, height: layer.height }, 6, axisAlignedGuideLines(state.guides, doc.artboard));
+    const snapped = snapLayerPosition(doc, transform.layerId, { x: rawX, y: rawY }, { width: layer.width, height: layer.height }, 6, axisAlignedGuideLines(state.guides, doc.artboard), angledGuideLines(state.guides, doc.artboard));
     setActiveGuides(snapped.guides);
     const kept = keepInside(snapped.pos.x, snapped.pos.y, layer.width, layer.height);
     engine.transientMove(transform.layerId, kept.x, kept.y);
