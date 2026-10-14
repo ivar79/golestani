@@ -226,23 +226,24 @@ describe("RulersAndGuides", () => {
     expect(view.attr('[data-guide="gd"]', "data-axis-aligned")).toBe("no");
   });
 
-  it("deletes a vertical guide dropped back onto its TOP ruler", () => {
+  it("moves a vertical guide to the top edge instead of deleting it", () => {
     const view = renderOverlay({ guides: [vertical("g1")] });
     const hit = view.bed('[data-guide-hit="g1"]');
     firePointer(hit, "pointerdown", { clientX: 100, clientY: 200, pointerId: 3 });
     firePointer(hit, "pointermove", { clientX: 100, clientY: -40, pointerId: 3 });
     firePointer(hit, "pointerup", { clientX: 100, clientY: -40, pointerId: 3 });
-    expect(view.onRemove).toHaveBeenCalledWith("g1");
-    expect(view.onMove).not.toHaveBeenCalled();
+    expect(view.onMove).toHaveBeenCalledWith("g1", { x: 100, y: 0 });
+    expect(view.onRemove).not.toHaveBeenCalled();
   });
 
-  it("deletes a horizontal guide dropped back onto its LEFT ruler", () => {
+  it("moves a horizontal guide to the left edge instead of deleting it", () => {
     const view = renderOverlay({ guides: [horizontal("g1")] });
     const hit = view.bed('[data-guide-hit="g1"]');
     firePointer(hit, "pointerdown", { clientX: 200, clientY: 120, pointerId: 3 });
     firePointer(hit, "pointermove", { clientX: -40, clientY: 120, pointerId: 3 });
     firePointer(hit, "pointerup", { clientX: -40, clientY: 120, pointerId: 3 });
-    expect(view.onRemove).toHaveBeenCalledWith("g1");
+    expect(view.onMove).toHaveBeenCalledWith("g1", { x: 0, y: 120 });
+    expect(view.onRemove).not.toHaveBeenCalled();
   });
 
   it("pins a locked guide on click instead of starting a move", () => {
@@ -279,9 +280,10 @@ describe("RulersAndGuides", () => {
     expect(view.onRemove).not.toHaveBeenCalled();
   });
 
-  it("deletes a guide on double-click", () => {
+  it("deletes the selected guide with the Delete key", () => {
     const view = renderOverlay({ guides: [horizontal("g1", 40)] });
-    fireEvent.doubleClick(view.bed('[data-guide-hit="g1"]'));
+    firePointer(view.bed('[data-guide-hit="g1"]'), "pointerdown", { clientX: 150, clientY: 40, pointerId: 5 });
+    fireEvent.keyDown(window, { key: "Delete" });
     expect(view.onRemove).toHaveBeenCalledWith("g1");
   });
 
