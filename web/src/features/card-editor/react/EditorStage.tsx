@@ -785,6 +785,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
               s,
               { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 },
               elapsedMs,
+              8 + state.freehandTuning.smoothing * 42,
             );
         const last = brushPtsRef.current[brushPtsRef.current.length - 1];
         // Sampling density is measured in document units, never screen pixels.
@@ -943,6 +944,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         cancelAnimationFrame(brushRafRef.current);
         brushRafRef.current = 0;
       }
+      renderLiveBrush();
       const pts = brushPtsRef.current;
       const options = {
         color: state.brushColor || "#0ea5e9",
