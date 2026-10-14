@@ -25,6 +25,7 @@ describe("ruler angle dial", () => {
       />,
     );
     const input = getByLabelText("زاویه نقاله") as HTMLInputElement;
+    input.focus();
     fireEvent.change(input, { target: { value: "30" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCommit).toHaveBeenCalledWith(120);
