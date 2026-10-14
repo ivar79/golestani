@@ -135,6 +135,23 @@ describe("point editor: press on the line and curve that spot", () => {
     expect(world(1).y).toBeCloseTo(50, 1);
   });
 
+  it("does not plant a node on a plain click, but double-click inserts one losslessly", () => {
+    const engine = new EditorEngine(docWith(pathLayer()));
+    engine.setPathEditing("line");
+    const { hit } = renderEditor(engine);
+
+    firePointer(hit, "pointerdown", { clientX: 125, clientY: 50, button: 0, detail: 1, buttons: 1 });
+    firePointer(window, "pointerup", { clientX: 125, clientY: 50, buttons: 0 });
+    expect(layer(engine).points).toHaveLength(2);
+
+    fireEvent(hit, new MouseEvent("dblclick", { bubbles: true, cancelable: true, clientX: 125, clientY: 50 }));
+    expect(layer(engine).points).toHaveLength(3);
+    expect(engine.getState().selectedAnchor).toEqual({ layerId: "line", index: 1 });
+    const worldPoints = layer(engine).points.map(point => ({ x: layer(engine).x + point.x, y: layer(engine).y + point.y }));
+    expect(worldPoints.map(point => point.x).sort((a,b) => a-b).map(x => Math.round(x))).toEqual([0, 125, 500]);
+    expect(worldPoints.every(point => Math.abs(point.y - 50) < 0.1)).toBe(true);
+  });
+
   it("keeps Alt/Option for moving the layer instead of bending", () => {
     const engine = new EditorEngine(docWith(pathLayer()));
     engine.setPathEditing("line");
