@@ -204,15 +204,14 @@ describe("RulersAndGuides", () => {
     expect(view.onAddAngled).not.toHaveBeenCalled();
   });
 
-  it("moves a vertical guide along its own axis and keeps the anchor's y", () => {
+  it("translates a vertical guide by the exact pointer delta without jumping", () => {
     const view = renderOverlay({ guides: [vertical("g1")] });
     const hit = view.bed('[data-guide-hit="g1"]');
     firePointer(hit, "pointerdown", { clientX: 100, clientY: 200, pointerId: 2 });
     firePointer(hit, "pointermove", { clientX: 180, clientY: 260, pointerId: 2 });
     firePointer(hit, "pointerup", { clientX: 180, clientY: 260, pointerId: 2 });
-    // x follows the pointer; y stays where the guide was anchored, because a
-    // vertical line has no y of its own.
-    expect(view.onMove).toHaveBeenCalledWith("g1", { x: 180, y: 200 });
+    // The full anchor translates by the pointer delta; the line does not jump.
+    expect(view.onMove).toHaveBeenCalledWith("g1", { x: 180, y: 260 });
     expect(view.onRemove).not.toHaveBeenCalled();
   });
 
@@ -227,23 +226,48 @@ describe("RulersAndGuides", () => {
     expect(view.attr('[data-guide="gd"]', "data-axis-aligned")).toBe("no");
   });
 
-  it("deletes a vertical guide dropped back onto its TOP ruler", () => {
+  it("moves a vertical guide to the top edge instead of deleting it", () => {
     const view = renderOverlay({ guides: [vertical("g1")] });
     const hit = view.bed('[data-guide-hit="g1"]');
     firePointer(hit, "pointerdown", { clientX: 100, clientY: 200, pointerId: 3 });
     firePointer(hit, "pointermove", { clientX: 100, clientY: -40, pointerId: 3 });
     firePointer(hit, "pointerup", { clientX: 100, clientY: -40, pointerId: 3 });
-    expect(view.onRemove).toHaveBeenCalledWith("g1");
-    expect(view.onMove).not.toHaveBeenCalled();
+    expect(view.onMove).toHaveBeenCalledWith("g1", { x: 100, y: 0 });
+    expect(view.onRemove).not.toHaveBeenCalled();
   });
 
-  it("deletes a horizontal guide dropped back onto its LEFT ruler", () => {
+  it("moves a horizontal guide to the left edge instead of deleting it", () => {
     const view = renderOverlay({ guides: [horizontal("g1")] });
     const hit = view.bed('[data-guide-hit="g1"]');
     firePointer(hit, "pointerdown", { clientX: 200, clientY: 120, pointerId: 3 });
     firePointer(hit, "pointermove", { clientX: -40, clientY: 120, pointerId: 3 });
     firePointer(hit, "pointerup", { clientX: -40, clientY: 120, pointerId: 3 });
-    expect(view.onRemove).toHaveBeenCalledWith("g1");
+    expect(view.onMove).toHaveBeenCalledWith("g1", { x: 0, y: 120 });
+    expect(view.onRemove).not.toHaveBeenCalled();
+  });
+
+  it("pins a locked guide on click instead of starting a move", () => {
+    const onPin = vi.fn();
+    const view = renderOverlay({ guides: [{ ...horizontal("locked", 120), locked: true }], onPin });
+    firePointer(view.bed('[data-guide-hit="locked"]'), "pointerdown", { clientX: 200, clientY: 120, pointerId: 31 });
+    expect(onPin).toHaveBeenCalledWith({ x: 200, y: 120 }, 0);
+    expect(view.onMove).not.toHaveBeenCalled();
+  });
+
+  it("snaps guide placement to the nearest object edge or center", () => {
+    const view = renderOverlay({ onSnapCreate: (point, axis) => axis === "x" ? { ...point, x: 144 } : { ...point, y: 166 } });
+    pullOut(view.bed('[data-ruler="top"]'), { x: 100, y: 5 }, { x: 130, y: 120 });
+    expect(view.onAdd).toHaveBeenCalledWith("x", 144);
+  });
+
+  it("creates an angled guide by Shift-dragging from the top ruler", () => {
+    const view = renderOverlay();
+    const ruler = view.bed('[data-ruler="top"]');
+    firePointer(ruler, "pointerdown", { clientX: 100, clientY: 5, pointerId: 32 });
+    firePointer(ruler, "pointermove", { clientX: 150, clientY: 100, pointerId: 32, shiftKey: true });
+    firePointer(ruler, "pointerup", { clientX: 150, clientY: 100, pointerId: 32, shiftKey: true });
+    expect(view.onAddAngled).toHaveBeenCalledTimes(1);
+    expect(view.onAdd).not.toHaveBeenCalled();
   });
 
   it("pins a guide dragged past the board edge on its own axis instead of deleting it", () => {
@@ -256,17 +280,17 @@ describe("RulersAndGuides", () => {
     expect(view.onRemove).not.toHaveBeenCalled();
   });
 
-  it("deletes a guide on double-click", () => {
+  it("deletes the selected guide with the Delete key", () => {
     const view = renderOverlay({ guides: [horizontal("g1", 40)] });
-    fireEvent.doubleClick(view.bed('[data-guide-hit="g1"]'));
+    firePointer(view.bed('[data-guide-hit="g1"]'), "pointerdown", { clientX: 150, clientY: 40, pointerId: 5 });
+    fireEvent.keyDown(window, { key: "Delete" });
     expect(view.onRemove).toHaveBeenCalledWith("g1");
   });
 
-  it("shows the rotate handle on hover and ROTATES the line to any angle", () => {
+  it("keeps the rotate handle visible and ROTATES the line to any angle", () => {
     const view = renderOverlay({ guides: [horizontal("g1")] });
-    // No handle until the line is hovered: it must not clutter a busy board.
-    expect(view.container.querySelector('[data-guide-rotate="g1"]')).toBeNull();
-    firePointer(view.bed('[data-guide-hit="g1"]'), "pointerover", { clientX: 150, clientY: 120 });
+    // The handle is always visible, as on a physical ruler.
+    expect(view.container.querySelector('[data-guide-rotate="g1"]')).not.toBeNull();
     const grip = view.bed('[data-guide-rotate-grip="g1"]');
     expect(grip).toBeTruthy();
     // The grip sits on the middle of the visible chord: (-28…328) → 150.
@@ -279,7 +303,7 @@ describe("RulersAndGuides", () => {
     expect(view.onRotate).toHaveBeenCalledWith("g1", 90);
   });
 
-  it("locks a rotation onto the set-square grid, and keeps Shift as a 15° override", () => {
+  it("locks a rotation onto the angle-assist grid even when Shift is held", () => {
     const view = renderOverlay({ guides: [horizontal("g1")], angleSnap: 30 });
     firePointer(view.bed('[data-guide-hit="g1"]'), "pointerover", { clientX: 150, clientY: 120 });
     const grip = view.bed('[data-guide-rotate-grip="g1"]');
@@ -288,7 +312,7 @@ describe("RulersAndGuides", () => {
     firePointer(grip, "pointermove", { clientX: 190, clientY: 170, pointerId: 5 });
     firePointer(grip, "pointerup", { clientX: 190, clientY: 170, pointerId: 5 });
     expect(view.onRotate).toHaveBeenCalledWith("g1", 60);
-    // Shift ignores the square and uses the documented 15° constraint instead.
+    // The angle-assist grid is the only rotation snap source in this specification.
     expect(view.onRotate).toHaveBeenCalledTimes(1);
     const viaShift = renderOverlay({ guides: [horizontal("g2")], angleSnap: 30 });
     firePointer(viaShift.bed('[data-guide-hit="g2"]'), "pointerover", { clientX: 150, clientY: 120 });
@@ -296,8 +320,8 @@ describe("RulersAndGuides", () => {
     firePointer(shiftGrip, "pointerdown", { clientX: 150, clientY: 120, pointerId: 6 });
     firePointer(shiftGrip, "pointermove", { clientX: 190, clientY: 170, pointerId: 6, shiftKey: true });
     firePointer(shiftGrip, "pointerup", { clientX: 190, clientY: 170, pointerId: 6, shiftKey: true });
-    // 51.34° rounds to the nearest 15° step, which is 45° — not the 30° square.
-    expect(viaShift.onRotate).toHaveBeenCalledWith("g2", 45);
+    // 51.34° snaps to the active 30° angle-assist grid.
+    expect(viaShift.onRotate).toHaveBeenCalledWith("g2", 60);
   });
 
   it("clips an angled guide to the board, so it touches both edges", () => {

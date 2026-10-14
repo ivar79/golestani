@@ -62,6 +62,8 @@ export function snapLayerPosition(
   pos: { x: number; y: number },
   size: { width: number; height: number },
   threshold = 6,
+  userGuides: readonly { axis: "x" | "y"; at: number }[] = [],
+  angledGuides: readonly { x: number; y: number; angle: number }[] = [],
 ): { pos: { x: number; y: number }; guides: SnapGuide[] } {
   const board = doc.artboard;
   const others = doc.layers.filter((l) => l.id !== layerId && !l.hidden && l.opacity > 0);
@@ -93,8 +95,8 @@ export function snapLayerPosition(
     }
   };
 
-  const xGuides = [0, board.width, board.width / 2];
-  const yGuides = [0, board.height, board.height / 2];
+  const xGuides = [0, board.width, board.width / 2, ...userGuides.filter(g => g.axis === "x").map(g => g.at)];
+  const yGuides = [0, board.height, board.height / 2, ...userGuides.filter(g => g.axis === "y").map(g => g.at)];
   for (const other of others) {
     xGuides.push(other.x, other.x + other.width, other.x + other.width / 2);
     yGuides.push(other.y, other.y + other.height, other.y + other.height / 2);
@@ -102,6 +104,35 @@ export function snapLayerPosition(
 
   run({ axis: "x", guides: xGuides, size: size.width, pos: pos.x });
   run({ axis: "y", guides: yGuides, size: size.height, pos: pos.y });
+
+  // Angled guides snap any layer kind by its nearest box anchor. The entire
+  // layer translates along the guide normal, keeping its dimensions unchanged.
+  let bestAngled: { nx: number; ny: number; signed: number } | null = null;
+  let bestDistance = threshold;
+  const anchors = [
+    { x: out.x, y: out.y },
+    { x: out.x + size.width, y: out.y },
+    { x: out.x + size.width, y: out.y + size.height },
+    { x: out.x, y: out.y + size.height },
+    { x: out.x + size.width / 2, y: out.y + size.height / 2 },
+  ];
+  for (const guide of angledGuides) {
+    const radians = guide.angle * Math.PI / 180;
+    const nx = -Math.sin(radians);
+    const ny = Math.cos(radians);
+    for (const anchor of anchors) {
+      const signed = (anchor.x - guide.x) * nx + (anchor.y - guide.y) * ny;
+      const distance = Math.abs(signed);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        bestAngled = { nx, ny, signed };
+      }
+    }
+  }
+  if (bestAngled) {
+    out.x -= bestAngled.signed * bestAngled.nx;
+    out.y -= bestAngled.signed * bestAngled.ny;
+  }
 
   return { pos: out, guides };
 }

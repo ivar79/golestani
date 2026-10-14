@@ -115,9 +115,11 @@ import {
   normalizeAngleAssist,
   removeGuide,
   rotateGuide,
+  toggleGuideLock,
   type GuideAxis,
   type UserGuide,
 } from "../domain/guides";
+import { createSetSquare, normalizeSetSquare, toggleSetSquareKind, MAX_SET_SQUARES, SET_SQUARE_MIN_SIZE, SET_SQUARE_MAX_SIZE, type SetSquare, type SetSquareKind } from "../domain/setSquare";
 import { parseNumericInput } from "../domain/numericInput";
 import { rotatePoint } from "../domain/rotation";
 import {
@@ -297,6 +299,8 @@ export type EngineState = {
   rulers: boolean;
   /** Persistent user guides. `[]` when the user has none. */
   guides: UserGuide[];
+  /** Physical drafting triangles are view state and never enter document history. */
+  setSquares: SetSquare[];
   /** The "set-square": lock drawing angles to `angleAssistIncrement`. */
   angleAssist: boolean;
   /** Angular grid in degrees when `angleAssist` is on (45 by default). */
@@ -363,6 +367,7 @@ export class EditorEngine {
       snapGuides: [],
       rulers: false,
       guides: [],
+      setSquares: [],
       angleAssist: false,
       angleAssistIncrement: ANGLE_ASSIST_DEFAULT,
       editingPathId: null,
@@ -1633,13 +1638,120 @@ export class EditorEngine {
     this.emit({
       doc: { ...this.state.doc, layers },
       workingStroke: null,
-      tool: "select",
+      // Keep the drawing tool active while the committed path is selected
+      // and its anchors are editable.
+      tool: "draw",
       selection: this.withSelection(id),
       editingPathId: id,
       selectedAnchor: { layerId: id, index: 0 },
     });
     return id;
   }
+
+  /** Prepare the exact editable geometry used by both the live preview and commit. */
+  freehandOutlineGeometry(outline: number[][], fidelity = this.state.freehandTuning.fidelity) {
+    return outlineToEditablePath(
+      outline,
+      2,
+      this.savePolicy.unlimited ? 96 : Math.min(72, this.savePolicy.budget.pathPoints),
+      fidelity,
+      0.18,
+    );
+  }
+
+  /** Commit the previewed perfect-freehand outline as one editable closed path. */
+  commitFreehandOutline(
+    outline: number[][],
+    options: { color: string; width: number; style?: StrokeStyleKind; linecap?: StrokeLineCap; linejoin?: StrokeLineJoin; opacity?: number; fidelity?: number },
+  ): string | null {
+    const geometry = this.freehandOutlineGeometry(outline, options.fidelity);
+    if (!geometry) return null;
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer: PathLayer = {
+      id, kind: "path", pathMode: "freehand", name: "قلم آزاد",
+      points: geometry.points, closed: true, fill: options.color, stroke: null, strokeWidth: 0,
+      strokeStyle: options.style ?? this.state.brushStyle,
+      strokeLinecap: options.linecap ?? this.state.brushLinecap,
+      strokeLinejoin: options.linejoin ?? this.state.brushLinejoin,
+      strokeOpacity: options.opacity ?? this.state.brushOpacity,
+      x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height, angle: 0,
+      opacity: options.opacity ?? this.state.brushOpacity, locked: false, hidden: false, color: options.color, background: null,
+    };
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, layer] },
+      workingStroke: null, tool: "draw", selection: this.withSelection(id),
+      editingPathId: id, selectedAnchor: { layerId: id, index: 0 },
+    });
+    return id;
+  }
+
+  /** Commit a straightedge-constrained stroke without smoothing or curve fitting. */
+  commitStraightStroke(
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    options: { color: string; width: number; style?: StrokeStyleKind; linecap?: StrokeLineCap; linejoin?: StrokeLineJoin; opacity?: number },
+    pressure = 1,
+  ): string | null {
+    if (Math.hypot(end.x - start.x, end.y - start.y) < 0.01) return this.commitFreehandDot(start, options, pressure);
+    const strokeWidth = clampStrokeWidth(options.width);
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const points: PathPoint[] = [
+      { x: start.x, y: start.y, hIn: null, hOut: null },
+      { x: end.x, y: end.y, hIn: null, hOut: null },
+    ];
+    const layer = normalizePathLayer<PathLayer>({
+      id, kind: "path", pathMode: "freehand", x: 0, y: 0, width: 1, height: 1,
+      angle: 0, opacity: 1, locked: false, hidden: false,
+      z: this.state.doc.layers.length + 1, color: null, background: null, closed: false, points,
+      stroke: options.color, strokeWidth, strokeStyle: options.style ?? this.state.brushStyle,
+      strokeLinecap: options.linecap ?? this.state.brushLinecap,
+      strokeLinejoin: options.linejoin ?? this.state.brushLinejoin,
+      strokeOpacity: options.opacity ?? this.state.brushOpacity, fill: null,
+    }, pathPadding(strokeWidth));
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, layer] },
+      workingStroke: null, tool: "draw", selection: this.withSelection(id),
+      editingPathId: id, selectedAnchor: { layerId: id, index: 0 },
+    });
+    return id;
+  }
+
+  /** A press/release without travel is an editable round path dab, never an empty stroke. */
+  commitFreehandDot(
+    point: { x: number; y: number },
+    options: { color: string; width: number; opacity?: number },
+    pressure = 1,
+  ): string {
+    const diameter = Math.max(1, clampStrokeWidth(options.width) * Math.max(0.2, Math.min(1, pressure)));
+    const r = diameter / 2;
+    const k = 0.5522847498 * r;
+    const points: PathPoint[] = [
+      { x: r, y: 0, hIn: { x: r - k, y: 0 }, hOut: { x: r + k, y: 0 } },
+      { x: diameter, y: r, hIn: { x: diameter, y: r - k }, hOut: { x: diameter, y: r + k } },
+      { x: r, y: diameter, hIn: { x: r + k, y: diameter }, hOut: { x: r - k, y: diameter } },
+      { x: 0, y: r, hIn: { x: 0, y: r + k }, hOut: { x: 0, y: r - k } },
+    ];
+    const id = `path-${Math.random().toString(36).slice(2, 9)}`;
+    const layer: PathLayer = {
+      id, kind: "path", pathMode: "freehand", name: "قلم آزاد",
+      points, closed: true, fill: options.color, stroke: null, strokeWidth: 0,
+      strokeStyle: this.state.brushStyle, strokeLinecap: this.state.brushLinecap,
+      strokeLinejoin: this.state.brushLinejoin, strokeOpacity: options.opacity ?? this.state.brushOpacity,
+      x: point.x - r, y: point.y - r, width: diameter, height: diameter, angle: 0,
+      opacity: options.opacity ?? this.state.brushOpacity, locked: false, hidden: false,
+      color: options.color, background: null,
+    };
+    this.pushHistory();
+    this.emit({
+      doc: { ...this.state.doc, layers: [...this.state.doc.layers, layer] },
+      tool: "draw", selection: this.withSelection(id), editingPathId: id,
+      selectedAnchor: { layerId: id, index: 0 },
+    });
+    return id;
+  }
+
 
   commitFreehandStroke(options: {
     color: string;
@@ -1749,6 +1861,38 @@ export class EditorEngine {
         ? autoSmoothPoints(raw, false)
         : raw;
     this.emit({ penDraft: smoothed });
+  }
+
+  /** Add a ruler-constrained point without curvature-mode auto-smoothing. */
+  penAddStraightAnchor(point: { x: number; y: number }): void {
+    const draft = this.state.penDraft ?? [];
+    if (draft.length === 0) {
+      this.penStart(point);
+      return;
+    }
+    const next = draft.map((anchor, index) =>
+      index === draft.length - 1 ? { ...anchor, hOut: null } : anchor,
+    );
+    next.push({ x: point.x, y: point.y, hIn: null, hOut: null });
+    this.emit({ penDraft: next });
+  }
+
+  /** Move the most recently placed draft anchor while preserving its handles. */
+  penMoveLastAnchor(point: { x: number; y: number }): void {
+    const draft = this.state.penDraft;
+    if (!draft?.length) return;
+    const next = draft.slice();
+    const last = next[next.length - 1];
+    const dx = point.x - last.x;
+    const dy = point.y - last.y;
+    next[next.length - 1] = {
+      ...last,
+      x: point.x,
+      y: point.y,
+      hIn: last.hIn ? { x: last.hIn.x + dx, y: last.hIn.y + dy } : null,
+      hOut: last.hOut ? { x: last.hOut.x + dx, y: last.hOut.y + dy } : null,
+    };
+    this.emit({ penDraft: next });
   }
 
   /**
@@ -3263,6 +3407,16 @@ export class EditorEngine {
     this.clearSnapGuides();
   }
 
+  /** Insert a node at the nearest drawn segment point (used by segment double-click). */
+  insertAnchorAtPoint(layerId: string, localPoint: { x: number; y: number }, tolerance = SNAP_TOLERANCE_DEFAULT): boolean {
+    const layer = this.editablePath(layerId);
+    if (!layer) return false;
+    const hit = nearestSegmentOnCubics(this.bendSegmentsOf(layer), localPoint);
+    if (!hit || hit.distance > tolerance) return false;
+    this.insertAnchorAt(layerId, hit.segIndex, hit.t);
+    return true;
+  }
+
   /** Insert an anchor on a segment (loss-less de Casteljau split). One record. */
   insertAnchorAt(layerId: string, segIndex: number, t: number): void {
     const layer = this.editablePath(layerId);
@@ -3593,20 +3747,22 @@ export class EditorEngine {
    * Place a guide (dragging out of a ruler). Adding onto an existing guide of
    * the same axis MOVES it — see `domain/guides.addGuide`.
    */
-  addGuide(axis: GuideAxis, at: number): void {
+  addGuide(axis: GuideAxis, at: number): boolean {
     const next = addGuide(this.state.guides, axis, at, this.state.doc.artboard);
-    if (next === this.state.guides) return;
+    if (JSON.stringify(next) === JSON.stringify(this.state.guides)) return false;
     this.emit({ guides: next });
+    return true;
   }
 
   /**
    * Place a guide at ANY angle — the diagonal a ruler drag cannot express.
    * `point` is where the line passes; the angle is in degrees (0 = horizontal).
    */
-  addAngledGuide(angle: number, point: { x: number; y: number }): void {
+  addAngledGuide(angle: number, point: { x: number; y: number }): boolean {
     const next = addAngledGuide(this.state.guides, { angle, ...point }, this.state.doc.artboard);
-    if (next === this.state.guides) return;
+    if (JSON.stringify(next) === JSON.stringify(this.state.guides)) return false;
     this.emit({ guides: next });
+    return true;
   }
 
   /** Move one guide while it is dragged (its anchor point follows the pointer). */
@@ -3631,9 +3787,78 @@ export class EditorEngine {
     return true;
   }
 
+  toggleGuideLock(id: string): void {
+    const next = toggleGuideLock(this.state.guides, id);
+    if (next.every((guide, index) => guide === this.state.guides[index])) return;
+    this.emit({ guides: next });
+  }
+
   clearGuides(): void {
-    if (this.state.guides.length === 0) return;
-    this.emit({ guides: [] });
+    const next = this.state.guides.filter((guide) => guide.locked === true);
+    if (next.length === this.state.guides.length) return;
+    this.emit({ guides: next });
+  }
+
+  /** Create a locked straightedge at an absolute angle through the dial vertex. */
+  addLockedAngledGuide(angle: number, point: { x: number; y: number }): boolean {
+    const before = this.state.guides;
+    const next = addAngledGuide(before, { angle, ...point }, this.state.doc.artboard);
+    const normalizedAngle = ((angle % 180) + 180) % 180;
+    const existing = next.find((guide) => {
+      const delta = Math.abs((((guide.angle - normalizedAngle) % 180) + 270) % 180 - 90);
+      const distance = Math.abs((point.x - guide.x) * Math.sin((guide.angle * Math.PI) / 180) - (point.y - guide.y) * Math.cos((guide.angle * Math.PI) / 180));
+      return delta < 0.5 && distance < 0.5;
+    });
+    if (next.length === before.length && !existing) return false;
+    if (existing) {
+      const locked = next.map((guide) => guide.id === existing.id ? { ...guide, locked: true } : guide);
+      this.emit({ guides: locked });
+      return true;
+    }
+    this.emit({ guides: next });
+    return false;
+  }
+
+  /** Add a physical drafting triangle at the center of the artboard. */
+  addSetSquare(kind: SetSquareKind = "45-45-90"): string | null {
+    if (this.state.setSquares.length >= MAX_SET_SQUARES) return null;
+    const id = `set-square-${Math.random().toString(36).slice(2, 9)}`;
+    const square = createSetSquare(id, {
+      x: this.state.doc.artboard.width / 2,
+      y: this.state.doc.artboard.height / 2,
+    }, kind);
+    this.emit({ setSquares: [...this.state.setSquares, square] });
+    return id;
+  }
+
+  moveSetSquare(id: string, center: { x: number; y: number }): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? normalizeSetSquare({ ...s, cx: center.x, cy: center.y }) : s) });
+  }
+
+  rotateSetSquare(id: string, angle: number): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? normalizeSetSquare({ ...s, angle }) : s) });
+  }
+
+  resizeSetSquare(id: string, size: number): void {
+    const clamped = Math.max(SET_SQUARE_MIN_SIZE, Math.min(SET_SQUARE_MAX_SIZE, size));
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? normalizeSetSquare({ ...s, size: clamped }) : s) });
+  }
+
+  toggleSetSquareLock(id: string): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id ? { ...s, locked: !s.locked } : s) });
+  }
+
+  switchSetSquareKind(id: string): void {
+    this.emit({ setSquares: this.state.setSquares.map(s => s.id === id && !s.locked ? toggleSetSquareKind(s) : s) });
+  }
+
+  removeSetSquare(id: string): void {
+    this.emit({ setSquares: this.state.setSquares.filter(s => s.id !== id || s.locked) });
+  }
+
+  clearSetSquares(): void {
+    const next = this.state.setSquares.filter(s => s.locked);
+    if (next.length !== this.state.setSquares.length) this.emit({ setSquares: next });
   }
 
   /** Turn the angle-assist grid on/off (the "set-square"). */

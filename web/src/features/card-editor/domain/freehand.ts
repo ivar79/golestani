@@ -14,6 +14,32 @@ export type FreehandPoint = {
   p: number; // Pressure in [0, 1]
 };
 
+/**
+ * Time-based exponential smoothing for pointer samples.
+ *
+ * A time constant of 20.8ms reproduces roughly the previous 0.55 position
+ * weight at 60Hz, while scaling correctly at higher/lower event frequencies.
+ */
+export function smoothFreehandSample(
+  previous: FreehandPoint,
+  target: FreehandPoint,
+  elapsedMs: number,
+  timeConstantMs = 20.8,
+): FreehandPoint {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+    return { ...previous, p: target.p };
+  }
+  const tau = Number.isFinite(timeConstantMs) && timeConstantMs > 0
+    ? timeConstantMs
+    : 20.8;
+  const alpha = 1 - Math.exp(-elapsedMs / tau);
+  return {
+    x: previous.x + (target.x - previous.x) * alpha,
+    y: previous.y + (target.y - previous.y) * alpha,
+    p: target.p,
+  };
+}
+
 export type FreehandBrushOptions = {
   size?: number;
   thinning?: number;
@@ -115,6 +141,8 @@ export function outlineToEditablePath(
   outline: number[][],
   pad = 2,
   maxPoints = 72,
+  fidelity = 0.75,
+  handleSmoothing = 0.18,
 ): { points: PathPoint[]; x: number; y: number; width: number; height: number } | null {
   if (!outline || outline.length < 4) return null;
 
@@ -131,8 +159,9 @@ export function outlineToEditablePath(
   if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
 
   const local = outline.map(([x, y]) => ({ x: x - minX + pad, y: y - minY + pad }));
-  let simplified = ramerDouglasPeucker(local, 1.6);
-  let epsilon = 1.6;
+  const epsilonStart = Math.max(0.35, (1 - Math.max(0, Math.min(1, fidelity))) * 4);
+  let simplified = ramerDouglasPeucker(local, epsilonStart);
+  let epsilon = epsilonStart;
   for (let pass = 0; pass < 8 && simplified.length > maxPoints; pass += 1) {
     epsilon = Math.min(14, epsilon * 1.55);
     const next = ramerDouglasPeucker(local, epsilon);
@@ -144,7 +173,7 @@ export function outlineToEditablePath(
   const points = autoSmoothPoints(
     simplified.map((p) => ({ x: p.x, y: p.y, hIn: null, hOut: null })),
     true,
-    0.18,
+    Math.max(0, Math.min(0.45, handleSmoothing)),
   );
 
   return {

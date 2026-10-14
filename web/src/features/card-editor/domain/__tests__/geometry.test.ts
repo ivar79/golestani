@@ -222,3 +222,41 @@ describe("zoom", () => {
     expect(panForZoomAtPoint(pan, { x: 0, y: 0 }, { x: 200, y: 200 }, 1.5, 1.5)).toEqual(pan);
   });
 });
+
+
+describe("user-guide snapping for layers", () => {
+  it("snaps a layer box anchor onto an angled guide", () => {
+    const doc = makeDoc([{ x: 0, y: 0, width: 20, height: 20 }]);
+    const result = snapLayerPosition(
+      doc,
+      "layer-0",
+      { x: 100, y: 108 },
+      { width: 20, height: 20 },
+      6,
+      [],
+      [{ x: 100, y: 100, angle: 45 }],
+    );
+    const anchors = [
+      { x: result.pos.x, y: result.pos.y },
+      { x: result.pos.x + 20, y: result.pos.y },
+      { x: result.pos.x + 20, y: result.pos.y + 20 },
+      { x: result.pos.x, y: result.pos.y + 20 },
+      { x: result.pos.x + 10, y: result.pos.y + 10 },
+    ];
+    const distanceToGuide = (point: { x: number; y: number }) => Math.abs((point.x - 100) - (point.y - 100)) / Math.sqrt(2);
+    expect(Math.min(...anchors.map(distanceToGuide))).toBeLessThan(0.01);
+    expect(result.pos.x).not.toBe(100);
+    expect(result.pos.y).not.toBe(108);
+  });
+
+  it("snaps layer positions to vertical and horizontal user guides regardless of layer kind", () => {
+    const doc = makeDoc([{ x: 0, y: 0, width: 20, height: 20 }]);
+    const vertical = snapLayerPosition(doc, "layer-0", { x: 97, y: 40 }, { width: 20, height: 20 }, 6, [{ axis: "x", at: 100 }]);
+    expect(vertical.pos.x).toBe(100);
+    expect(vertical.guides).toContainEqual({ axis: "x", at: 100, edge: "start" });
+
+    const horizontal = snapLayerPosition(doc, "layer-0", { x: 40, y: 147 }, { width: 20, height: 20 }, 6, [{ axis: "y", at: 150 }]);
+    expect(horizontal.pos.y).toBe(150);
+    expect(horizontal.guides).toContainEqual({ axis: "y", at: 150, edge: "start" });
+  });
+});

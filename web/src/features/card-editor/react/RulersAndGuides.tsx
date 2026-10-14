@@ -54,9 +54,10 @@
  * meaningful, so "follow the pointer on one axis" has no meaning for it.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RULER_THICKNESS,
+  MAX_GUIDES,
   angleFromDrag,
   axisForAngle,
   clampAxis,
@@ -78,7 +79,6 @@ const LINE_PAD_PX = 28;
 /** Hit stroke width in screen px — a 1px diagonal is impossible to grab. */
 const HIT_STROKE_PX = 12;
 /** Shift is the universal "constrain rotation" modifier. */
-const SHIFT_ROTATE_STEP = 15;
 
 type Point = { x: number; y: number };
 
@@ -126,13 +126,17 @@ type Props = {
    * 30° gets exactly 30° instead of "about 30°".
    */
   angleSnap?: number | null;
-  onAdd: (axis: GuideAxis, at: number) => void;
+  onAdd: (axis: GuideAxis, at: number) => boolean | void;
   /** Create a guide at ANY angle through `point` (0 = horizontal, 90 = vertical). */
-  onAddAngled: (angle: number, point: Point) => void;
+  onAddAngled: (angle: number, point: Point) => boolean | void;
   onMove: (id: string, point: Point) => void;
   /** Spin an existing guide around its own anchor. */
   onRotate: (id: string, angle: number) => void;
   onRemove: (id: string) => void;
+  onToggleLock?: (id: string) => void;
+  onPin?: (vertex: Point, baseAngle: number) => void;
+  onSnapCreate?: (point: Point, axis: GuideAxis) => Point;
+  selectMode?: boolean;
   /** Preview mode never shows design aids. */
   preview?: boolean;
 };
@@ -184,6 +188,14 @@ export function clipLineToBoard(
 }
 
 /** Kill the 1e-14 residue a rotation leaves behind, so edges read exactly. */
+function projectOnGuideForUi(guide: UserGuide, point: Point): Point {
+  const radians = (guide.angle * Math.PI) / 180;
+  const nx = -Math.sin(radians);
+  const ny = Math.cos(radians);
+  const signed = (point.x - guide.x) * nx + (point.y - guide.y) * ny;
+  return { x: point.x - signed * nx, y: point.y - signed * ny };
+}
+
 function tidy(value: number): number {
   const rounded = Math.round(value * 1e6) / 1e6;
   return Object.is(rounded, -0) ? 0 : rounded;
@@ -201,17 +213,24 @@ export function RulersAndGuides({
   onMove,
   onRotate,
   onRemove,
+  onToggleLock,
+  onPin,
+  onSnapCreate,
+  selectMode = true,
   preview = false,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [limitNotice, setLimitNotice] = useState(false);
   const [pointer, setPointer] = useState<Point | null>(null);
   const lastPointerRef = useRef<string>("");
 
   const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const snapIncrements = angleSnap && angleSnap > 0 ? [angleSnap] : [];
+  const snapIncrements = useMemo(() => angleSnap && angleSnap > 0 ? [angleSnap] : [], [angleSnap]);
+  const flashLimit = useCallback(() => { setLimitNotice(true); window.setTimeout(() => setLimitNotice(false), 2200); }, []);
 
   /** Client point → artboard point, using the wrapper rect and the pan offset. */
   const toArtboard = useCallback(
@@ -286,7 +305,7 @@ export function RulersAndGuides({
         event.clientY - current.origin.clientY,
       );
       const moved = current.moved || travelled > CREATE_THRESHOLD_PX;
-      const increments = event.shiftKey ? [SHIFT_ROTATE_STEP] : snapIncrements;
+      const increments = snapIncrements;
       let next: Drag = {
         ...current,
         rawX: point.x,
@@ -294,16 +313,17 @@ export function RulersAndGuides({
         moved,
       };
 
-      if (current.kind === "rotate" || current.kind === "angled") {
-        // Both gestures are "point at the direction you want": the line pivots
-        // around an anchor that never moves.
-        next = {
-          ...next,
-          angle: angleFromDrag(current.anchor, point, increments),
-        };
+      if (current.kind === "create" && event.shiftKey) {
+        // Shift+drag from either ruler turns the ordinary guide pull into an
+        // angled guide, preserving the original press as the visible pivot.
+        const anchor = clampPoint(onSnapCreate?.(current.anchor, current.axis ?? "x") ?? current.anchor, artboard);
+        next = { ...next, kind: "angled", axis: null, anchor, x: anchor.x, y: anchor.y, angle: angleFromDrag(anchor, point, increments), droppedOnRuler: false };
+      } else if (current.kind === "rotate" || current.kind === "angled") {
+        next = { ...next, angle: angleFromDrag(current.anchor, point, increments) };
       } else if (current.kind === "create") {
         const axis = current.axis ?? "x";
-        const value = axis === "x" ? point.x : point.y;
+        const snappedPoint = onSnapCreate?.(point, axis) ?? point;
+        const value = axis === "x" ? snappedPoint.x : snappedPoint.y;
         const extent = axis === "x" ? artboard.width : artboard.height;
         next = {
           ...next,
@@ -311,37 +331,21 @@ export function RulersAndGuides({
           y: axis === "y" ? clampAxis(value, extent) : artboard.height / 2,
           droppedOnRuler: backOnRuler(axis, point),
         };
-      } else if (isAxisAlignedAngle(current.angle)) {
-        // An axis guide follows ONE pointer coordinate: the other one is noise,
-        // and its cross coordinate is what expresses "drop me back on the ruler".
-        const axis = current.axis ?? "x";
-        const value = axis === "x" ? point.x : point.y;
-        const extent = axis === "x" ? artboard.width : artboard.height;
-        next = {
-          ...next,
-          x: axis === "x" ? clampAxis(value, extent) : current.anchor.x,
-          y: axis === "y" ? clampAxis(value, extent) : current.anchor.y,
-          droppedOnRuler: backOnRuler(axis, point),
-        };
       } else {
-        // An angled guide TRANSLATES: both of its coordinates are meaningful, so
-        // there is no single axis it could follow. The anchor is clamped to the
-        // board, which is why the whole line stays grabbable.
+        // Unified translation for every angle preserves the exact grab offset;
+        // the guide never jumps so its anchor sits under the cursor.
         const axis = axisForAngle(current.angle);
-        const anchor = clampPoint(
-          {
-            x: current.anchor.x + (point.x - current.press.x),
-            y: current.anchor.y + (point.y - current.press.y),
-          },
-          artboard,
-        );
+        const anchor = clampPoint({
+          x: current.anchor.x + (point.x - current.press.x),
+          y: current.anchor.y + (point.y - current.press.y),
+        }, artboard);
         next = { ...next, x: anchor.x, y: anchor.y, droppedOnRuler: backOnRuler(axis, point) };
       }
 
       dragRef.current = next;
       setDrag(next);
     },
-    [artboard, backOnRuler, snapIncrements, toArtboard],
+    [artboard, backOnRuler, onSnapCreate, snapIncrements, toArtboard],
   );
 
   const finish = useCallback(
@@ -353,7 +357,8 @@ export function RulersAndGuides({
 
       if (current.kind === "angled") {
         // A corner drag that never left the elbow is a stray click, not a line.
-        onAddAngled(current.angle, { x: current.anchor.x, y: current.anchor.y });
+        const ok = onAddAngled(current.angle, { x: current.anchor.x, y: current.anchor.y });
+        if (ok === false && guides.length >= MAX_GUIDES) flashLimit();
         return;
       }
 
@@ -367,7 +372,13 @@ export function RulersAndGuides({
         // Dropping a line back onto the strip it came from means "never mind".
         if (current.droppedOnRuler) return;
         const axis = current.axis ?? "x";
-        onAdd(axis, axis === "x" ? current.x : current.y);
+        const point = current.moved
+          ? { x: current.x, y: current.y }
+          : onSnapCreate?.(current.anchor, axis) ?? current.anchor;
+        const extent = axis === "x" ? artboard.width : artboard.height;
+        const value = clampAxis(axis === "x" ? point.x : point.y, extent);
+        const ok = onAdd(axis, value);
+        if (ok === false && guides.length >= MAX_GUIDES) flashLimit();
         return;
       }
 
@@ -381,8 +392,44 @@ export function RulersAndGuides({
       // Off the board on its OWN axis is not a delete — it pins to the edge.
       onMove(id, { x: current.x, y: current.y });
     },
-    [onAdd, onAddAngled, onMove, onRemove, onRotate],
+    [artboard, flashLimit, guides.length, onAdd, onAddAngled, onMove, onRemove, onRotate, onSnapCreate],
   );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && dragRef.current?.kind === "rotate") {
+        event.preventDefault();
+        finish(false);
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input,textarea,select,[contenteditable='true']")) return;
+      if (!selectedGuideId) return;
+      const guide = guides.find(item => item.id === selectedGuideId);
+      if (!guide) return;
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        onRemove(selectedGuideId);
+        setSelectedGuideId(null);
+      } else if (event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        onToggleLock?.(selectedGuideId);
+      } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        if (guide.locked) return;
+        const delta = event.shiftKey ? 10 : 1;
+        const dx = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+        const dy = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+        const radians = guide.angle * Math.PI / 180;
+        const nx = -Math.sin(radians), ny = Math.cos(radians);
+        const amount = (dx * nx + dy * ny) * delta;
+        if (Math.abs(amount) < 1e-8) return;
+        onMove(selectedGuideId, { x: guide.x + nx * amount, y: guide.y + ny * amount });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [finish, guides, onMove, onRemove, onToggleLock, selectedGuideId]);
 
   if (preview) return null;
 
@@ -394,7 +441,6 @@ export function RulersAndGuides({
 
   const toScreenX = (value: number) => pan.x + value * scale;
   const toScreenY = (value: number) => pan.y + value * scale;
-  const toScreen = (point: Point) => ({ x: toScreenX(point.x), y: toScreenY(point.y) });
 
   /** The live geometry of a guide (or of the drag preview) as a screen chord. */
   const chordFor = (angle: number, anchor: Point) => {
@@ -657,7 +703,7 @@ export function RulersAndGuides({
         {guides.map((guide) => {
           const chord = chordFor(guide.angle, { x: guide.x, y: guide.y });
           if (!chord) return null;
-          const active = hoveredId === guide.id || (drag?.id === guide.id && drag.moved);
+          const active = hoveredId === guide.id || selectedGuideId === guide.id || (drag?.id === guide.id && drag.moved);
           const axisAligned = isAxisAlignedAngle(guide.angle);
           const handle = rotateHandleAt(chord);
           return (
@@ -687,7 +733,7 @@ export function RulersAndGuides({
                 stroke="transparent"
                 strokeWidth={HIT_STROKE_PX}
                 strokeLinecap="round"
-                pointerEvents="stroke"
+                pointerEvents={selectMode ? "stroke" : "none"}
                 style={{ cursor: axisAligned ? (isVertical(guide.angle) ? "col-resize" : "row-resize") : "move" }}
                 onPointerOver={() => setHoveredId(guide.id)}
                 onPointerOut={() => setHoveredId(null)}
@@ -697,6 +743,13 @@ export function RulersAndGuides({
                 }}
                 onPointerDown={(event) => {
                   const point = toArtboard(event.clientX, event.clientY);
+                  setSelectedGuideId(guide.id);
+                  if (guide.locked) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (selectMode) onPin?.(projectOnGuideForUi(guide, point), guide.angle);
+                    return;
+                  }
                   start(
                     {
                       kind: "move",
@@ -720,10 +773,39 @@ export function RulersAndGuides({
                 onPointerUp={() => finish(true)}
                 onPointerCancel={() => finish(false)}
               />
-              {/* ROTATE HANDLE — appears on hover, on the line, so "make this
-                  diagonal" is one obvious gesture instead of a hidden modifier. */}
-              {active ? (
-                <g data-guide-rotate={guide.id}>
+              {/* Lock state is visible and directly controllable without entering another mode. */}
+              <g data-guide-lock-control={guide.id}>
+                <circle
+                  cx={guide.x * scale + pan.x}
+                  cy={guide.y * scale + pan.y}
+                  r={9}
+                  fill={guide.locked ? "#164e63" : "#07111d"}
+                  stroke={guide.locked ? "#67e8f9" : "#94a3b8"}
+                  strokeWidth={1.5}
+                  pointerEvents="none"
+                />
+                <text
+                  x={guide.x * scale + pan.x}
+                  y={guide.y * scale + pan.y + 3}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill="#e0f2fe"
+                  pointerEvents="none"
+                >{guide.locked ? "L" : "·"}</text>
+                <circle
+                  data-guide-lock-grip={guide.id}
+                  cx={guide.x * scale + pan.x}
+                  cy={guide.y * scale + pan.y}
+                  r={13}
+                  fill="transparent"
+                  style={{ cursor: "pointer", pointerEvents: selectMode ? "auto" : "none" }}
+                  onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                  onClick={(event) => { event.preventDefault(); event.stopPropagation(); onToggleLock?.(guide.id); }}
+                />
+              </g>
+              {/* ROTATE HANDLE — always visible; locked guides expose it disabled. */}
+              {true ? (
+                <g data-guide-rotate={guide.id} data-disabled={guide.locked ? "yes" : "no"} opacity={guide.locked ? 0.45 : 1}>
                   <circle cx={handle.x} cy={handle.y} r={9} fill="#07111d" stroke="#a5f3fc" strokeWidth={1.5} />
                   <line
                     x1={handle.x - 3.5}
@@ -739,8 +821,9 @@ export function RulersAndGuides({
                     cy={handle.y}
                     r={11}
                     fill="transparent"
-                    style={{ cursor: "grab" }}
+                    style={{ cursor: "grab", pointerEvents: selectMode ? "auto" : "none" }}
                     onPointerDown={(event) => {
+                      if (guide.locked) { event.preventDefault(); event.stopPropagation(); return; }
                       start(
                         {
                           kind: "rotate",
@@ -786,6 +869,8 @@ export function RulersAndGuides({
           />
         ) : null}
       </svg>
+
+      {limitNotice ? <div role="status" data-guide-limit-notice="" className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded-md border border-rose-300/30 bg-rose-950/95 px-3 py-1.5 text-[11px] font-semibold text-rose-100 shadow-lg">حداکثر {MAX_GUIDES} خط راهنما مجاز است</div> : null}
 
       {/* Exact readout while dragging: the number is the contract, not the pixel. */}
       {drag && drag.kind !== "create" && drag.moved ? (

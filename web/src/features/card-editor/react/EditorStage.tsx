@@ -24,10 +24,15 @@ import {
   shouldBeginHandleDrag,
   exceedsClickThreshold,
 } from "../domain/penGesture";
-import { ANGLE_ASSIST_PRESETS } from "../domain/guides";
+import { ANGLE_ASSIST_PRESETS, angledGuideLines, axisAlignedGuideLines, projectOnGuide, type UserGuide } from "../domain/guides";
 import { RulersAndGuides } from "./RulersAndGuides";
+import { AngleDial } from "./AngleDial";
+import { SetSquareOverlay } from "./SetSquareOverlay";
+import { closestPointOnSegment, type SetSquare } from "../domain/setSquare";
+import { nearestLockedStraightedge, type LockedStraightedgeHit } from "../domain/draftingSnap";
 import { layerHitCursor } from "../domain/cursorPolicy";
-import { getBrushStrokeOutline, outlineToD, type FreehandPoint } from "../domain/freehand";
+import { getBrushStrokeOutline, smoothFreehandSample, type FreehandPoint } from "../domain/freehand";
+import { pathD } from "../domain/path";
 import { constrainToAngle } from "../domain/pathOps";
 import { PenDraftOverlay, PathEditOverlay, ArcBendHandleOverlay, CLOSE_SLOP } from "./BezierOverlays";
 import { useQrAssets } from "./useQrAssets";
@@ -83,6 +88,14 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const [editValue, setEditValue] = useState("");
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
+  const [angleDial, setAngleDial] = useState<{ vertex: { x: number; y: number }; baseAngle: number } | null>(null);
+  useEffect(() => {
+    if (state.tool === "select" && !preview) return;
+    const frame = requestAnimationFrame(() => setAngleDial(null));
+    return () => cancelAnimationFrame(frame);
+  }, [state.tool, preview]);
+  const [setSquareNotice, setSetSquareNotice] = useState("");
+  const [engagedSetSquareEdge, setEngagedSetSquareEdge] = useState<{ squareId: string; edgeIndex: number } | null>(null);
   /** Rubber bands in artboard coordinates; node and layer selection are separate gestures. */
   const [nodeMarquee, setNodeMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [layerMarquee, setLayerMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -249,6 +262,12 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     };
   }, [zoom]);
 
+  const brushPointerPos = (event: { clientX: number; clientY: number }) => {
+    const rect = brushRectRef.current;
+    if (!rect) return pointerPos(event);
+    return { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom };
+  };
+
   const onMirrorAxisPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!mirrorAxisPickMode || preview) return;
     const target = event.target as HTMLElement;
@@ -269,12 +288,18 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
   const isDrawingRef = useRef(false);
   const brushPtsRef = useRef<FreehandPoint[]>([]);
   const brushSmoothRef = useRef<FreehandPoint | null>(null);
+  const brushLastTimeRef = useRef<number | null>(null);
+  const brushRectRef = useRef<DOMRect | null>(null);
+  const brushEngagedGuideRef = useRef<UserGuide | null>(null);
+  const brushEngagedSquareRef = useRef<{ square: SetSquare; edgeIndex: number; a: { x: number; y: number }; b: { x: number; y: number } } | null>(null);
   const brushStartRef = useRef<{ x: number; y: number } | null>(null);
   const liveBrushRef = useRef<SVGPathElement>(null);
+  const liveGuideBrushRef = useRef<SVGPathElement>(null);
   const brushRafRef = useRef(0);
   const isPenInputRef = useRef(false);
   /** True only once the pen click has crossed PEN_DRAG_THRESHOLD_PX (domain/penGesture). */
   const penDragRef = useRef(false);
+  const penEngagedStraightedgeRef = useRef<LockedStraightedgeHit | null>(null);
   /** Where the current pen pointer-down landed (artboard coords) — the threshold base. */
   const penStartRef = useRef<{ x: number; y: number } | null>(null);
   /** Rubber-band target for the live pen path (view state only). */
@@ -593,11 +618,18 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       // ANGLE LOCK: Shift gives the documented 45° grid, the "set-square"
       // toggle gives its own grid. The new segment is measured from the PREVIOUS
       // anchor, so a horizontal/vertical/diagonal segment is one key away.
+      const straightedge = nearestLockedStraightedge(raw, state.guides, state.setSquares, zoom);
+      const snappedRaw = straightedge?.point ?? raw;
       const increments = penAngleLock(event);
       const previous = draft && draft.length > 0 ? draft[draft.length - 1] : null;
-      const pos = previous && increments.length > 0 ? constrainPenPoint(previous, raw, true, increments) : raw;
-      if (draft && draft.length > 0) engine.penAddAnchor(pos);
-      else engine.penStart(pos);
+      const pos = straightedge
+        ? snappedRaw
+        : previous && increments.length > 0 ? constrainPenPoint(previous, raw, true, increments) : raw;
+      penEngagedStraightedgeRef.current = straightedge;
+      if (draft && draft.length > 0) {
+        if (straightedge) engine.penAddStraightAnchor(pos);
+        else engine.penAddAnchor(pos);
+      } else engine.penStart(pos);
       // Remember where this click landed: a click only becomes a handle DRAG
       // once the pointer crosses PEN_DRAG_THRESHOLD_PX in SCREEN pixels (see
       // onStagePointerMove). Until then it is a plain corner anchor.
@@ -611,10 +643,22 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       (event.target as Element).setPointerCapture?.(event.pointerId);
       isDrawingRef.current = true;
       isPenInputRef.current = event.pointerType === "pen";
-      const pos = pointerPos(event);
+      const stageElement = containerRef.current?.querySelector("[data-stage-inner]") as HTMLElement | null;
+      brushRectRef.current = stageElement?.getBoundingClientRect() ?? null;
+      const rawPos = brushPointerPos(event);
+      const straightedge = nearestLockedStraightedge(rawPos, state.guides, state.setSquares, zoom);
+      const engaged = straightedge?.kind === "guide" ? straightedge.guide : null;
+      const squareEdge = straightedge?.kind === "set-square"
+        ? { square: straightedge.square, edgeIndex: straightedge.edgeIndex, a: straightedge.a, b: straightedge.b }
+        : null;
+      brushEngagedGuideRef.current = engaged;
+      brushEngagedSquareRef.current = squareEdge;
+      setEngagedSetSquareEdge(squareEdge ? { squareId: squareEdge.square.id, edgeIndex: squareEdge.edgeIndex } : null);
+      const pos = straightedge?.point ?? rawPos;
       const pt: FreehandPoint = { x: pos.x, y: pos.y, p: event.pressure || 0.5 };
       brushPtsRef.current = [pt];
       brushSmoothRef.current = pt;
+      brushLastTimeRef.current = event.timeStamp;
       brushStartRef.current = { x: pos.x, y: pos.y };
       return;
     }
@@ -653,19 +697,49 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
     engine.select(null);
   };
 
-  const STREAMLINE = 0.45;
+    const brushOptions = () => ({
+    size: state.brushWidth || 14,
+    thinning: 0.55,
+    smoothing: state.freehandTuning.smoothing,
+    streamline: state.freehandTuning.smoothing,
+    simulatePressure: !isPenInputRef.current,
+    last: true,
+  });
 
   const renderLiveBrush = () => {
     brushRafRef.current = 0;
-    const outline = getBrushStrokeOutline(brushPtsRef.current, {
-      size: state.brushWidth || 14,
-      thinning: 0.55,
-      smoothing: 0.6,
-      streamline: 0.35,
-      simulatePressure: !isPenInputRef.current,
-      last: false,
-    });
-    liveBrushRef.current?.setAttribute("d", outlineToD(outline));
+    const samples = brushPtsRef.current;
+    if ((brushEngagedGuideRef.current || brushEngagedSquareRef.current) && samples.length > 0) {
+      const first = samples[0];
+      const last = samples[samples.length - 1] ?? first;
+      liveBrushRef.current?.setAttribute("d", "");
+      const guidePath = liveGuideBrushRef.current;
+      guidePath?.setAttribute("d", `M ${first.x} ${first.y} L ${last.x} ${last.y}`);
+      guidePath?.setAttribute("stroke", state.brushColor || "#0ea5e9");
+      guidePath?.setAttribute("stroke-width", String(state.brushWidth || 14));
+      guidePath?.setAttribute("opacity", String(state.brushOpacity));
+      return;
+    }
+    liveGuideBrushRef.current?.setAttribute("d", "");
+    if (samples.length === 1) {
+      const p = samples[0];
+      const pressureScale = isPenInputRef.current ? Math.max(0.2, Math.min(1, p.p)) : 1;
+      const radius = (state.brushWidth || 14) * pressureScale / 2;
+      liveBrushRef.current?.removeAttribute("transform");
+      liveBrushRef.current?.setAttribute("opacity", String(state.brushOpacity));
+      liveBrushRef.current?.setAttribute("d", `M ${p.x - radius} ${p.y} A ${radius} ${radius} 0 1 0 ${p.x + radius} ${p.y} A ${radius} ${radius} 0 1 0 ${p.x - radius} ${p.y} Z`);
+      return;
+    }
+    const outline = getBrushStrokeOutline(samples, brushOptions());
+    const geometry = engine.freehandOutlineGeometry(outline, state.freehandTuning.fidelity);
+    if (geometry) {
+      liveBrushRef.current?.setAttribute("d", pathD(geometry.points, true));
+      liveBrushRef.current?.setAttribute("transform", `translate(${geometry.x} ${geometry.y})`);
+      liveBrushRef.current?.setAttribute("opacity", String(state.brushOpacity));
+    } else {
+      liveBrushRef.current?.setAttribute("d", "");
+      liveBrushRef.current?.removeAttribute("transform");
+    }
   };
 
   const onStagePointerMove = (event: React.PointerEvent) => {
@@ -679,23 +753,32 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       const penDraft = state.penDraft;
       const anchor = penDraft && penDraft.length > 0 ? penDraft[penDraft.length - 1] : null;
       const increments = penAngleLock(event);
-      // The rubber band and the handle drag both measure from the anchor just
-      // placed, so the lock previews exactly what the next click would commit.
-      const locked =
-        anchor && increments.length > 0 ? constrainPenPoint(anchor, pos, true, increments) : pos;
+      const currentHit = nearestLockedStraightedge(pos, state.guides, state.setSquares, zoom);
+      const straightedge = penEngagedStraightedgeRef.current ?? currentHit;
+      const snapped = straightedge
+        ? straightedge.kind === "guide" ? projectOnGuide(straightedge.guide, pos) : closestPointOnSegment(pos, straightedge.a, straightedge.b).point
+        : pos;
+      // A physical straightedge takes precedence over angle assists and never
+      // introduces Bézier handles: the preview and committed segment stay exact.
+      const locked = straightedge ? snapped : anchor && increments.length > 0 ? constrainPenPoint(anchor, pos, true, increments) : pos;
       if (penDraft) setPenCursor(locked);
-      // The click↔drag decision stays RAW: the angle lock must not shrink the
-      // travel that decides whether this press is a drag at all.
       if (!penDragRef.current && penStartRef.current && shouldBeginHandleDrag(penStartRef.current, pos, zoom)) {
         penDragRef.current = true;
       }
-      if (penDragRef.current) engine.penDragHandle(locked);
+      if (penDragRef.current) {
+        if (straightedge) {
+          penEngagedStraightedgeRef.current = straightedge;
+          engine.penMoveLastAnchor(locked);
+        } else {
+          engine.penDragHandle(locked);
+        }
+      }
       return;
     }
     if (isDrawingRef.current && state.tool === "draw") {
       const evs = (event.nativeEvent as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [event.nativeEvent];
       for (const ev of evs) {
-        const raw = pointerPos(ev);
+        const raw = brushPointerPos(ev);
         const start = brushStartRef.current;
         let constrained = raw;
         if (start && (state.freehandMode === "straight" || state.freehandMode === "constrained" || ev.shiftKey)) {
@@ -708,16 +791,28 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             axisLock: state.freehandTuning.axisLock || ev.shiftKey,
           });
         }
+        const engagedGuide = brushEngagedGuideRef.current;
+        const engagedSquare = brushEngagedSquareRef.current;
+        if (engagedGuide) constrained = projectOnGuide(engagedGuide, raw);
+        else if (engagedSquare) constrained = closestPointOnSegment(raw, engagedSquare.a, engagedSquare.b).point;
         const s = brushSmoothRef.current ?? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 };
-        const t = 1 - STREAMLINE;
-        const np: FreehandPoint = {
-          x: s.x + (constrained.x - s.x) * t,
-          y: s.y + (constrained.y - s.y) * t,
-          p: ev.pressure || 0.5,
-        };
+        const previousTime = brushLastTimeRef.current;
+        const elapsedMs = previousTime == null ? 0 : Math.max(0, ev.timeStamp - previousTime);
+        brushLastTimeRef.current = ev.timeStamp;
+        const np = (brushEngagedGuideRef.current || brushEngagedSquareRef.current)
+          ? { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 }
+          : smoothFreehandSample(
+              s,
+              { x: constrained.x, y: constrained.y, p: ev.pressure || 0.5 },
+              elapsedMs,
+              8 + state.freehandTuning.smoothing * 42,
+            );
         const last = brushPtsRef.current[brushPtsRef.current.length - 1];
-        if (last && Math.hypot(np.x - last.x, np.y - last.y) * zoom < 1) continue;
+        // Advance the EMA even when this sample is too close to commit; otherwise
+        // slow 120/240Hz strokes can be discarded forever before reaching 1 unit.
         brushSmoothRef.current = np;
+        // Sampling density is measured in document units, never screen pixels.
+        if (last && Math.hypot(np.x - last.x, np.y - last.y) < 1) continue;
         brushPtsRef.current.push(np);
       }
       if (!brushRafRef.current) {
@@ -804,10 +899,31 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       engine.transientMoveSelection(transform.layerId, rawX, rawY);
       return;
     }
-    const snapped = snapLayerPosition(doc, transform.layerId, { x: rawX, y: rawY }, { width: layer.width, height: layer.height });
+    const snapped = snapLayerPosition(doc, transform.layerId, { x: rawX, y: rawY }, { width: layer.width, height: layer.height }, 6, axisAlignedGuideLines(state.guides, doc.artboard), angledGuideLines(state.guides, doc.artboard));
     setActiveGuides(snapped.guides);
     const kept = keepInside(snapped.pos.x, snapped.pos.y, layer.width, layer.height);
     engine.transientMove(transform.layerId, kept.x, kept.y);
+  };
+
+  const onStagePointerCancel = () => {
+    // Cancelled pointer sequences must never commit a partial stroke.
+    isDrawingRef.current = false;
+    isPenInputRef.current = false;
+    if (brushRafRef.current) {
+      cancelAnimationFrame(brushRafRef.current);
+      brushRafRef.current = 0;
+    }
+    brushPtsRef.current = [];
+    brushSmoothRef.current = null;
+    brushLastTimeRef.current = null;
+    brushRectRef.current = null;
+    brushEngagedGuideRef.current = null;
+    brushStartRef.current = null;
+    liveBrushRef.current?.setAttribute("d", "");
+    liveGuideBrushRef.current?.setAttribute("d", "");
+    penStartRef.current = null;
+    penDragRef.current = false;
+    penEngagedStraightedgeRef.current = null;
   };
 
   const onStagePointerUp = () => {
@@ -843,6 +959,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       // alive until the path is closed or committed.
       penDragRef.current = false;
       penStartRef.current = null;
+      penEngagedStraightedgeRef.current = null;
       return;
     }
     if (isDrawingRef.current) {
@@ -851,24 +968,40 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         cancelAnimationFrame(brushRafRef.current);
         brushRafRef.current = 0;
       }
+      renderLiveBrush();
       const pts = brushPtsRef.current;
-      if (pts.length > 1) {
-        // The outline is preview-only. The committed geometry comes from the
-        // canonical freehand pipeline so smoothing/fidelity/angle constraints
-        // actually affect the saved editable Bézier path.
-        engine.commitFreehandSamples(pts, {
-          color: state.brushColor || "#0ea5e9",
-          width: state.brushWidth || 14,
-          style: state.brushStyle,
-          linecap: state.brushLinecap,
-          linejoin: state.brushLinejoin,
-          opacity: state.brushOpacity,
-        });
+      const options = {
+        color: state.brushColor || "#0ea5e9",
+        width: state.brushWidth || 14,
+        style: state.brushStyle,
+        linecap: state.brushLinecap,
+        linejoin: state.brushLinejoin,
+        opacity: state.brushOpacity,
+      };
+      if ((brushEngagedGuideRef.current || brushEngagedSquareRef.current) && pts.length > 0) {
+        const start = pts[0];
+        const end = pts[pts.length - 1] ?? start;
+        engine.commitStraightStroke({ x: start.x, y: start.y }, { x: end.x, y: end.y }, options, isPenInputRef.current ? end.p : 1);
+      } else if (pts.length > 1) {
+        const outline = getBrushStrokeOutline(pts, brushOptions());
+        const committed = engine.commitFreehandOutline(outline, { ...options, fidelity: state.freehandTuning.fidelity });
+        if (!committed) {
+          const last = pts[pts.length - 1];
+          engine.commitFreehandDot({ x: last.x, y: last.y }, options, isPenInputRef.current ? last.p : 1);
+        }
+      } else if (pts.length === 1) {
+        engine.commitFreehandDot({ x: pts[0].x, y: pts[0].y }, options, isPenInputRef.current ? pts[0].p : 1);
       }
+      brushEngagedGuideRef.current = null;
+      brushEngagedSquareRef.current = null;
+      setEngagedSetSquareEdge(null);
+      brushRectRef.current = null;
       brushPtsRef.current = [];
       brushSmoothRef.current = null;
+      brushLastTimeRef.current = null;
       brushStartRef.current = null;
       liveBrushRef.current?.setAttribute("d", "");
+      liveGuideBrushRef.current?.setAttribute("d", "");
       return;
     }
     if (nodeMarqueeRef.current) {
@@ -1007,6 +1140,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
       onPointerDown={onStagePointerDown}
       onPointerMove={onStagePointerMove}
       onPointerUp={onStagePointerUp}
+       onPointerCancel={onStagePointerCancel}
       onWheel={onStageWheel}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -1428,7 +1562,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
               title="گونیا/زاویه‌بندی: قلم روی شبکهٔ زاویه‌ای قفل می‌شود (Shift همیشه ۴۵ درجه است)"
               onClick={() => engine.setAngleAssist(!state.angleAssist)}
             >
-              📐 گونیا
+              📐 قفل زاویه
             </button>
             {state.angleAssist ? (
               <select
@@ -1515,6 +1649,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             pan={pan}
             rulers={state.rulers}
             guides={state.guides}
+            selectMode={state.tool === "select"}
             preview={preview}
             /* The set-square locks a guide's angle too: one angular grid for the
                whole drawing aid, not a pen-only setting. */
@@ -1524,8 +1659,48 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
             onMove={(id, point) => engine.moveGuide(id, point)}
             onRotate={(id, angle) => engine.rotateGuide(id, angle)}
             onRemove={(id) => engine.removeGuide(id)}
+            onToggleLock={(id) => engine.toggleGuideLock(id)}
+            onSnapCreate={(point, axis) => {
+              if (!state.snapping) return point;
+              const snapped = engine.smartSnapPoint(point, { tolerance: 8 / Math.max(zoom, 0.01) });
+              return axis === "x" ? { ...point, x: snapped.x } : { ...point, y: snapped.y };
+            }}
+            onPin={(vertex, baseAngle) => {
+              if (state.tool === "select") setAngleDial({ vertex, baseAngle });
+            }}
           />
         ) : null}
+      {state.setSquares.length > 0 && !preview ? (
+        <SetSquareOverlay
+          squares={state.setSquares}
+          zoom={zoom}
+          pan={pan}
+          angleSnap={state.angleAssist ? state.angleAssistIncrement : null}
+          engagedEdge={engagedSetSquareEdge}
+          interactive={state.tool === "select"}
+          onMove={(id, center) => engine.moveSetSquare(id, center)}
+          onRotate={(id, angle) => engine.rotateSetSquare(id, angle)}
+          onResize={(id, size) => engine.resizeSetSquare(id, size)}
+          onToggleLock={(id) => engine.toggleSetSquareLock(id)}
+          onSwitchKind={(id) => engine.switchSetSquareKind(id)}
+          onRemove={(id) => engine.removeSetSquare(id)}
+        />
+      ) : null}
+      {angleDial && state.tool === "select" && !preview ? (
+        <AngleDial
+          vertex={angleDial.vertex}
+          baseAngle={angleDial.baseAngle}
+          artboard={doc.artboard}
+          zoom={zoom}
+          pan={pan}
+          onCommit={(absoluteAngle) => {
+            const ok = engine.addLockedAngledGuide(absoluteAngle, angleDial.vertex);
+            if (ok) setAngleDial(null);
+            return ok;
+          }}
+          onCancel={() => setAngleDial(null)}
+        />
+      ) : null}
       <div
         data-stage-inner
         className="absolute left-0 top-0 origin-top-left"
@@ -1771,6 +1946,7 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
         <div className="pointer-events-none absolute inset-0 z-[2000]">
           <svg style={{ width: "100%", height: "100%", overflow: "visible" }} viewBox={`0 0 ${doc.artboard.width} ${doc.artboard.height}`}>
             <path ref={liveBrushRef} fill={state.brushColor || "#0ea5e9"} pointerEvents="none" />
+            <path ref={liveGuideBrushRef} fill="none" stroke={state.brushColor || "#0ea5e9"} strokeWidth={state.brushWidth || 14} strokeLinecap="round" pointerEvents="none" />
           </svg>
         </div>
 
@@ -1852,7 +2028,24 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
           The ruler/guide toggle lives here rather than in the path-node panel because
           rulers align ANY layer — they must be reachable long before point-editing. */}
       {preview ? null : (
-        <div className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
+        <div onPointerDown={(event) => event.stopPropagation()} className="absolute bottom-3 right-3 z-[3000] flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1626]/95 p-1.5 text-slate-200 backdrop-blur shadow-2xl">
+          <button
+            type="button"
+            data-set-square-add=""
+            title="📐 گونیا — افزودن مثلث ترسیم"
+            onClick={() => {
+              const id = engine.addSetSquare();
+              if (!id) {
+                setSetSquareNotice("حداکثر ۴ گونیا مجاز است");
+                window.setTimeout(() => setSetSquareNotice(""), 2200);
+              }
+            }}
+            className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-amber-200 transition hover:bg-amber-500/15"
+          >📐 گونیا{state.setSquares.length ? ` ${state.setSquares.length}` : ""}</button>
+          {setSquareNotice ? <span role="status" className="text-[10px] text-rose-200">{setSquareNotice}</span> : null}
+          {state.setSquares.some(square => !square.locked) ? (
+            <button type="button" data-set-square-clear="" title="حذف گونیاهای آزاد (گونیاهای قفل‌شده باقی می‌مانند)" onClick={() => engine.clearSetSquares()} className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-400 transition hover:bg-rose-500/15 hover:text-rose-200">🧹</button>
+          ) : null}
           <button
             type="button"
             data-rulers-toggle=""

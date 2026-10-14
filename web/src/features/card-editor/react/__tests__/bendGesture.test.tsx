@@ -109,14 +109,14 @@ describe("point editor: press on the line and curve that spot", () => {
     expect(ghost?.getAttribute("data-ghost")).toBe("yes");
     expect(Number(ghost?.getAttribute("cx"))).toBeCloseTo(125, 1);
 
-    // Press: a loss-less split puts a real node exactly there.
+    // Press alone is intentionally lazy: it must not create a node.
     firePointer(hit, "pointerdown", { clientX: 125, clientY: 50, button: 0, detail: 1, buttons: 1 });
-    expect(layer(engine).points).toHaveLength(3);
-    expect(layer(engine).points[1].x).toBeCloseTo(125, 1);
-    expect(engine.getState().selectedAnchor).toEqual({ layerId: "line", index: 1 });
+    expect(layer(engine).points).toHaveLength(2);
 
-    // Drag: the node follows the pointer, so the line curves where it was grabbed.
+    // Only after travelling more than 4 screen pixels does a lossless split occur.
     firePointer(window, "pointermove", { clientX: 125, clientY: 90, buttons: 1 });
+    expect(layer(engine).points).toHaveLength(3);
+    expect(engine.getState().selectedAnchor).toEqual({ layerId: "line", index: 1 });
     firePointer(window, "pointerup", { clientX: 125, clientY: 90, buttons: 0 });
 
     // ARTBOARD space: `commitPathEdit` re-origins the box, so local coordinates
@@ -133,6 +133,23 @@ describe("point editor: press on the line and curve that spot", () => {
     engine.undo();
     expect(layer(engine).points).toHaveLength(2);
     expect(world(1).y).toBeCloseTo(50, 1);
+  });
+
+  it("does not plant a node on a plain click, but double-click inserts one losslessly", () => {
+    const engine = new EditorEngine(docWith(pathLayer()));
+    engine.setPathEditing("line");
+    const { hit } = renderEditor(engine);
+
+    firePointer(hit, "pointerdown", { clientX: 125, clientY: 50, button: 0, detail: 1, buttons: 1 });
+    firePointer(window, "pointerup", { clientX: 125, clientY: 50, buttons: 0 });
+    expect(layer(engine).points).toHaveLength(2);
+
+    fireEvent(hit, new MouseEvent("dblclick", { bubbles: true, cancelable: true, clientX: 125, clientY: 50 }));
+    expect(layer(engine).points).toHaveLength(3);
+    expect(engine.getState().selectedAnchor).toEqual({ layerId: "line", index: 1 });
+    const worldPoints = layer(engine).points.map(point => ({ x: layer(engine).x + point.x, y: layer(engine).y + point.y }));
+    expect(worldPoints.map(point => point.x).sort((a,b) => a-b).map(x => Math.round(x))).toEqual([0, 125, 500]);
+    expect(worldPoints.every(point => Math.abs(point.y - 50) < 0.1)).toBe(true);
   });
 
   it("keeps Alt/Option for moving the layer instead of bending", () => {
@@ -175,10 +192,13 @@ describe("selected layer: the dot travels along the line", () => {
       detail: 1,
       buttons: 1,
     });
+    expect(layer(engine).bend).toBe(0.5); // a click does not bend
+    firePointer(window, "pointermove", { clientX: onArc!.point.x + 20, clientY: onArc!.point.y + 20, buttons: 1 });
+    firePointer(window, "pointerup", { clientX: onArc!.point.x + 20, clientY: onArc!.point.y + 20, buttons: 0 });
     const bent = layer(engine);
     expect(bent.bend).toBeUndefined();
     expect(bent.points.length).toBeGreaterThan(2);
-    const node = bent.points.find((point) => Math.abs(point.x - onArc!.point.x) < 1 && Math.abs(point.y - onArc!.point.y) < 1);
+    const node = bent.points.find((point) => Math.abs(bent.x + point.x - (onArc!.point.x + 20)) < 1 && Math.abs(bent.y + point.y - (onArc!.point.y + 20)) < 1);
     expect(node).toBeTruthy();
   });
 

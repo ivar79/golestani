@@ -27,7 +27,7 @@ import type { SnapAxis } from "./snapping";
 export type GuideAxis = SnapAxis;
 
 /** One user guide: an infinite line through `(x, y)` at `angle` degrees. */
-export type UserGuide = { id: string; angle: number; x: number; y: number };
+export type UserGuide = { id: string; angle: number; x: number; y: number; locked?: boolean };
 
 /** Hard cap: a board full of guides is a board nobody can read. */
 export const MAX_GUIDES = 24;
@@ -160,6 +160,7 @@ export function normalizeGuides(
       angle,
       x: point.x,
       y: point.y,
+      ...(guide.locked === true ? { locked: true } : {}),
     };
     if (out.some((other) => nearlySame(other, candidate))) continue;
     out.push(candidate);
@@ -215,11 +216,10 @@ export function addAngledGuide(
   const candidate: UserGuide = { id: guideId(angle, point, current), angle, x: point.x, y: point.y };
   const existing = current.find((guide) => nearlySame(guide, candidate));
   if (existing) {
-    // Placing a line onto an existing one MOVES it: the user asked for a line at
-    // a position, not for two lines at the same position.
-    return current.map((guide) =>
-      guide.id === existing.id ? { ...guide, angle, x: point.x, y: point.y } : guide,
-    );
+    // A locked guide is a physical straightedge: creating another line on top
+    // of it must not move it.
+    if (existing.locked) return current;
+    return current.map((guide) => guide.id === existing.id ? { ...guide, angle, x: point.x, y: point.y } : guide);
   }
   if (current.length >= MAX_GUIDES) return current;
   return [...current, candidate];
@@ -234,7 +234,7 @@ export function rotateGuide(
 ): UserGuide[] {
   const current = normalizeGuides(list, artboard);
   const target = current.find((guide) => guide.id === id);
-  if (!target) return current;
+  if (!target || target.locked) return current;
   const next = normalizeAngle(angle, target.angle);
   const candidate: UserGuide = { ...target, angle: next };
   const collision = current.find((guide) => guide.id !== id && nearlySame(guide, candidate));
@@ -251,7 +251,7 @@ export function moveGuide(
 ): UserGuide[] {
   const current = normalizeGuides(list, artboard);
   const target = current.find((guide) => guide.id === id);
-  if (!target) return current;
+  if (!target || target.locked) return current;
   const clamped = clampPoint(point, artboard);
   const candidate: UserGuide = { ...target, ...clamped };
   const collision = current.find((guide) => guide.id !== id && nearlySame(guide, candidate));
@@ -259,8 +259,19 @@ export function moveGuide(
   return current.map((guide) => (guide.id === id ? candidate : guide));
 }
 
+export function toggleGuideLock(list: readonly UserGuide[], id: string): UserGuide[] {
+  return list.map((guide) => {
+    if (guide.id !== id) return guide;
+    if (guide.locked) {
+      const { locked: _locked, ...unlocked } = guide;
+      return unlocked;
+    }
+    return { ...guide, locked: true };
+  });
+}
+
 export function removeGuide(list: readonly UserGuide[], id: string): UserGuide[] {
-  return list.filter((guide) => guide.id !== id);
+  return list.filter((guide) => guide.id !== id || guide.locked === true);
 }
 
 /** The guide whose line passes nearest a point, using perpendicular distance. */
