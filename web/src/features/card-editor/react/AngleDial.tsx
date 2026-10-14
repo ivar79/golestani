@@ -72,8 +72,12 @@ export function AngleDial({ vertex, baseAngle, artboard, zoom, pan, onCommit, on
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onCancel(); }
-      if (event.key === "Enter" && document.activeElement !== inputRef.current) {
+      const inputFocused = document.activeElement === inputRef.current;
+      if (event.key === "Escape") {
+        if (!inputFocused) { event.preventDefault(); onCancel(); }
+        return;
+      }
+      if (event.key === "Enter" && !inputFocused) {
         event.preventDefault(); commit();
       }
     };
