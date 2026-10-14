@@ -31,6 +31,21 @@ describe("physical set-square overlay", () => {
     expect(view.props.onMove).toHaveBeenCalledWith("sq1", { x: 120, y: 140 });
   });
 
+  it("rotates around the centroid and uniformly resizes from the hypotenuse midpoint", () => {
+    const view = renderSquare();
+    const rotate = view.container.querySelector('[data-set-square-rotate="sq1"]')!;
+    pointer(rotate, "pointerdown", { clientX: 100, clientY: -29.6, button: 0, buttons: 1 });
+    pointer(rotate, "pointermove", { clientX: 229.6, clientY: 100, buttons: 1 });
+    pointer(rotate, "pointerup", { clientX: 229.6, clientY: 100, buttons: 0 });
+    expect(view.props.onRotate).toHaveBeenCalledWith("sq1", 90);
+
+    const resize = view.container.querySelector('[data-set-square-resize="sq1"]')!;
+    pointer(resize, "pointerdown", { clientX: 130, clientY: 130, button: 0, buttons: 1 });
+    pointer(resize, "pointermove", { clientX: 160, clientY: 160, buttons: 1 });
+    pointer(resize, "pointerup", { clientX: 160, clientY: 160, buttons: 0 });
+    expect(view.props.onResize).toHaveBeenCalledWith("sq1", 360);
+  });
+
   it("exposes lock and kind controls and keeps remove disabled while locked", () => {
     const unlocked = renderSquare();
     fireEvent.click(unlocked.getByLabelText("قفل گونیا"));
