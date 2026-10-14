@@ -803,9 +803,11 @@ export function EditorStage({ engine, doc, exportRef, preview = false, onUploadI
               8 + state.freehandTuning.smoothing * 42,
             );
         const last = brushPtsRef.current[brushPtsRef.current.length - 1];
+        // Advance the EMA even when this sample is too close to commit; otherwise
+        // slow 120/240Hz strokes can be discarded forever before reaching 1 unit.
+        brushSmoothRef.current = np;
         // Sampling density is measured in document units, never screen pixels.
         if (last && Math.hypot(np.x - last.x, np.y - last.y) < 1) continue;
-        brushSmoothRef.current = np;
         brushPtsRef.current.push(np);
       }
       if (!brushRafRef.current) {
