@@ -261,6 +261,12 @@ describe("RulersAndGuides", () => {
     expect(view.onMove).not.toHaveBeenCalled();
   });
 
+  it("snaps guide placement to the nearest object edge or center", () => {
+    const view = renderOverlay({ onSnapCreate: (point, axis) => axis === "x" ? { ...point, x: 144 } : { ...point, y: 166 } });
+    pullOut(view.bed('[data-ruler="top"]'), { x: 100, y: 5 }, { x: 130, y: 120 });
+    expect(view.onAdd).toHaveBeenCalledWith("x", 144);
+  });
+
   it("creates an angled guide by Shift-dragging from the top ruler", () => {
     const view = renderOverlay();
     const ruler = view.bed('[data-ruler="top"]');
