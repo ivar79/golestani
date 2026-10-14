@@ -1863,6 +1863,38 @@ export class EditorEngine {
     this.emit({ penDraft: smoothed });
   }
 
+  /** Add a ruler-constrained point without curvature-mode auto-smoothing. */
+  penAddStraightAnchor(point: { x: number; y: number }): void {
+    const draft = this.state.penDraft ?? [];
+    if (draft.length === 0) {
+      this.penStart(point);
+      return;
+    }
+    const next = draft.map((anchor, index) =>
+      index === draft.length - 1 ? { ...anchor, hOut: null } : anchor,
+    );
+    next.push({ x: point.x, y: point.y, hIn: null, hOut: null });
+    this.emit({ penDraft: next });
+  }
+
+  /** Move the most recently placed draft anchor while preserving its handles. */
+  penMoveLastAnchor(point: { x: number; y: number }): void {
+    const draft = this.state.penDraft;
+    if (!draft?.length) return;
+    const next = draft.slice();
+    const last = next[next.length - 1];
+    const dx = point.x - last.x;
+    const dy = point.y - last.y;
+    next[next.length - 1] = {
+      ...last,
+      x: point.x,
+      y: point.y,
+      hIn: last.hIn ? { x: last.hIn.x + dx, y: last.hIn.y + dy } : null,
+      hOut: last.hOut ? { x: last.hOut.x + dx, y: last.hOut.y + dy } : null,
+    };
+    this.emit({ penDraft: next });
+  }
+
   /**
    * While the pointer is still down on the anchor just placed, pull its two
    * mirrored handles out. This is what turns a corner into a smooth point.
