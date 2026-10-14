@@ -76,8 +76,8 @@ export function SetSquareOverlay({ squares, zoom, pan, angleSnap, engagedEdge, i
         </g>;
       })}
     </svg>
-    {squares.map(square => <div key={square.id} data-set-square-controls={square.id} className="absolute flex items-center gap-1 rounded-lg border border-amber-300/25 bg-slate-950/95 p-1 shadow-lg" style={{ pointerEvents: interactive ? "auto" : "none" }}
-      style={{ left: Math.max(2, pan.x + square.cx * scale - 52), top: Math.max(2, pan.y + square.cy * scale + 10) }}
+    {squares.map(square => <div key={square.id} data-set-square-controls={square.id} className="absolute flex items-center gap-1 rounded-lg border border-amber-300/25 bg-slate-950/95 p-1 shadow-lg"
+      style={{ pointerEvents: interactive ? "auto" : "none", left: Math.max(2, pan.x + square.cx * scale - 52), top: Math.max(2, pan.y + square.cy * scale + 10) }}
       onPointerDown={event => { event.preventDefault(); event.stopPropagation(); }}>
       <button type="button" aria-label={square.locked ? "بازکردن قفل گونیا" : "قفل گونیا"} title={square.locked ? "بازکردن قفل" : "قفل"} onClick={() => onToggleLock(square.id)} className="rounded px-1.5 py-1 text-[10px] text-amber-100">{square.locked ? "🔒" : "🔓"}</button>
       <button type="button" aria-label="تغییر نوع گونیا" title="۴۵° ↔ ۳۰°/۶۰°" disabled={square.locked} onClick={() => onSwitchKind(square.id)} className="rounded px-1.5 py-1 text-[10px] text-amber-100 disabled:opacity-40">{square.kind === "45-45-90" ? "45°" : "30°/60°"}</button>
