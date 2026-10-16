@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, Share2, Users, UploadCloud, Sparkles, CheckCircle2, AlertCircle, Trash2, X, Building2, ArrowUpRight, LayoutDashboard, RefreshCw } from "lucide-react";
+import { Copy, Check, Share2, Users, UploadCloud, Sparkles, CheckCircle2, AlertCircle, Trash2, X, Building2, ArrowUpRight, LayoutDashboard, RefreshCw, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import api, { extractApiError, retryTransient } from "@/lib/api";
@@ -428,13 +428,23 @@ export default function DesignerPage() {
               وضعیت استودیو، معرفی کسب‌وکارها و نمونه‌کارهای خود را مدیریت کنید.
             </p>
           </div>
-          <Link
-            href="/dashboard"
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/10"
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            ورود به داشبورد
-          </Link>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {/* کیف پول پورسانت: موجودی، شبای واریز و درخواست برداشت دستی. */}
+            <Link
+              href="/designer/wallet"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-500/20"
+            >
+              <Wallet className="h-4 w-4" />
+              کیف پول و تسویه
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/10"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              ورود به داشبورد
+            </Link>
+          </div>
         </div>
 
         {/* Feedback Alert */}

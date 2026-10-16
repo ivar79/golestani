@@ -32,6 +32,7 @@ import {
   Activity,
   ReceiptText,
   History as HistoryIcon,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError, retryTransient } from "@/lib/api";
@@ -58,6 +59,8 @@ import AdminDesignersTab from "@/components/admin/AdminDesignersTab";
 import AdminSubscriptionsTab from "@/components/admin/AdminSubscriptionsTab";
 import AdminReportsTab from "@/components/admin/AdminReportsTab";
 import AdminAuditTab from "@/components/admin/AdminAuditTab";
+import AdminWalletTab from "@/components/admin/AdminWalletTab";
+import { getWithdrawalSummary } from "@/lib/adminWallet";
 
 const TABS = [
   { id: "Overview", label: "پیشخوان و صف‌ها", icon: LayoutDashboard },
@@ -67,6 +70,9 @@ const TABS = [
   { id: "Plans", label: "پلن‌ها و درآمد", icon: CreditCard },
   { id: "CardTemplates", label: "قالب‌های کارت", icon: LayoutDashboard },
   { id: "Subscriptions", label: "اشتراک‌ها و رسیدها", icon: ReceiptText },
+  // Wallet + manual settlement: the badge on this item is the number of payout
+  // requests waiting for an admin decision (see refresh()).
+  { id: "Wallets", label: "کیف پول و تسویه", icon: Wallet },
   { id: "Designers", label: "مدیریت طراحان", icon: Palette },
   { id: "Reports", label: "گزارش‌های مردمی", icon: AlertCircle },
   { id: "Audit", label: "سوابق مدیریتی", icon: HistoryIcon },
@@ -192,6 +198,8 @@ export default function AdminPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeGroup, setActiveGroup] = useState("hero");
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  // Payout requests awaiting a decision — shown as a badge on the wallet menu item.
+  const [pendingWithdrawals, setPendingWithdrawals] = useState(0);
   const [scrollY, setScrollY] = useState(0);
   const [maxScroll, setMaxScroll] = useState(0);
 
@@ -241,6 +249,13 @@ export default function AdminPage() {
         Promise.all([getAdminOverview(), getAdminSettings()]),
       );
       setData(overview);
+      // The wallet badge must not be able to blank the whole panel: this read is
+      // independent, so a failure leaves the counter untouched.
+      try {
+        setPendingWithdrawals((await getWithdrawalSummary()).pending);
+      } catch {
+        // ignored on purpose
+      }
       setSettings(Object.fromEntries(rows.map((x) => [x.key, x.value ?? ""])));
       setError(null);
     } catch (e) {
@@ -418,6 +433,11 @@ export default function AdminPage() {
                       {totalPending}
                     </span>
                   )}
+                  {t.id === "Wallets" && pendingWithdrawals > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500/20 px-1.5 text-[11px] font-bold text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                      {pendingWithdrawals}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -554,6 +574,11 @@ export default function AdminPage() {
                 {t.id === "Overview" && totalPending > 0 && (
                   <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500/30 px-1 text-[10px] font-bold text-amber-300">
                     {totalPending}
+                  </span>
+                )}
+                {t.id === "Wallets" && pendingWithdrawals > 0 && (
+                  <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500/30 px-1 text-[10px] font-bold text-amber-300">
+                    {pendingWithdrawals}
                   </span>
                 )}
               </button>
@@ -966,6 +991,12 @@ export default function AdminPage() {
           {tab === "Subscriptions" && (
             <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
               <AdminSubscriptionsTab />
+            </div>
+          )}
+
+          {tab === "Wallets" && (
+            <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6">
+              <AdminWalletTab />
             </div>
           )}
 

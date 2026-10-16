@@ -79,4 +79,11 @@ class User extends Authenticatable
     }
     public function designer(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(Designer::class); }
     public function businesses(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(Business::class); }
+
+    // ---- Designer wallet (commission + manual payouts) -------------------
+    // The wallet belongs to the USER (a designer identity is what earns), and
+    // is only ever mutated through App\Services\Wallet\* — never by a request.
+    public function wallet(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(Wallet::class); }
+    public function bankAccount(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(DesignerBankAccount::class); }
+    public function withdrawalRequests(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(WithdrawalRequest::class); }
 }

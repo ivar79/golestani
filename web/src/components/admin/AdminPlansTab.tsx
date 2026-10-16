@@ -43,6 +43,8 @@ type Draft = {
   name: string;
   description: string;
   price: string;
+  /** درصد پورسانت طراح برای هر خرید این پلن (۰ = بدون پورسانت). */
+  commission_percent: string;
   currency: string;
   duration_days: string;
   is_public: boolean;
@@ -55,6 +57,7 @@ const emptyDraft = (): Draft => ({
   name: "",
   description: "",
   price: "",
+  commission_percent: "0",
   currency: "IRR",
   duration_days: "30",
   is_public: true,
@@ -64,6 +67,18 @@ const emptyDraft = (): Draft => ({
 });
 
 const toman = (value: number) => `${new Intl.NumberFormat("fa-IR").format(value)} تومان`;
+
+/**
+ * «درصد پورسانت طراح» از ورودی متنی → عدد صحیح ۰..۱۰۰ (null = نامعتبر).
+ * خالی یعنی صفر: پلنی که پورسانت ندارد نباید ادمین را مجبور به تایپ ۰ کند.
+ */
+function commissionFrom(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return 0;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
+  return Math.floor(value);
+}
 
 /** One catalog-driven control: bool -> checkbox, int -> number (empty = unlimited), list -> comma text. */
 function FeatureField({
@@ -128,6 +143,9 @@ export default function AdminPlansTab() {
   // Repricing an EXISTING plan (the API always supported it; the editor
   // surfaces it too so "price the designer plan" is a panel action).
   const [editPrice, setEditPrice] = useState<string>("");
+  // Commission share of every purchase of the plan (the designer referral
+  // percentage read at accrual time — editing it affects FUTURE purchases only).
+  const [editCommission, setEditCommission] = useState<string>("0");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -171,6 +189,11 @@ export default function AdminPlansTab() {
       setError("نام و قیمت پلن الزامی است.");
       return;
     }
+    const commission = commissionFrom(draft.commission_percent);
+    if (commission === null) {
+      setError("درصد پورسانت طراح باید عددی بین ۰ تا ۱۰۰ باشد.");
+      return;
+    }
     try {
       await saveAdminPlan({
         name: draft.name.trim(),
@@ -178,6 +201,7 @@ export default function AdminPlansTab() {
         price: Number(draft.price),
         currency: draft.currency,
         duration_days: Number(draft.duration_days),
+        commission_percent: commission,
         features: draft.features,
         sort_order: plans.length,
         is_public: draft.is_public,
@@ -196,6 +220,7 @@ export default function AdminPlansTab() {
     setEditingId(plan.id);
     setEditFeatures({ ...(plan.features ?? {}) });
     setEditPrice(String(plan.price));
+    setEditCommission(String(plan.commission_percent ?? 0));
     setNotice(null);
   }
 
@@ -205,10 +230,15 @@ export default function AdminPlansTab() {
       setError("قیمت پلن باید یک عدد نامنفی باشد.");
       return;
     }
+    const commission = commissionFrom(editCommission);
+    if (commission === null) {
+      setError("درصد پورسانت طراح باید عددی بین ۰ تا ۱۰۰ باشد.");
+      return;
+    }
     try {
-      await updateAdminPlan(plan.id, { features: editFeatures, price: Math.floor(price) });
+      await updateAdminPlan(plan.id, { features: editFeatures, price: Math.floor(price), commission_percent: commission });
       setEditingId(null);
-      setNotice("قیمت و امکانات پلن ذخیره شد — اشتراک‌های فعالِ موجود snapshot خود را نگه می‌دارند.");
+      setNotice("قیمت، پورسانت و امکانات پلن ذخیره شد — اشتراک‌های فعالِ موجود snapshot خود را نگه می‌دارند.");
       await refresh();
     } catch (requestError) {
       setError(extractApiError(requestError));
@@ -290,6 +320,20 @@ export default function AdminPlansTab() {
             مدت (روز)
             <input value={draft.duration_days} onChange={(e) => setDraft({ ...draft, duration_days: e.target.value })} type="number" min="1" className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white" />
           </label>
+          <label className="text-xs text-slate-300">
+            پورسانت طراح (٪)
+            <input
+              value={draft.commission_percent}
+              onChange={(e) => setDraft({ ...draft, commission_percent: e.target.value })}
+              type="number"
+              min="0"
+              max="100"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white"
+            />
+            <span className="mt-1 block text-[10px] leading-4 text-slate-500">
+              درصدی که طراح منتسب از هر خرید این پلن دریافت می‌کند؛ ۰ یعنی بدون پورسانت.
+            </span>
+          </label>
           <label className="text-xs text-slate-300 sm:col-span-2 lg:col-span-3">
             توضیحات
             <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white" />
@@ -345,6 +389,7 @@ export default function AdminPlansTab() {
                 <th className="p-3 text-right">پلن</th>
                 <th className="p-3 text-right">قیمت</th>
                 <th className="p-3 text-right">مدت</th>
+                <th className="p-3 text-right">پورسانت طراح</th>
                 <th className="p-3 text-right">امکانات</th>
                 <th className="p-3 text-right">وضعیت</th>
                 <th className="p-3 text-left">عملیات</th>
@@ -362,6 +407,13 @@ export default function AdminPlansTab() {
                   </td>
                   <td className="p-3 text-slate-300">{toman(plan.price)}</td>
                   <td className="p-3 text-slate-400">{plan.duration_days} روز</td>
+                  <td className="p-3 text-slate-300">
+                    {plan.commission_percent ? (
+                      <span className="font-semibold text-emerald-300">{plan.commission_percent}٪</span>
+                    ) : (
+                      <span className="text-slate-500">بدون پورسانت</span>
+                    )}
+                  </td>
                   <td className="p-3">
                     {editingId === plan.id ? (
                       <div className="min-w-[280px] space-y-2">
@@ -372,6 +424,17 @@ export default function AdminPlansTab() {
                             min="0"
                             value={editPrice}
                             onChange={(e) => setEditPrice(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1.5 text-xs text-white"
+                          />
+                        </label>
+                        <label className="block text-[10px] font-black text-slate-500">
+                          پورسانت طراح (٪)
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={editCommission}
+                            onChange={(e) => setEditCommission(e.target.value)}
                             className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1.5 text-xs text-white"
                           />
                         </label>

@@ -33,6 +33,11 @@ $testingEnv = [
     'PULSE_ENABLED' => 'false',
     'TELESCOPE_ENABLED' => 'false',
     'NIGHTWATCH_ENABLED' => 'false',
+    // Payment callback: the SPA redirect path is what production does, but the
+    // suite asserts the JSON answer. The container exports a real FRONTEND_URL,
+    // so without this the callback 302s and ~46 payment/subscription tests fail
+    // on a status-code mismatch that has nothing to do with the code under test.
+    'FRONTEND_URL' => '',
 ];
 
 foreach ($testingEnv as $key => $value) {

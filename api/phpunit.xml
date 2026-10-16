@@ -40,7 +40,10 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <!-- Payments: the callback must answer JSON in the suite (the browser
-             redirect path is covered by its own dedicated regression test). -->
+             redirect path is covered by its own dedicated regression test).
+             NOTE: an <env> entry alone is NOT enough here — the api container
+             exports a real FRONTEND_URL in $_SERVER, which Laravel reads with a
+             higher priority. tests/bootstrap.php force-writes this key too. -->
         <env name="FRONTEND_URL" value=""/>
     </php>
 </phpunit>

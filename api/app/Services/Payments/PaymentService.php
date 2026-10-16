@@ -9,6 +9,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\FeatureGate;
+use App\Services\Wallet\CommissionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -60,6 +61,10 @@ use RuntimeException;
  */
 class PaymentService
 {
+    public function __construct(private readonly CommissionService $commissions)
+    {
+    }
+
     /* -----------------------------------------------------------------
      | Init: create the transaction row and get the StartPay URL.
      * ----------------------------------------------------------------- */
@@ -226,7 +231,17 @@ class PaymentService
         // was CALLED with row->amount. Record the expected amount explicitly.
         $row->forceFill(['verification_payload' => array_merge($row->verification_payload ?? [], ['expected_amount' => $row->amount])])->save();
 
-        $this->activateSubscription($row);
+        $subscription = $this->activateSubscription($row);
+
+        // ---- DESIGNER COMMISSION ---------------------------------------
+        // Accrued HERE, at PAYMENT CONFIRMATION: the gateway said paid, the
+        // amount was re-checked against the locked row, and the subscription
+        // outcome is decided. The ledger key is the gateway transaction, which
+        // exists once per payment — so a replayed callback is a no-op AND a
+        // renewal (which extends the SAME subscription row) still earns its
+        // own commission. A commission failure never breaks the activation
+        // (accrueQuietly logs; `commissions:backfill` rebuilds).
+        $this->commissions->accrueQuietly($subscription->fresh(), $row, $row->user()->first());
 
         return ['transaction' => $row->refresh(), 'already_final' => false];
     }

@@ -21,7 +21,12 @@ class Plan extends Model
     //   (۲٬۴۹۰٬۰۰۰ ریال), and payment_transactions.amount stores exactly that
     //   rial value. The ×10 conversion lives in priceRial() and nowhere else —
     //   never scatter ÷10 / ×10 arithmetic around the codebase.
-    protected $fillable = ['name', 'slug', 'description', 'price', 'currency', 'duration_days', 'features', 'sort_order', 'tier', 'is_featured', 'is_public', 'is_active'];
+    // `commission_percent` (designer referral share, 0..100) IS admin-settable
+    // from the plan editor. It is read at COMMISSION ACCRUAL time only — the
+    // wallet service multiplies it by the subscription's own money snapshot
+    // (`price_amount`, TOMAN → RIAL through priceRial()), so a later plan edit
+    // can never rewrite a commission that was already accrued.
+    protected $fillable = ['name', 'slug', 'description', 'price', 'commission_percent', 'currency', 'duration_days', 'features', 'sort_order', 'tier', 'is_featured', 'is_public', 'is_active'];
 
     /** Gateway amount in RIAL (ZarinPal unit). The ONLY ×10 in the codebase. */
     public function priceRial(): int
@@ -31,7 +36,7 @@ class Plan extends Model
 
     protected function casts(): array
     {
-        return ['features' => 'array', 'is_active' => 'boolean', 'is_featured' => 'boolean', 'is_public' => 'boolean', 'tier' => 'integer'];
+        return ['features' => 'array', 'is_active' => 'boolean', 'is_featured' => 'boolean', 'is_public' => 'boolean', 'tier' => 'integer', 'commission_percent' => 'integer'];
     }
 
     /** Plans visible on the pricing page, ordered by admin sort_order. */

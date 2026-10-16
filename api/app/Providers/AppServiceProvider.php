@@ -63,6 +63,14 @@ class AppServiceProvider extends ServiceProvider
         // per-route buckets would. Guests have no user id — the key is the
         // client IP. This bounds request volume; the response size is bounded
         // separately by config('search.max_map_pins') in BusinessController.
+        // Designer payout requests. The authoritative guards are the balance /
+        // one-open-request / cooldown rules in WithdrawalService — this bucket
+        // only bounds a burst (a retry storm or a script).
+        RateLimiter::for('withdrawal-request', function (Request $request): Limit {
+            return Limit::perMinute((int) config('wallet.rate_limits.withdrawal_request', 5))
+                ->by($request->user()?->id ?: $request->ip());
+        });
+
         RateLimiter::for('public-search', function (Request $request): Limit {
             return Limit::perMinute((int) config('search.rate_limit_per_minute', 60))
                 ->by($request->ip());

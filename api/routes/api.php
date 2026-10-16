@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminTaxonomyController;
+use App\Http\Controllers\Api\AdminWalletController;
+use App\Http\Controllers\Api\AdminWithdrawalController;
+use App\Http\Controllers\Api\Designer\WalletController;
 use App\Http\Controllers\Api\AdvertisementController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\BusinessCardController;
@@ -157,6 +160,47 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/my/templates-asset', [MyTemplateController::class, 'uploadAsset'])->middleware('throttle:studio-authoring');
     // Ownership-checked private asset door (personal template artwork).
     Route::get('/assets/private/{path}', [PrivateAssetController::class, 'show'])->where('path', '.*');
+});
+
+// ---- Designer wallet + MANUAL payout settlement ------------------------
+// The designer's OWN wallet: every handler resolves the actor from the token
+// and never accepts a user id, so another designer's money is unreachable.
+Route::middleware(['auth:sanctum', 'role:designer,admin'])->prefix('designer/wallet')->group(function (): void {
+    Route::get('/', [WalletController::class, 'show']);
+    Route::get('/transactions', [WalletController::class, 'transactions']);
+    // A sheba can never be registered or CHANGED without a fresh OTP to the
+    // account's own phone (its own purpose-scoped code + send budget).
+    Route::post('/bank-account/otp', [WalletController::class, 'requestBankAccountOtp'])->middleware('throttle:3,10');
+    Route::put('/bank-account', [WalletController::class, 'saveBankAccount'])->middleware('throttle:10,1');
+    Route::get('/withdrawals', [WalletController::class, 'withdrawalHistory']);
+    // Payout requests get their own per-user bucket: the money rules are the
+    // authoritative guard, this only bounds bursts.
+    Route::post('/withdrawals', [WalletController::class, 'storeWithdrawal'])->middleware('throttle:withdrawal-request');
+    Route::delete('/withdrawals/{withdrawal}', [WalletController::class, 'cancelWithdrawal']);
+});
+
+// ---- Admin: manual payout settlement ----------------------------------
+// NOTE ON ORDER: the literal `summary`/`export` routes MUST be registered
+// before the `{withdrawal}` model-binding route, otherwise Laravel tries to
+// bind "summary" as an id and answers 404.
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function (): void {
+    Route::get('/withdrawals', [AdminWithdrawalController::class, 'index']);
+    // Counts + money at stake, driving the menu badge (pending) and the panel header.
+    Route::get('/withdrawals/summary', [AdminWithdrawalController::class, 'summary']);
+    // Batch-payment CSV: holder name + full sheba + amount of the approved queue.
+    Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'export']);
+    Route::get('/withdrawals/{withdrawal}', [AdminWithdrawalController::class, 'show']);
+    Route::patch('/withdrawals/{withdrawal}', [AdminWithdrawalController::class, 'moderate']);
+    // The ONLY way an admin moves a balance: an `adjustment` ledger row with a
+    // mandatory reason (there is intentionally no balance-editing endpoint).
+    Route::post('/wallets/{user}/adjust', [AdminWithdrawalController::class, 'adjust']);
+
+    // Settlement contract the ADMIN owns (was config/wallet.php) + the
+    // per-designer money page and sales/attribution report.
+    Route::get('/wallet/settings', [AdminWalletController::class, 'settings']);
+    Route::put('/wallet/settings', [AdminWalletController::class, 'saveSettings']);
+    Route::get('/wallet/designers', [AdminWalletController::class, 'designers']);
+    Route::get('/wallet/designers/{user}', [AdminWalletController::class, 'designer']);
 });
 
 // ---- Designer program + gallery submissions ----------------------------

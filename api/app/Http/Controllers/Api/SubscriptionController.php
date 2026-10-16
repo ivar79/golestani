@@ -9,6 +9,7 @@ use App\Models\InternalNotification;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Services\FeatureGate;
+use App\Services\Wallet\CommissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,10 @@ use Illuminate\Support\Str;
 
 class SubscriptionController extends Controller
 {
+    public function __construct(private readonly CommissionService $commissions)
+    {
+    }
+
     /* -----------------------------------------------------------------
      | Public pricing data — everything rendered comes from the DB or
      | config, never from frontend constants (price hardcode ban).
@@ -105,6 +110,10 @@ class SubscriptionController extends Controller
             'slug' => ['nullable', 'string', 'max:120', 'regex:/^[a-z0-9-]+$/i', 'unique:plans,slug'],
             'description' => ['nullable', 'string', 'max:1000'],
             'price' => ['required', 'integer', 'min:0'],
+            // Designer referral share of every purchase of this plan (0 = no
+            // commission). Read at ACCRUAL time from this column, so a later
+            // edit affects future purchases only.
+            'commission_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
             'currency' => ['nullable', 'string', 'max:10'],
             'duration_days' => ['required', 'integer', 'min:1'],
             'features' => ['nullable', 'array'],
@@ -130,6 +139,7 @@ class SubscriptionController extends Controller
             'slug' => ['prohibited'], // identity is immutable after creation
             'description' => ['nullable', 'string', 'max:1000'],
             'price' => ['sometimes', 'integer', 'min:0'],
+            'commission_percent' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100'],
             'currency' => ['sometimes', 'string', 'max:10'],
             'duration_days' => ['sometimes', 'integer', 'min:1'],
             'features' => ['sometimes', 'nullable', 'array'],
@@ -318,6 +328,23 @@ class SubscriptionController extends Controller
 
             $subscription->update($data);
         });
+
+        // ---- DESIGNER COMMISSION (accrual / reversal) ---------------------
+        // Deliberately OUTSIDE the activation transaction above: a commission
+        // problem must never roll back or 500 the subscription state change
+        // (Comm*Quietly() logs and swallows; any miss is rebuildable with
+        // `php artisan commissions:backfill`, while a half-activated
+        // subscription is not). Accrual happens HERE — at the admin's payment
+        // confirmation — and never on a later lifecycle event.
+        if ($data['status'] === 'active') {
+            $this->commissions->accrueQuietly($subscription->fresh(), null, $request->user());
+        } elseif ($data['status'] === 'rejected') {
+            $this->commissions->reverseQuietly(
+                $subscription->fresh(),
+                'رد درخواست اشتراک توسط مدیر',
+                $request->user(),
+            );
+        }
 
         if ($subscription->business?->user_id) {
             InternalNotification::create([

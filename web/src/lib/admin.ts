@@ -204,6 +204,8 @@ export type AdminPlan = {
   slug?: string;
   description?: string | null;
   price: number;
+  /** Designer referral share of every purchase of this plan (0 = none). */
+  commission_percent?: number | null;
   currency?: string;
   duration_days: number;
   features: Record<string, unknown> | null;
