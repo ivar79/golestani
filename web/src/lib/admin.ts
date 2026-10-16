@@ -288,8 +288,23 @@ export async function downloadAdminSubscriptionReceipt(id: number): Promise<void
   URL.revokeObjectURL(url);
 }
 
+/**
+ * One row of the designer attribution report: how many businesses a designer
+ * brought in. `designer` is null when the referring account was removed — the
+ * count still stands, so the row is rendered with a placeholder instead of
+ * being dropped.
+ */
+export type AdminDesignerAttribution = {
+  designer_id: number;
+  businesses_count: number;
+  designer?: { id: number; display_name: string | null; referral_code: string | null } | null;
+};
+
 export async function getAdminRevenueReport() {
-  return (await api.get<{ subscriptions: { total: number; pending: number; active: number; revenue: number } }>("/admin/reports/revenue")).data;
+  return (await api.get<{
+    subscriptions: { total: number; pending: number; active: number; revenue: number };
+    designer_attribution: AdminDesignerAttribution[];
+  }>("/admin/reports/revenue")).data;
 }
 
 export type AdminDesigner = { id: number; display_name: string; referral_code: string; status: string; bio: string | null; businesses_count: number; user?: { phone: string; email: string | null; designer_status?: string } };

@@ -53,6 +53,7 @@ beforeEach(() => {
   adminMock.getAdminPlans.mockResolvedValue([DESIGNER_PLAN]);
   adminMock.getAdminRevenueReport.mockResolvedValue({
     subscriptions: { total: 0, pending: 0, active: 0, revenue: 0 },
+    designer_attribution: [],
   });
   adminMock.getEntitlementCatalog.mockResolvedValue({
     catalog: CATALOG,
@@ -110,6 +111,35 @@ describe("admin plans panel — designer plan", () => {
     );
     const [, payload] = adminMock.updateAdminPlan.mock.calls[0];
     expect(payload.features).toMatchObject({ designer_studio: true });
+  });
+
+  it("renders the designer attribution report returned by the revenue endpoint", async () => {
+    adminMock.getAdminRevenueReport.mockResolvedValue({
+      subscriptions: { total: 0, pending: 0, active: 0, revenue: 0 },
+      designer_attribution: [
+        { designer_id: 7, businesses_count: 3, designer: { id: 7, display_name: "سارا", referral_code: "sara-01" } },
+        { designer_id: 9, businesses_count: 1, designer: null },
+      ],
+    });
+
+    await renderTab();
+
+    // The report is an acceptance criterion of phase 5, so the panel must
+    // actually show the referred-business counts, not just fetch them.
+    expect(await screen.findByText("گزارش انتساب‌های طراح")).toBeTruthy();
+    expect(screen.getByText("سارا")).toBeTruthy();
+    expect(screen.getByText("sara-01")).toBeTruthy();
+    expect(screen.getByText(faNumber(3))).toBeTruthy();
+    // A designer whose account was deleted keeps its count, labelled instead
+    // of being silently dropped from the report.
+    expect(screen.getByText("حساب حذف‌شده")).toBeTruthy();
+  });
+
+  it("shows an empty state when no business is attributed to a designer", async () => {
+    await renderTab();
+
+    expect(await screen.findByText("گزارش انتساب‌های طراح")).toBeTruthy();
+    expect(screen.getByText("هنوز هیچ کسب‌وکاری به کد معرفی یک طراح منتسب نشده است.")).toBeTruthy();
   });
 
   it("refuses an empty price before calling the API", async () => {

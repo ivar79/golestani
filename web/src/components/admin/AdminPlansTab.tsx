@@ -27,6 +27,7 @@ import {
   Star,
   TrendingUp,
   TrendingDown,
+  Users,
 } from "lucide-react";
 import { extractApiError } from "@/lib/api";
 import {
@@ -298,6 +299,51 @@ export default function AdminPlansTab() {
               <p className="mt-2 text-xl font-black text-white">{value}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Designer attribution: the referral share of the business.
+          The API has always returned `designer_attribution`, but nothing
+          rendered it, so the acceptance criterion "designer attribution report
+          visible in the admin panel" was not actually met. The row count is a
+          server-side aggregate — the panel only displays it. */}
+      {report && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-white">
+            <Users className="h-4 w-4 text-cyan-300" />
+            گزارش انتساب‌های طراح
+          </h3>
+          <p className="mt-1 text-xs text-slate-400">
+            تعداد کسب‌وکارهایی که هر طراح با کد معرفی خود به پلتفرم آورده است.
+          </p>
+          {report.designer_attribution.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-white/10 p-6 text-center text-xs text-slate-500">
+              هنوز هیچ کسب‌وکاری به کد معرفی یک طراح منتسب نشده است.
+            </p>
+          ) : (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[420px] text-right text-xs">
+                <thead className="text-slate-400">
+                  <tr className="border-b border-white/10">
+                    <th className="p-2 font-semibold">طراح</th>
+                    <th className="p-2 font-semibold">کد معرفی</th>
+                    <th className="p-2 font-semibold">کسب‌وکار منتسب</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.06]">
+                  {report.designer_attribution.map((row) => (
+                    <tr key={row.designer_id}>
+                      <td className="p-2 text-white">{row.designer?.display_name ?? "حساب حذف‌شده"}</td>
+                      <td className="p-2 text-slate-400" dir="ltr">{row.designer?.referral_code ?? "—"}</td>
+                      <td className="p-2 font-bold text-white">
+                        {new Intl.NumberFormat("fa-IR").format(row.businesses_count)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
